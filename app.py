@@ -806,38 +806,29 @@ def generate_impression(d, sex, age):
         except (ValueError, TypeError):
             wall_descriptor = ""
 
-    # 1. Over-distended + calculi + acute features
     if gb_over and gb_has_calculi and (gb_wall_thickened or gb_peri_fluid):
         lines.append("OVERDISTENDED GALL BLADDER WITH CHOLELITHIASIS & FEATURES "
                      "SUGGESTIVE OF ACUTE CHOLECYSTITIS.")
-    # 2. Over-distended + calculi, no acute features
     elif gb_over and gb_has_calculi:
         lines.append("OVERDISTENDED GALL BLADDER WITH CHOLELITHIASIS. HOWEVER NO "
                      "PERICHOLECYSTIC FLUID OR GB WALL THICKENING APPRECIATED.")
-    # 3. Contracted + calculi
     elif gb_contracted and gb_has_calculi:
         lines.append("CHOLELITHIASIS WITH ?CHRONIC CHOLECYSTITIS.")
-    # 4. Cholelithiasis + acute features
     elif gb_has_calculi and (gb_wall_thickened or gb_peri_fluid):
         lines.append("CHOLELITHIASIS WITH ?ACUTE CHOLECYSTITIS.")
-    # 5. Cholelithiasis alone
     elif gb_has_calculi:
         lines.append("CHOLELITHIASIS WITH NO APPRECIABLE PERICHOLECYSTIC FLUID OR "
                      "GB WALL THICKENING.")
-    # 6. Wall thickening + peri fluid, no calculi
     elif gb_wall_thickened and gb_peri_fluid:
         lines.append(f"GB WALL THICKENING {wall_descriptor}, SEEN UP TO {gb['wall_mm']}MM, "
                      f"WITH THIN RIM OF PERICHOLECYSTIC FLUID - ?ACALCULUS CHOLECYSTITIS. "
                      f"Adv- LFT, Lab & Clinical Correlation.")
-    # 7. Wall thickening alone
     elif gb_wall_thickened and not gb_has_calculi:
         lines.append("ISOLATED GB WALL THICKENING WITHOUT ANY CALCULUS - ?ACALCULUS "
                      "CHOLECYSTITIS. Adv- LFT, Lab and Clinical Correlation.")
-    # 8. Peri fluid alone
     elif gb_peri_fluid and not gb_has_calculi:
         lines.append("THIN RIM OF PERICHOLECYSTIC FLUID SEEN - ?SIGNIFICANCE. "
                      "Adv- LFT, Lab and Clinical Correlation.")
-    # 9. Sludge alone
     elif gb_sludge and not gb_has_calculi:
         sludge_text = gb["sludge"].upper()
         lines.append(f"{sludge_text} SLUDGE SEEN IN THE GALLBLADDER LUMEN. "
@@ -861,7 +852,6 @@ def generate_impression(d, sex, age):
         else:
             lines.append("GALL BLADDER ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
 
-    # LIVER
     liver = d["liver"]
     liver_line = None
     desc = liver["size_descriptor"]
@@ -1141,12 +1131,12 @@ st.markdown(
 
 init_db()
 
-if "report" not in st.session_state:
-    st.session_state.report = new_report("F")
-if "liver_sig" not in st.session_state:
+
+# --- initialize session defaults ---
+if "initialized" not in st.session_state:
     st.session_state.liver_sig = ""
-if "spleen_sig" not in st.session_state:
     st.session_state.spleen_sig = ""
+    st.session_state.initialized = True
 
 
 st.title("USG Whole Abdomen — Report Generator")
@@ -1154,21 +1144,17 @@ st.title("USG Whole Abdomen — Report Generator")
 with st.container():
     c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 2, 3])
     with c1:
-        p_name = st.text_input("Name", value=st.session_state.report["patient"]["name"],
-                                key="p_name_input")
+        p_name = st.text_input("Name", key="p_name_input")
     with c2:
-        p_age = st.text_input("Age", value=st.session_state.report["patient"]["age"],
-                               key="p_age_input")
+        p_age = st.text_input("Age", key="p_age_input")
     with c3:
-        p_sex = st.radio("Sex", ["F", "M"], horizontal=True,
-                         index=0 if st.session_state.report["patient"]["sex"] == "F" else 1,
-                         key="p_sex_input")
+        p_sex = st.radio("Sex", ["F", "M"], horizontal=True, key="p_sex_input")
     with c4:
-        p_date = st.text_input("Date", value=st.session_state.report["patient"]["date"],
+        p_date = st.text_input("Date",
+                                value=datetime.now().strftime("%d-%b-%y"),
                                 key="p_date_input")
     with c5:
-        p_ref = st.text_input("Referred by", value=st.session_state.report["patient"]["referred_by"],
-                               key="p_ref_input")
+        p_ref = st.text_input("Referred by", key="p_ref_input")
 
 st.markdown("---")
 
@@ -1201,9 +1187,7 @@ with col_left:
     with st.expander("LIVER", expanded=False):
         c1, c2 = st.columns([1, 2])
         with c1:
-            liver_size = st.text_input("Size (mm)",
-                                       value=st.session_state.report["liver"]["size_mm"],
-                                       key="liver_size_input")
+            liver_size = st.text_input("Size (mm)", key="liver_size_input")
         current_liver_sig = f"{liver_size}|{p_age}|{p_sex}"
         if st.session_state.liver_sig != current_liver_sig:
             st.session_state.liver_status = auto_classify_liver(liver_size, p_age, p_sex)
@@ -1321,7 +1305,7 @@ with col_left:
                                                 key="liver_portal_mm_input")
 
     # ---------------- GALL BLADDER ----------------
-    with st.expander("GALL BLADDER", expanded=True):
+    with st.expander("GALL BLADDER", expanded=False):
         gb_status = st.radio(
             "Distension status",
             ["adequately_distended", "over", "partially", "contracted", "empty", "operated"],
@@ -1422,9 +1406,7 @@ with col_left:
     with st.expander("SPLEEN", expanded=False):
         c1, c2 = st.columns([1, 2])
         with c1:
-            sp_size = st.text_input("Size (mm)",
-                                    value=st.session_state.report["spleen"]["size_mm"],
-                                    key="spleen_size_input")
+            sp_size = st.text_input("Size (mm)", key="spleen_size_input")
         current_sp_sig = f"{sp_size}|{p_age}|{p_sex}"
         if st.session_state.spleen_sig != current_sp_sig:
             st.session_state.spleen_status = auto_classify_spleen(sp_size, p_age, p_sex)
@@ -1652,9 +1634,10 @@ with col_right:
 st.markdown("---")
 c1, c2, c3 = st.columns([1, 1, 4])
 with c1:
+    final_data = dict(data)
     if edited_imp.strip():
-        data["impression"]["lines"] = [ln.strip() for ln in edited_imp.splitlines() if ln.strip()]
-    docx_bytes = build_docx_bytes(data)
+        final_data["impression"] = {"lines": [ln.strip() for ln in edited_imp.splitlines() if ln.strip()]}
+    docx_bytes = build_docx_bytes(final_data)
     fname = f"{p_name or 'report'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
     fname = "".join(ch for ch in fname if ch.isalnum() or ch in "._-")
     st.download_button("Download .docx", docx_bytes, file_name=fname,
@@ -1664,9 +1647,10 @@ with c2:
         if not p_name.strip():
             st.warning("Enter patient name first.")
         else:
+            final_data = dict(data)
             if edited_imp.strip():
-                data["impression"]["lines"] = [ln.strip() for ln in edited_imp.splitlines() if ln.strip()]
-            save_report(data)
+                final_data["impression"] = {"lines": [ln.strip() for ln in edited_imp.splitlines() if ln.strip()]}
+            save_report(final_data)
             if p_ref.strip():
                 add_referrer(p_ref)
             st.success("Saved to local database.")
