@@ -1318,7 +1318,7 @@ RAW_BG_URL = ("https://raw.githubusercontent.com/Kukkuthakur/"
 st.set_page_config(page_title="Radiology Report Generator", layout="wide")
 init_db()
 
-# ---- Background image + hidden Streamlit chrome ----
+# ---- Background image + hidden Streamlit chrome + readable content ----
 st.markdown(
     f"""
     <style>
@@ -1336,26 +1336,93 @@ st.markdown(
     header[data-testid="stHeader"] {{visibility: hidden; height: 0;}}
     footer {{visibility: hidden;}}
 
-    /* Content sits above the background */
-    .block-container {{
-        padding-top: 2rem;
-        padding-bottom: 2rem;
+    /* Force dark text everywhere on the page */
+    .stApp, .stApp p, .stApp label, .stApp span,
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
+    .stApp div[data-testid="stMarkdownContainer"],
+    .stApp div[data-testid="stWidgetLabel"] {{
+        color: #111111 !important;
     }}
 
-    /* Make sure white cards have solid background so text is readable */
-    [data-testid="stExpander"] {{
-        background-color: rgba(255, 255, 255, 0.96);
-        border-radius: 8px;
+    /* Main title: white so it pops on the dark background */
+    h1 {{
+        color: #ffffff !important;
+        text-shadow: 0 2px 6px rgba(0,0,0,0.6);
     }}
-    [data-testid="stTextArea"] textarea,
-    [data-testid="stTextInput"] input {{
-        background-color: #ffffff;
+
+    /* Sub-headers (Findings, Live Preview, Impression) in white */
+    h2, h3 {{
+        color: #ffffff !important;
+        text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+    }}
+
+    /* Expander headers: dark text on white background */
+    div[data-testid="stExpander"] {{
+        background-color: rgba(255, 255, 255, 0.98) !important;
+        border-radius: 8px;
+        border: 1px solid #cccccc;
+        margin-bottom: 6px;
+    }}
+    div[data-testid="stExpander"] summary,
+    div[data-testid="stExpander"] summary * {{
+        color: #111111 !important;
+        font-weight: 600;
+    }}
+    div[data-testid="stExpander"] div[data-testid="stExpanderDetails"] * {{
+        color: #111111 !important;
+    }}
+
+    /* Text inputs and number inputs: white background, dark text */
+    .stTextInput input,
+    .stNumberInput input,
+    .stTextArea textarea,
+    .stSelectbox div[data-baseweb="select"] > div,
+    .stMultiSelect div[data-baseweb="select"] > div {{
+        background-color: #ffffff !important;
+        color: #111111 !important;
+    }}
+    .stTextInput input::placeholder,
+    .stNumberInput input::placeholder,
+    .stTextArea textarea::placeholder {{
+        color: #888888 !important;
+    }}
+
+    /* Radio buttons and checkbox labels */
+    .stRadio label, .stRadio span,
+    .stCheckbox label, .stCheckbox span {{
+        color: #111111 !important;
+    }}
+
+    /* Success / info / warning messages */
+    div[data-testid="stAlert"] * {{
+        color: #111111 !important;
+    }}
+
+    /* Caption text */
+    .stCaption, div[data-testid="stCaptionContainer"] {{
+        color: #dddddd !important;
+    }}
+
+    /* Divider lines: keep them subtle on dark bg */
+    hr {{
+        border-color: rgba(255,255,255,0.3) !important;
+    }}
+
+    /* Buttons stay readable */
+    .stButton button {{
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        border: 1px solid #cccccc !important;
+    }}
+    .stDownloadButton button {{
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        border: 1px solid #cccccc !important;
     }}
     </style>
     """,
     unsafe_allow_html=True,
 )
-
 
 st.title("USG Whole Abdomen — Report Generator")
 
