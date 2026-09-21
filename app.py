@@ -94,8 +94,6 @@ def parse_age(age_text):
     txt = str(age_text).strip()
     if not txt:
         return None
-    # Extract the first number from the string (handles "50", "50Y", "50 y",
-    # "50 Years", "50y/F", etc.)
     match = re.search(r"(\d+(\.\d+)?)", txt)
     if not match:
         return None
@@ -144,9 +142,8 @@ def classify_spleen_adult(size_mm):
 
 
 def auto_classify_liver(size_mm, age_text, sex):
-    """size_mm is a number or None."""
-    if size_mm is None:
-        return "normal"
+    """size_mm is a number or None.
+    If age is blank/unparseable, defaults to ADULT rules."""
     try:
         size = float(size_mm)
     except (ValueError, TypeError):
@@ -154,19 +151,21 @@ def auto_classify_liver(size_mm, age_text, sex):
     if size <= 0:
         return "normal"
     age = parse_age(age_text)
+    # If age unknown, assume adult
     if age is None:
-        return "normal"
+        return classify_liver_adult(size)
     if age < 18:
         max_mm = get_pediatric_liver_max_mm(age)
         if max_mm is None:
-            return "normal"
+            # Age out of table range → fall back to adult rules
+            return classify_liver_adult(size)
         return "enlarged_for_age" if size > max_mm else "normal"
     return classify_liver_adult(size)
 
 
 def auto_classify_spleen(size_mm, age_text, sex):
-    if size_mm is None:
-        return "normal"
+    """size_mm is a number or None.
+    If age is blank/unparseable, defaults to ADULT rules."""
     try:
         size = float(size_mm)
     except (ValueError, TypeError):
@@ -175,11 +174,11 @@ def auto_classify_spleen(size_mm, age_text, sex):
         return "normal"
     age = parse_age(age_text)
     if age is None:
-        return "normal"
+        return classify_spleen_adult(size)
     if age < 18:
         max_mm = get_pediatric_spleen_max_mm(age, sex)
         if max_mm is None:
-            return "normal"
+            return classify_spleen_adult(size)
         return "enlarged_for_age" if size > max_mm else "normal"
     return classify_spleen_adult(size)
 
@@ -1237,7 +1236,6 @@ with col_find:
 
     # ------- LIVER -------
     with st.expander("LIVER", expanded=True):
-        # Size as number input — no parsing headaches
         liver_size_num = st.number_input(
             "Size (mm)", min_value=0, max_value=500, value=0, step=1,
             key="liver_size_num",
@@ -1253,7 +1251,8 @@ with col_find:
                 st.info(f"→ **{LIVER_STATUS_LABELS[liver_status]}**")
             else:
                 st.warning(f"→ **{LIVER_STATUS_LABELS[liver_status]}**")
-            st.caption(f"_(age parsed: {age_years_top}, size: {liver_size_num} mm)_")
+        st.caption(f"_(age parsed: {age_years_top}, size entered: "
+                   f"{liver_size_num} mm, status: {liver_status})_")
 
         liver_outline = "normal"
         liver_echo = "normal"
@@ -1535,7 +1534,8 @@ with col_find:
                 st.info(f"→ **{SPLEEN_STATUS_LABELS[sp_desc]}**")
             else:
                 st.warning(f"→ **{SPLEEN_STATUS_LABELS[sp_desc]}**")
-            st.caption(f"_(age parsed: {age_years_top}, size: {sp_size_num} mm)_")
+        st.caption(f"_(age parsed: {age_years_top}, size entered: "
+                   f"{sp_size_num} mm, status: {sp_desc})_")
 
     # ------- KIDNEYS -------
     with st.expander("KIDNEYS", expanded=False):
