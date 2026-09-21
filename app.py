@@ -7,8 +7,8 @@ Layout: Demographics → [Findings (left) | Preview + Impression + Actions (righ
 Rules:
 - Default = Normal report
 - Male → Prostate; Female → Uterus + Ovaries; Age < 18 → pediatric wording
-- Liver/Spleen status auto-derived from size (no radio buttons)
-- Each organ shows only essential inputs by default; extras behind checkbox
+- Liver/Spleen status auto-derived from size
+- Abnormal findings: bold + italic + mixed case (not ALL CAPS)
 - Top margin 4.0 cm; bottom 3.5 cm
 """
 
@@ -40,7 +40,7 @@ PAGE_RIGHT_MARGIN = 2.0
 FONT_BODY = "Calibri"
 FONT_SIZE_BODY = 11
 FONT_SIZE_TITLE = 13
-FONT_SIZE_DISCLAIMER = 10
+FONT_SIZE_DISCLAIMER = 8   # was 10 — now two sizes smaller
 
 TITLE_COLOR = RGBColor(0x1F, 0x4E, 0x79)
 
@@ -88,7 +88,6 @@ PEDIATRIC_LIVER_MAX_MM = {
 
 
 def parse_age(age_text):
-    """Robustly extract the numeric age in years from any string."""
     if age_text is None:
         return None
     txt = str(age_text).strip()
@@ -142,8 +141,6 @@ def classify_spleen_adult(size_mm):
 
 
 def auto_classify_liver(size_mm, age_text, sex):
-    """size_mm is a number or None.
-    If age is blank/unparseable, defaults to ADULT rules."""
     try:
         size = float(size_mm)
     except (ValueError, TypeError):
@@ -151,21 +148,17 @@ def auto_classify_liver(size_mm, age_text, sex):
     if size <= 0:
         return "normal"
     age = parse_age(age_text)
-    # If age unknown, assume adult
     if age is None:
         return classify_liver_adult(size)
     if age < 18:
         max_mm = get_pediatric_liver_max_mm(age)
         if max_mm is None:
-            # Age out of table range → fall back to adult rules
             return classify_liver_adult(size)
         return "enlarged_for_age" if size > max_mm else "normal"
     return classify_liver_adult(size)
 
 
 def auto_classify_spleen(size_mm, age_text, sex):
-    """size_mm is a number or None.
-    If age is blank/unparseable, defaults to ADULT rules."""
     try:
         size = float(size_mm)
     except (ValueError, TypeError):
@@ -336,7 +329,7 @@ def liver_focal_sentence(d):
     if fl == "none":
         return [seg(" No focal lesion is seen.")]
     if fl == "calcified":
-        return [seg(" "), seg("A CALCIFIED FOCUS SEEN IN THE RIGHT HEPATIC LOBE.", True)]
+        return [seg(" "), seg("A calcified focus seen in the right hepatic lobe.", True)]
     if fl == "other" and d.get("focal_lesion_text"):
         return [seg(" "), seg(d["focal_lesion_text"], True)]
     if fl == "cyst":
@@ -357,7 +350,7 @@ def liver_focal_sentence(d):
         if count == "single":
             lobe = d.get("hemangioma_single_lobe", "right")
             size = d.get("hemangioma_single_size_mm", "")
-            text = f"A hyperechoic small SOL({size}mm) seen in the {lobe} hepatic Lobe of liver."
+            text = f"A hyperechoic small SOL({size}mm) seen in the {lobe} hepatic lobe of liver."
             return [seg(" "), seg(text, True)]
         else:
             size = d.get("hemangioma_few_largest_mm", "")
@@ -373,15 +366,15 @@ def liver_focal_sentence(d):
         if count == "single" and len(lesions) >= 1:
             l = lesions[0]
             text = (f"An irregular marginated ill-defined avascular SOL({l['dim']}; "
-                    f"Vol= {l['vol']}cc) seen in the Segment {l['segment']}.")
+                    f"Vol= {l['vol']}cc) seen in the segment {l['segment']}.")
             return [seg(" "), seg(text, True)]
         else:
-            parts = [f"{l['dim']}; Vol= {l['vol']}cc in Segment {l['segment']}"
+            parts = [f"{l['dim']}; Vol= {l['vol']}cc in segment {l['segment']}"
                      for l in lesions]
             joined = " & ".join(parts)
             keyword = "Few" if count == "few" else "Multiple"
             text = (f"{keyword} irregular marginated ill-defined avascular SOLs seen "
-                    f"in the Liver, Largest of these measuring {joined}.")
+                    f"in the liver, largest of these measuring {joined}.")
             return [seg(" "), seg(text, True)]
     return []
 
@@ -396,30 +389,30 @@ def liver_sentence(d, sex, age):
     if desc == "normal":
         s.append(seg(f" is normal in size ({size}MM)"))
     elif desc == "borderline":
-        s += [seg(" is "), seg("BORDERLINE ENLARGED IN SIZE", True), seg(f" ({size}MM)")]
+        s += [seg(" is "), seg("borderline enlarged in size", True), seg(f" ({size}MM)")]
     elif desc == "mild":
-        s += [seg(" is "), seg("MILDLY ENLARGED IN SIZE", True), seg(f" ({size}MM)")]
+        s += [seg(" is "), seg("mildly enlarged in size", True), seg(f" ({size}MM)")]
     elif desc == "moderate":
-        s += [seg(" is "), seg("MODERATELY ENLARGED IN SIZE", True), seg(f" ({size}MM)")]
+        s += [seg(" is "), seg("moderately enlarged in size", True), seg(f" ({size}MM)")]
     elif desc == "gross":
-        s += [seg(" is "), seg("GROSSLY ENLARGED IN SIZE", True), seg(f" ({size}MM)")]
+        s += [seg(" is "), seg("grossly enlarged in size", True), seg(f" ({size}MM)")]
     elif desc == "enlarged_for_age":
-        s += [seg(" is "), seg("ENLARGED FOR AGE IN SIZE", True), seg(f" ({size}MM)")]
+        s += [seg(" is "), seg("enlarged for age in size", True), seg(f" ({size}MM)")]
 
     if outline == "crenated":
         s.append(seg(", "))
-        s.append(seg("CRENATED/NODULAR OUTLINE AND", True))
+        s.append(seg("crenated/nodular outline and", True))
         if echo == "coarse":
-            s.append(seg(" COARSE ECHOTEXTURE", True))
+            s.append(seg(" coarse echotexture", True))
         elif echo == "increased":
             if grade == "Severe+++":
-                s.append(seg(" SIGNIFICANT FATTY INFILTRATION", True))
+                s.append(seg(" significant fatty infiltration", True))
             else:
-                s.append(seg(" INCREASED REFLECTIVITY", True))
+                s.append(seg(" increased reflectivity", True))
         elif echo == "low":
-            s.append(seg(" LOW ECHOTEXTURE", True))
+            s.append(seg(" low echotexture", True))
         else:
-            s.append(seg(" NORMAL ECHOTEXTURE", True))
+            s.append(seg(" normal echotexture", True))
         s.append(seg("."))
     else:
         s.append(seg(" with normal outline and "))
@@ -427,15 +420,15 @@ def liver_sentence(d, sex, age):
             s.append(seg("echotexture."))
         elif echo == "increased":
             if grade == "Severe+++":
-                s.append(seg("SIGNIFICANT FATTY INFILTRATION", True))
+                s.append(seg("significant fatty infiltration", True))
             else:
-                s.append(seg("INCREASED REFLECTIVITY", True))
+                s.append(seg("increased reflectivity", True))
             s.append(seg("."))
         elif echo == "coarse":
-            s.append(seg("COARSE ECHOTEXTURE", True))
+            s.append(seg("coarse echotexture", True))
             s.append(seg("."))
         elif echo == "low":
-            s.append(seg("LOW ECHOTEXTURE", True))
+            s.append(seg("low echotexture", True))
             s.append(seg("."))
 
     s.extend(liver_focal_sentence(d))
@@ -443,11 +436,11 @@ def liver_sentence(d, sex, age):
     if d["ihbr"] == "normal":
         s.append(seg(" Intra hepatic biliary radicals are normal."))
     else:
-        s += [seg(" Intra hepatic biliary radicals are "), seg("DILATED", True), seg(".")]
+        s += [seg(" Intra hepatic biliary radicals are "), seg("dilated", True), seg(".")]
     if d["portal_vein"] == "normal":
         s.append(seg(" Portal vein is normal in course and caliber."))
     else:
-        s += [seg(" Portal vein is "), seg("DILATED", True)]
+        s += [seg(" Portal vein is "), seg("dilated", True)]
         if d["portal_vein_mm"]:
             s.append(seg(f" ({d['portal_vein_mm']}MM)"))
         s.append(seg("."))
@@ -460,7 +453,7 @@ def gall_bladder_sentence(d):
     if status == "adequately_distended":
         s.append(seg(" is adequately distended."))
     elif status == "over":
-        s += [seg(" is "), seg("OVER-DISTENDED", True), seg(".")]
+        s += [seg(" is "), seg("over-distended", True), seg(".")]
     elif status == "partially":
         s.append(seg(" is partially contracted (suboptimal wall visualization)."))
     elif status == "contracted":
@@ -478,9 +471,9 @@ def gall_bladder_sentence(d):
             except ValueError:
                 w = 0
             if w <= 8:
-                s += [seg(" "), seg(f"WALL IS MILDLY THICKENED UPTO {d['wall_mm']}MM.", True)]
+                s += [seg(" "), seg(f"wall is mildly thickened upto {d['wall_mm']}MM.", True)]
             else:
-                s += [seg(" "), seg(f"WALL IS SIGNIFICANTLY THICKENED UPTO {d['wall_mm']}MM.", True)]
+                s += [seg(" "), seg(f"wall is significantly thickened upto {d['wall_mm']}MM.", True)]
         else:
             s.append(seg(" Wall thickness is normal."))
 
@@ -511,7 +504,7 @@ def gall_bladder_sentence(d):
 
     sludge = d.get("sludge", "none")
     if sludge != "none":
-        s += [seg(" "), seg(f"{sludge.upper()} SLUDGE SEEN IN THE GALLBLADDER LUMEN.", True)]
+        s += [seg(" "), seg(f"{sludge.title()} sludge seen in the gallbladder lumen.", True)]
 
     if d.get("sludge_ball"):
         count = d.get("sludge_ball_count", "single")
@@ -536,7 +529,7 @@ def gall_bladder_sentence(d):
                                  f"{wall} GB wall.", True)]
 
     if d.get("pericholecystic_fluid"):
-        s += [seg(" "), seg("THIN RIM OF PERICHOLECYSTIC FLUID SEEN.", True)]
+        s += [seg(" "), seg("Thin rim of pericholecystic fluid seen.", True)]
 
     return s
 
@@ -547,18 +540,18 @@ def cbd_sentence(d):
         s.append(seg(f" is normal in caliber({d['caliber_mm']}MM)." if d["caliber_mm"]
                      else " is normal in caliber."))
     else:
-        s += [seg(" is "), seg("DILATED", True)]
+        s += [seg(" is "), seg("dilated", True)]
         if d["caliber_mm"]:
-            s.append(seg(f" UPTO {d['caliber_mm']}MM", True))
+            s.append(seg(f" upto {d['caliber_mm']}MM", True))
         s.append(seg(".", True))
         if d["calculi"]:
-            s += [seg(" "), seg(f"SUGGESTION OF A CALCULUS MEASURING "
-                                 f"{d['calculi_size_mm']}MM IN THE "
-                                 f"{d['calculi_location'].upper()} SEGMENT", True),
+            s += [seg(" "), seg(f"Suggestion of a calculus measuring "
+                                 f"{d['calculi_size_mm']}MM in the "
+                                 f"{d['calculi_location']} segment", True),
                   seg(".", True)]
         if d["ihbr_dilated"]:
-            s += [seg(" "), seg("INTRA HEPATIC BILIARY RADICALS ARE ALSO PROXIMALLY "
-                                 "DILATED.", True)]
+            s += [seg(" "), seg("Intra hepatic biliary radicals are also proximally "
+                                 "dilated.", True)]
     return s
 
 
@@ -570,15 +563,15 @@ def pancreas_sentence(d):
     elif d["status"] == "fat_stranding":
         s.append(seg(" is normal in size, outline and echotexture. No focal lesion is "
                      "seen. No evidence of calcification is seen. "))
-        s += [seg(f"{d['fat_stranding_grade'].upper()} PERI-PANCREATIC FAT STRANDING IS "
-                  f"SEEN", True), seg(".")]
+        s += [seg(f"{d['fat_stranding_grade'].title()} peri-pancreatic fat stranding "
+                  f"is seen", True), seg(".")]
     elif d["status"] == "necrotic_ln":
         s.append(seg(" is normal in size, outline and echotexture. No focal lesion is "
                      "seen. No evidence of calcification is seen. "))
-        s += [seg(f"A NECROTIC PERI-PANCREATIC LYMPH NODE MEASURING {d['ln_size']} IS "
-                  f"SEEN", True), seg(".")]
+        s += [seg(f"A necrotic peri-pancreatic lymph node measuring {d['ln_size']} is "
+                  f"seen", True), seg(".")]
     if d["mpd_dilated"]:
-        s += [seg(" "), seg(f"MPD IS DILATED IN CALIBER ({d['mpd_mm']}MM)", True),
+        s += [seg(" "), seg(f"MPD is dilated in caliber ({d['mpd_mm']}MM)", True),
               seg(".")]
     return s
 
@@ -591,19 +584,19 @@ def spleen_sentence(d):
         s.append(seg(f" is normal in size ({size}MM) with normal echotexture. "
                      f"Splenic vein is normal."))
     elif desc == "borderline":
-        s += [seg(" is "), seg("BORDERLINE ENLARGED IN SIZE", True),
+        s += [seg(" is "), seg("borderline enlarged in size", True),
               seg(f" ({size}MM) with normal echotexture. Splenic vein is normal.")]
     elif desc == "mild":
-        s += [seg(" is "), seg("MILDLY ENLARGED IN SIZE", True),
+        s += [seg(" is "), seg("mildly enlarged in size", True),
               seg(f" ({size}MM) with normal echotexture. Splenic vein is normal.")]
     elif desc == "moderate":
-        s += [seg(" is "), seg("MODERATELY ENLARGED IN SIZE", True),
+        s += [seg(" is "), seg("moderately enlarged in size", True),
               seg(f" ({size}MM) with normal echotexture. Splenic vein is normal.")]
     elif desc == "enlarged_for_age":
-        s += [seg(" is "), seg("ENLARGED FOR AGE IN SIZE", True),
+        s += [seg(" is "), seg("enlarged for age in size", True),
               seg(f" ({size}MM) with normal echotexture. Splenic vein is normal.")]
     if d["portal_vein_mm"]:
-        s += [seg(" "), seg("PORTAL VEIN IS NORMAL IN COURSE AND CALIBER", True),
+        s += [seg(" "), seg("Portal vein is normal in course and caliber", True),
               seg(f" ({d['portal_vein_mm']}MM)"), seg(".", True)]
     return s
 
@@ -620,7 +613,7 @@ def kidneys_sentence(d):
         s.append(seg("BOTH KIDNEYS", True, True))
         s.append(seg(" are normal in size, outline and "))
         if d["cortical_echogenicity"] == "mildly_raised_bilateral":
-            s += [seg("MILDLY RAISED BILATERAL RENAL CORTICAL ECHOGENICITY", True),
+            s += [seg("mildly raised bilateral renal cortical echogenicity", True),
                   seg(". Corticomedullary differentiation is maintained. "
                       "No evidence of hydronephrotic changes/calculus seen.")]
         else:
@@ -636,25 +629,27 @@ def kidneys_sentence(d):
         b.append(seg(" is normal in size, outline and echogenicity. "
                      "Corticomedullary differentiation is maintained."))
         for calc in k["calculi"]:
-            b += [seg(" "), seg(f"A CALCULUS MEASURING {calc.get('size_mm','')}MM IS SEEN "
-                                 f"AT THE {calc.get('location','').upper()} OF "
-                                 f"{side_label} KIDNEY", True)]
+            b += [seg(" "), seg(f"A calculus measuring {calc.get('size_mm','')}MM is seen "
+                                 f"at the {calc.get('location','')} of "
+                                 f"{side_label.lower()} kidney", True)]
             if calc.get("hydro") and calc["hydro"] != "none":
-                b.append(seg(f" CAUSING {side_label} SIDED {calc['hydro'].upper()} "
-                             f"HYDROURETERONEPHROSIS", True))
+                b.append(seg(f" causing {side_label.lower()} sided "
+                             f"{calc['hydro']} hydroureteronephrosis", True))
             b.append(seg(".", True))
         if k["cyst"] != "none":
-            bosniak = f" (BOSNIAK CAT-{k['bosniak']})" if k["bosniak"] else ""
-            b += [seg(" "), seg(f"A {k['cyst'].upper()} CYST MEASURING "
-                                 f"{k['cyst_size_mm']}MM IS SEEN AT THE "
-                                 f"{k['cyst_location'].upper()} OF {side_label} "
-                                 f"KIDNEY{bosniak}", True), seg(".", True)]
+            bosniak = f" (Bosniak cat-{k['bosniak']})" if k["bosniak"] else ""
+            b += [seg(" "), seg(f"A {k['cyst']} cyst measuring "
+                                 f"{k['cyst_size_mm']}MM is seen at the "
+                                 f"{k['cyst_location']} of {side_label.lower()} "
+                                 f"kidney{bosniak}", True), seg(".", True)]
         if k["hydronephrosis"] != "none":
-            b += [seg(" "), seg(f"{k['hydronephrosis'].upper()} HYDROURETERONEPHROSIS IS "
-                                 f"PRESENT ON THE {side_label}", True), seg(".", True)]
+            b += [seg(" "), seg(f"{k['hydronephrosis'].title()} hydroureteronephrosis "
+                                 f"is present on the {side_label.lower()}", True),
+                  seg(".", True)]
         if k["nephrocalcinosis"] != "none":
-            b += [seg(" "), seg(f"MULTIPLE FOCI OF CALCIFICATION SEEN IN THE "
-                                 f"{side_label} RENAL CORTEX", True), seg(".", True)]
+            b += [seg(" "), seg(f"Multiple foci of calcification seen in the "
+                                 f"{side_label.lower()} renal cortex", True),
+                  seg(".", True)]
         return b
 
     s.extend(block("RIGHT KIDNEY", r, "RIGHT"))
@@ -668,7 +663,7 @@ def urinary_bladder_sentence(d):
     if d["status"] == "adequately_distended":
         s.append(seg(" is adequately distended."))
     elif d["status"] == "over":
-        s += [seg(" is "), seg("OVER-DISTENDED", True), seg(".")]
+        s += [seg(" is "), seg("over-distended", True), seg(".")]
     elif d["status"] == "partially":
         s.append(seg(" is partially empty."))
     elif d["status"] == "empty":
@@ -677,15 +672,15 @@ def urinary_bladder_sentence(d):
         s.append(seg(" No mass or calculus seen."))
     sed = d["sedimentation"]
     if sed == "trace":
-        s += [seg(" "), seg("TRACE SEDIMENTATION SEEN IN THE UB LUMEN.", True)]
+        s += [seg(" "), seg("Trace sedimentation seen in the UB lumen.", True)]
     elif sed == "free_floating":
-        s += [seg(" "), seg("FREE FLOATING SEDIMENTATION SEEN IN THE UB LUMEN", True),
+        s += [seg(" "), seg("Free floating sedimentation seen in the UB lumen", True),
               seg(".")]
     elif sed == "significant":
-        s += [seg(" "), seg("SIGNIFICANT SEDIMENTATION SEEN IN THE UB LUMEN", True),
+        s += [seg(" "), seg("Significant sedimentation seen in the UB lumen", True),
               seg(".")]
     elif sed == "extensive":
-        s += [seg(" "), seg("EXTENSIVE SEDIMENTATION SEEN IN THE UB LUMEN", True),
+        s += [seg(" "), seg("Extensive sedimentation seen in the UB lumen", True),
               seg(".")]
     return s
 
@@ -706,13 +701,18 @@ def uterus_sentence(d, pediatric=False):
     if status == "not_visualized":
         s.append(seg(" is not visualized."))
         return s
-    if status in ("anteverted", "retroverted", "retroflexed"):
-        s.append(seg(f" is {status.upper() if status != 'anteverted' else 'anteverted'}"))
+    if status == "anteverted":
+        s.append(seg(" is anteverted"))
+        if d["size"]:
+            s.append(seg(f" and normal in size({d['size']}MM)"))
+        s.append(seg(" with normal shape and echopattern."))
+    elif status in ("retroverted", "retroflexed"):
+        s.append(seg(f" is {status}", True))
         if d["size"]:
             s.append(seg(f" and normal in size({d['size']}MM)"))
         s.append(seg(" with normal shape and echopattern."))
     elif status == "bulky":
-        s += [seg(" is "), seg("BULKY IN SIZE", True)]
+        s += [seg(" is "), seg("bulky in size", True)]
         if d["size"]:
             s.append(seg(f"({d['size']}MM)"))
         s.append(seg(" with normal shape and echopattern."))
@@ -724,7 +724,7 @@ def uterus_sentence(d, pediatric=False):
     if d["myometrium"] == "homogenous":
         s.append(seg(" Myometrium appears homogenous and no focal lesion is seen."))
     elif d["myometrium"] == "fibroid" and d["fibroid_text"]:
-        s += [seg(" "), seg(d["fibroid_text"].upper(), True), seg(".", True)]
+        s += [seg(" "), seg(d["fibroid_text"].capitalize(), True), seg(".", True)]
     if d["endometrial_thickness_mm"]:
         s.append(seg(f" Endometrial echo is central and regular in "
                      f"thickness({d['endometrial_thickness_mm']}MM)."))
@@ -760,8 +760,8 @@ def ovaries_sentence(d):
             if size:
                 b += [seg(" appears normal in size and echo pattern. "),
                       seg(f"[{size}MM].", True)]
-            b += [seg(" "), seg(f"A {cyst_type.upper()} CYST MEASURING {cyst_size}MM IS "
-                                 f"SEEN IN THE {label.split()[0]} OVARY", True),
+            b += [seg(" "), seg(f"A {cyst_type} cyst measuring {cyst_size}MM is "
+                                 f"seen in the {label.split()[0].lower()} ovary", True),
                   seg(".", True)]
         return b
 
@@ -785,17 +785,17 @@ def prostate_sentence(d, pediatric=False):
         s.append(seg(" is normal in size and attenuation. No diffuse or focal lesion "
                      "seen."))
     elif d["status"] == "borderline":
-        s += [seg(" is "), seg("BORDERLINE ENLARGED IN SIZE", True)]
+        s += [seg(" is "), seg("borderline enlarged in size", True)]
         if d["size_cc"]:
             s.append(seg(f"({d['size_cc']}CC)"))
         s.append(seg(" and attenuation. No diffuse or focal lesion seen."))
     elif d["status"] == "bulky":
-        s += [seg(" is "), seg("BULKY IN SIZE", True)]
+        s += [seg(" is "), seg("bulky in size", True)]
         if d["size_cc"]:
             s.append(seg(f"({d['size_cc']}CC)"))
         s.append(seg(" and attenuation. No diffuse or focal lesion seen."))
     elif d["status"] == "grade1":
-        s += [seg(" shows "), seg(f"GRADE-I PROSTATOMEGALY ({d['size_cc']}CC)", True),
+        s += [seg(" shows "), seg(f"grade-I prostatomegaly ({d['size_cc']}CC)", True),
               seg(". No diffuse or focal lesion seen.")]
     return s
 
@@ -804,9 +804,9 @@ def bowel_sentence(d, sex):
     s = []
     if sex == "F":
         if not d["wall_thickening"]:
-            s.append(seg("NO OBVIOUS BOWEL WALL THICKENING SEEN.", True))
+            s.append(seg("No obvious bowel wall thickening seen.", True))
         else:
-            s.append(seg("BOWEL WALL THICKENING SEEN.", True))
+            s.append(seg("Bowel wall thickening seen.", True))
         s.append(seg(" "))
         if d["free_fluid"] == "none":
             s.append(seg("No free fluid seen in the peritoneal cavity."))
@@ -821,23 +821,23 @@ def bowel_sentence(d, sex):
                          True))
         s.append(seg(" "))
         if not d["wall_thickening"]:
-            s.append(seg("NO OBVIOUS BOWEL WALL THICKENING SEEN.", True))
+            s.append(seg("No obvious bowel wall thickening seen.", True))
         else:
-            s.append(seg("BOWEL WALL THICKENING SEEN.", True))
+            s.append(seg("Bowel wall thickening seen.", True))
     if d["mesenteric_ln"] == "present":
-        cat = {"sad_lt_7": "SMALL(SAD<7MM)", "sad_gt_7": "ENLARGED(SAD>7MM)",
-               "sad_gt_10": "ENLARGED(SAD>10MM)"}.get(d["ln_size_category"], "MESENTERIC")
-        loc = d["ln_location"].replace("_", " ").upper()
-        largest = (f" WITH LARGEST OF THESE MEASURING {d['ln_largest']}"
+        cat = {"sad_lt_7": "Small(SAD<7MM)", "sad_gt_7": "Enlarged(SAD>7MM)",
+               "sad_gt_10": "Enlarged(SAD>10MM)"}.get(d["ln_size_category"], "Mesenteric")
+        loc = d["ln_location"].replace("_", " ").title()
+        largest = (f" with largest of these measuring {d['ln_largest']}"
                    if d["ln_largest"] else "")
-        s += [seg(" "), seg(f"{cat} MESENTERIC LYMPH NODES ARE SEEN IN THE {loc} REGION"
+        s += [seg(" "), seg(f"{cat} mesenteric lymph nodes are seen in the {loc} region"
                              f"{largest}", True), seg(".", True)]
     pe = d["pleural_effusion"]
     if pe != "none":
-        text = {"trace_right": "TRACE RIGHT PLEURAL EFFUSION IS SEEN",
-                "trace_left": "TRACE LEFT PLEURAL EFFUSION IS SEEN",
-                "mild_right": "MILD RIGHT PLEURAL EFFUSION IS SEEN",
-                "mild_bilateral": "TRACE LEFT & MILD RIGHT PLEURAL EFFUSION SEEN"}.get(pe, "")
+        text = {"trace_right": "Trace right pleural effusion is seen",
+                "trace_left": "Trace left pleural effusion is seen",
+                "mild_right": "Mild right pleural effusion is seen",
+                "mild_bilateral": "Trace left & mild right pleural effusion seen"}.get(pe, "")
         s += [seg(" "), seg(text, True), seg(".", True)]
     return s
 
@@ -847,20 +847,20 @@ def appendix_sentence(d):
         return []
     s = []
     if d["status"] == "not_visualized":
-        s.append(seg("APPENDIX IS NOT VISUALIZED."))
+        s.append(seg("Appendix is not visualized."))
     elif d["status"] == "normal":
-        s.append(seg("APPENDIX IS VISUALIZED AND APPEARS NORMAL", True))
+        s.append(seg("Appendix is visualized and appears normal", True))
         if d["diameter_mm"]:
-            s.append(seg(f" ({d['diameter_mm']}MM IN DIAMETER)", True))
+            s.append(seg(f" ({d['diameter_mm']}MM in diameter)", True))
         s.append(seg(".", True))
     elif d["status"] == "dilated":
-        s += [seg("APPENDIX IS DILATED UPTO", True), seg(f" {d['diameter_mm']}MM", True),
-              seg(" - ?EVOLVING APPENDICITIS vs PHYSIOLOGICAL.", True)]
+        s += [seg("Appendix is dilated upto", True), seg(f" {d['diameter_mm']}MM", True),
+              seg(" - ?Evolving appendicitis vs physiological.", True)]
     return s
 
 
 # ============================================================
-# IMPRESSION GENERATOR
+# IMPRESSION GENERATOR  (unchanged — stays ALL CAPS BOLD)
 # ============================================================
 
 def generate_impression(d, sex, age):
@@ -1160,14 +1160,18 @@ def build_docx_bytes(data):
             continue
         para = doc.add_paragraph()
         for text, bold, underline in segs:
+            # Abnormal findings = bold but not underlined → also italic
+            italic = bold and not underline
             if "\n" in text:
                 parts = text.split("\n")
                 for i, part in enumerate(parts):
                     if i > 0:
                         para.add_run().add_break()
-                    _add_run(para, part, bold=bold, underline=underline)
+                    _add_run(para, part, bold=bold, underline=underline,
+                             italic=italic)
             else:
-                _add_run(para, text, bold=bold, underline=underline)
+                _add_run(para, text, bold=bold, underline=underline,
+                         italic=italic)
         para.paragraph_format.space_after = Pt(6)
 
     doc.add_paragraph()
@@ -1242,7 +1246,6 @@ with col_find:
             help="Type the liver span in mm. 0 = not entered.")
         liver_size = str(int(liver_size_num)) if liver_size_num > 0 else ""
 
-        # Auto-classify
         liver_status = auto_classify_liver(liver_size_num, p_age, p_sex)
         if liver_size_num > 0:
             if liver_status == "normal":
@@ -1251,8 +1254,6 @@ with col_find:
                 st.info(f"→ **{LIVER_STATUS_LABELS[liver_status]}**")
             else:
                 st.warning(f"→ **{LIVER_STATUS_LABELS[liver_status]}**")
-        st.caption(f"_(age parsed: {age_years_top}, size entered: "
-                   f"{liver_size_num} mm, status: {liver_status})_")
 
         liver_outline = "normal"
         liver_echo = "normal"
@@ -1534,8 +1535,6 @@ with col_find:
                 st.info(f"→ **{SPLEEN_STATUS_LABELS[sp_desc]}**")
             else:
                 st.warning(f"→ **{SPLEEN_STATUS_LABELS[sp_desc]}**")
-        st.caption(f"_(age parsed: {age_years_top}, size entered: "
-                   f"{sp_size_num} mm, status: {sp_desc})_")
 
     # ------- KIDNEYS -------
     with st.expander("KIDNEYS", expanded=False):
@@ -1806,21 +1805,3 @@ with col_prev:
         fname = f"{p_name or 'report'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
         fname = "".join(ch for ch in fname if ch.isalnum() or ch in "._-")
         st.download_button(
-            "⬇️ Download .docx", docx_bytes, file_name=fname,
-            mime="application/vnd.openxmlformats-officedocument."
-                 "wordprocessingml.document")
-    with c_b:
-        if st.button("💾 Save to Database", key="save_db_btn"):
-            if not p_name.strip():
-                st.warning("Enter patient name first.")
-            else:
-                final_data = dict(data)
-                if edited_imp.strip():
-                    final_data["impression"] = {
-                        "lines": [ln.strip() for ln in edited_imp.splitlines()
-                                  if ln.strip()]
-                    }
-                save_report(final_data)
-                if p_ref.strip():
-                    add_referrer(p_ref)
-                st.success("Saved to local database.")
