@@ -40,7 +40,7 @@ PAGE_RIGHT_MARGIN = 2.0
 FONT_BODY = "Calibri"
 FONT_SIZE_BODY = 11
 FONT_SIZE_TITLE = 13
-FONT_SIZE_DISCLAIMER = 8   # was 10 — now two sizes smaller
+FONT_SIZE_DISCLAIMER = 8
 
 TITLE_COLOR = RGBColor(0x1F, 0x4E, 0x79)
 
@@ -860,7 +860,7 @@ def appendix_sentence(d):
 
 
 # ============================================================
-# IMPRESSION GENERATOR  (unchanged — stays ALL CAPS BOLD)
+# IMPRESSION GENERATOR
 # ============================================================
 
 def generate_impression(d, sex, age):
@@ -1160,7 +1160,6 @@ def build_docx_bytes(data):
             continue
         para = doc.add_paragraph()
         for text, bold, underline in segs:
-            # Abnormal findings = bold but not underlined → also italic
             italic = bold and not underline
             if "\n" in text:
                 parts = text.split("\n")
@@ -1209,7 +1208,6 @@ init_db()
 
 st.title("USG Whole Abdomen — Report Generator")
 
-# ---------- DEMOGRAPHICS ----------
 with st.container():
     c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 2, 3])
     with c1:
@@ -1228,10 +1226,8 @@ with st.container():
 
 st.markdown("---")
 
-# ---------- Two-column: Findings (left) | Preview (right) ----------
 col_find, col_prev = st.columns([1, 1])
 
-# ============ LEFT: FINDINGS ============
 with col_find:
     st.subheader("Findings")
 
@@ -1780,7 +1776,6 @@ def render_preview(data):
     return "\n".join(out)
 
 
-# ============ RIGHT: PREVIEW + IMPRESSION + ACTIONS ============
 with col_prev:
     st.subheader("📄 Live Preview")
     st.text_area("Report preview", value=render_preview(data), height=520,
@@ -1805,3 +1800,21 @@ with col_prev:
         fname = f"{p_name or 'report'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
         fname = "".join(ch for ch in fname if ch.isalnum() or ch in "._-")
         st.download_button(
+            "⬇️ Download .docx", docx_bytes, file_name=fname,
+            mime="application/vnd.openxmlformats-officedocument."
+                 "wordprocessingml.document")
+    with c_b:
+        if st.button("💾 Save to Database", key="save_db_btn"):
+            if not p_name.strip():
+                st.warning("Enter patient name first.")
+            else:
+                final_data = dict(data)
+                if edited_imp.strip():
+                    final_data["impression"] = {
+                        "lines": [ln.strip() for ln in edited_imp.splitlines()
+                                  if ln.strip()]
+                    }
+                save_report(final_data)
+                if p_ref.strip():
+                    add_referrer(p_ref)
+                st.success("Saved to local database.")
