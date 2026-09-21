@@ -7,8 +7,9 @@ Layout: Demographics → [Findings (left) | Preview + Impression + Actions (righ
 Rules:
 - Default = Normal report
 - Male → Prostate; Female → Uterus + Ovaries; Age < 18 → pediatric wording
-- Each organ shows size/status by default; detailed findings behind a checkbox
-- Top margin 4.0 cm (pre-printed letterhead); bottom 3.5 cm (pre-printed footer)
+- Liver/Spleen status auto-derived from size (no radio buttons)
+- Each organ shows only essential inputs by default; extras behind checkbox
+- Top margin 4.0 cm; bottom 3.5 cm
 """
 
 import io
@@ -163,6 +164,23 @@ def auto_classify_spleen(size_text, age_text, sex):
             return "normal"
         return "enlarged_for_age" if size > max_mm else "normal"
     return classify_spleen_adult(size)
+
+
+LIVER_STATUS_LABELS = {
+    "normal": "Normal",
+    "borderline": "Borderline enlarged",
+    "mild": "Mildly enlarged",
+    "moderate": "Moderately enlarged",
+    "gross": "Grossly enlarged",
+    "enlarged_for_age": "Enlarged for age",
+}
+SPLEEN_STATUS_LABELS = {
+    "normal": "Normal",
+    "borderline": "Borderline enlarged",
+    "mild": "Mildly enlarged",
+    "moderate": "Moderately enlarged",
+    "enlarged_for_age": "Enlarged for age",
+}
 
 
 # ============================================================
@@ -1167,11 +1185,6 @@ def build_docx_bytes(data):
 st.set_page_config(page_title="Radiology Report Generator", layout="wide")
 init_db()
 
-if "initialized" not in st.session_state:
-    st.session_state.liver_sig = ""
-    st.session_state.spleen_sig = ""
-    st.session_state.initialized = True
-
 
 st.title("USG Whole Abdomen — Report Generator")
 
@@ -1205,32 +1218,12 @@ with col_find:
 
     # ------- LIVER -------
     with st.expander("LIVER", expanded=True):
-        c1, c2 = st.columns([1, 2])
-        with c1:
-            liver_size = st.text_input("Size (mm)", key="liver_size_input")
+        liver_size = st.text_input("Size (mm)", key="liver_size_input")
 
-        current_liver_sig = f"{liver_size}|{p_age}|{p_sex}"
-        if st.session_state.liver_sig != current_liver_sig:
-            st.session_state.liver_status = auto_classify_liver(liver_size, p_age, p_sex)
-            st.session_state.liver_sig = current_liver_sig
-
-        with c2:
-            if is_pediatric_top:
-                liver_status = st.radio(
-                    "Status (auto, override if needed)",
-                    ["normal", "enlarged_for_age"], horizontal=True,
-                    format_func=lambda x: {"normal": "Normal for age",
-                                           "enlarged_for_age": "Enlarged for age"}[x],
-                    key="liver_status")
-            else:
-                liver_status = st.radio(
-                    "Status (auto, override if needed)",
-                    ["normal", "borderline", "mild", "moderate", "gross"],
-                    horizontal=True,
-                    format_func=lambda x: {"normal": "Normal", "borderline": "Borderline",
-                                           "mild": "Mild", "moderate": "Moderate",
-                                           "gross": "Gross"}[x],
-                    key="liver_status")
+        # Auto-classify status (no radio button)
+        liver_status = auto_classify_liver(liver_size, p_age, p_sex)
+        if liver_size.strip():
+            st.caption(f"→ Auto-detected: **{LIVER_STATUS_LABELS[liver_status]}**")
 
         liver_outline = "normal"
         liver_echo = "normal"
@@ -1498,27 +1491,12 @@ with col_find:
 
     # ------- SPLEEN -------
     with st.expander("SPLEEN", expanded=False):
-        c1, c2 = st.columns([1, 2])
-        with c1:
-            sp_size = st.text_input("Size (mm)", key="spleen_size_input")
+        sp_size = st.text_input("Size (mm)", key="spleen_size_input")
 
-        current_sp_sig = f"{sp_size}|{p_age}|{p_sex}"
-        if st.session_state.spleen_sig != current_sp_sig:
-            st.session_state.spleen_status = auto_classify_spleen(sp_size, p_age,
-                                                                  p_sex)
-            st.session_state.spleen_sig = current_sp_sig
-
-        with c2:
-            if is_pediatric_top:
-                sp_desc = st.radio(
-                    "Status", ["normal", "enlarged_for_age"], horizontal=True,
-                    format_func=lambda x: {"normal": "Normal for age",
-                                           "enlarged_for_age": "Enlarged for age"}[x],
-                    key="spleen_status")
-            else:
-                sp_desc = st.radio("Status",
-                                   ["normal", "borderline", "mild", "moderate"],
-                                   horizontal=True, key="spleen_status")
+        # Auto-classify status
+        sp_desc = auto_classify_spleen(sp_size, p_age, p_sex)
+        if sp_size.strip():
+            st.caption(f"→ Auto-detected: **{SPLEEN_STATUS_LABELS[sp_desc]}**")
 
     # ------- KIDNEYS -------
     with st.expander("KIDNEYS", expanded=False):
