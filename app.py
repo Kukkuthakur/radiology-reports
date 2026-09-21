@@ -14,6 +14,7 @@ Rules:
 
 import io
 import os
+import re
 import sqlite3
 from datetime import datetime
 
@@ -87,11 +88,19 @@ PEDIATRIC_LIVER_MAX_MM = {
 
 
 def parse_age(age_text):
+    """Robustly extract the numeric age in years from any string."""
     if age_text is None:
         return None
-    txt = str(age_text).strip().upper().replace("Y", "").replace("M", "").strip()
+    txt = str(age_text).strip()
+    if not txt:
+        return None
+    # Extract the first number from the string (handles "50", "50Y", "50 y",
+    # "50 Years", "50y/F", etc.)
+    match = re.search(r"(\d+(\.\d+)?)", txt)
+    if not match:
+        return None
     try:
-        return float(txt)
+        return float(match.group(1))
     except (ValueError, TypeError):
         return None
 
@@ -134,10 +143,15 @@ def classify_spleen_adult(size_mm):
         return "moderate"
 
 
-def auto_classify_liver(size_text, age_text, sex):
+def auto_classify_liver(size_mm, age_text, sex):
+    """size_mm is a number or None."""
+    if size_mm is None:
+        return "normal"
     try:
-        size = float(str(size_text).replace("MM", "").strip())
+        size = float(size_mm)
     except (ValueError, TypeError):
+        return "normal"
+    if size <= 0:
         return "normal"
     age = parse_age(age_text)
     if age is None:
@@ -150,10 +164,14 @@ def auto_classify_liver(size_text, age_text, sex):
     return classify_liver_adult(size)
 
 
-def auto_classify_spleen(size_text, age_text, sex):
+def auto_classify_spleen(size_mm, age_text, sex):
+    if size_mm is None:
+        return "normal"
     try:
-        size = float(str(size_text).replace("MM", "").strip())
+        size = float(size_mm)
     except (ValueError, TypeError):
+        return "normal"
+    if size <= 0:
         return "normal"
     age = parse_age(age_text)
     if age is None:
@@ -167,7 +185,7 @@ def auto_classify_spleen(size_text, age_text, sex):
 
 
 LIVER_STATUS_LABELS = {
-    "normal": "Normal",
+    "normal": "Normal size",
     "borderline": "Borderline enlarged",
     "mild": "Mildly enlarged",
     "moderate": "Moderately enlarged",
@@ -175,7 +193,7 @@ LIVER_STATUS_LABELS = {
     "enlarged_for_age": "Enlarged for age",
 }
 SPLEEN_STATUS_LABELS = {
-    "normal": "Normal",
+    "normal": "Normal size",
     "borderline": "Borderline enlarged",
     "mild": "Mildly enlarged",
     "moderate": "Moderately enlarged",
@@ -1194,7 +1212,8 @@ with st.container():
     with c1:
         p_name = st.text_input("Name", key="p_name_input")
     with c2:
-        p_age = st.text_input("Age", key="p_age_input")
+        p_age = st.text_input("Age (years)", key="p_age_input",
+                              help="Enter age in years, e.g. 25 or 0.5")
     with c3:
         p_sex = st.radio("Sex", ["F", "M"], horizontal=True, key="p_sex_input")
     with c4:
@@ -1218,12 +1237,23 @@ with col_find:
 
     # ------- LIVER -------
     with st.expander("LIVER", expanded=True):
-        liver_size = st.text_input("Size (mm)", key="liver_size_input")
+        # Size as number input — no parsing headaches
+        liver_size_num = st.number_input(
+            "Size (mm)", min_value=0, max_value=500, value=0, step=1,
+            key="liver_size_num",
+            help="Type the liver span in mm. 0 = not entered.")
+        liver_size = str(int(liver_size_num)) if liver_size_num > 0 else ""
 
-        # Auto-classify status (no radio button)
-        liver_status = auto_classify_liver(liver_size, p_age, p_sex)
-        if liver_size.strip():
-            st.caption(f"→ Auto-detected: **{LIVER_STATUS_LABELS[liver_status]}**")
+        # Auto-classify
+        liver_status = auto_classify_liver(liver_size_num, p_age, p_sex)
+        if liver_size_num > 0:
+            if liver_status == "normal":
+                st.success(f"✓ **{LIVER_STATUS_LABELS[liver_status]}**")
+            elif liver_status == "enlarged_for_age":
+                st.info(f"→ **{LIVER_STATUS_LABELS[liver_status]}**")
+            else:
+                st.warning(f"→ **{LIVER_STATUS_LABELS[liver_status]}**")
+            st.caption(f"_(age parsed: {age_years_top}, size: {liver_size_num} mm)_")
 
         liver_outline = "normal"
         liver_echo = "normal"
@@ -1463,12 +1493,12 @@ with col_find:
 
     # ------- CBD -------
     with st.expander("COMMON BILE DUCT", expanded=False):
-        c1, c2 = st.columns([1, 2])
-        with c1:
-            cbd_mm = st.text_input("Caliber (mm)", key="cbd_mm")
-        with c2:
-            cbd_status = st.radio("Status", ["normal", "dilated"], horizontal=True,
-                                  key="cbd_status")
+        cbd_mm_num = st.number_input(
+            "Caliber (mm)", min_value=0, max_value=50, value=0, step=1,
+            key="cbd_mm_num", help="0 = not entered")
+        cbd_mm = str(int(cbd_mm_num)) if cbd_mm_num > 0 else ""
+        cbd_status = st.radio("Status", ["normal", "dilated"], horizontal=True,
+                              key="cbd_status")
 
         cbd_calc = False
         cbd_calc_size = ""
@@ -1491,12 +1521,21 @@ with col_find:
 
     # ------- SPLEEN -------
     with st.expander("SPLEEN", expanded=False):
-        sp_size = st.text_input("Size (mm)", key="spleen_size_input")
+        sp_size_num = st.number_input(
+            "Size (mm)", min_value=0, max_value=500, value=0, step=1,
+            key="spleen_size_num",
+            help="Type the spleen length in mm. 0 = not entered.")
+        sp_size = str(int(sp_size_num)) if sp_size_num > 0 else ""
 
-        # Auto-classify status
-        sp_desc = auto_classify_spleen(sp_size, p_age, p_sex)
-        if sp_size.strip():
-            st.caption(f"→ Auto-detected: **{SPLEEN_STATUS_LABELS[sp_desc]}**")
+        sp_desc = auto_classify_spleen(sp_size_num, p_age, p_sex)
+        if sp_size_num > 0:
+            if sp_desc == "normal":
+                st.success(f"✓ **{SPLEEN_STATUS_LABELS[sp_desc]}**")
+            elif sp_desc == "enlarged_for_age":
+                st.info(f"→ **{SPLEEN_STATUS_LABELS[sp_desc]}**")
+            else:
+                st.warning(f"→ **{SPLEEN_STATUS_LABELS[sp_desc]}**")
+            st.caption(f"_(age parsed: {age_years_top}, size: {sp_size_num} mm)_")
 
     # ------- KIDNEYS -------
     with st.expander("KIDNEYS", expanded=False):
