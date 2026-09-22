@@ -31,7 +31,7 @@ PAGE_RIGHT_MARGIN = 2.0
 FONT_BODY = "Calibri"
 FONT_SIZE_BODY = 11
 FONT_SIZE_TITLE = 13
-FONT_SIZE_DISCLAIMER = 8
+FONT_SIZE_DISCLAIMER = 7
 
 TITLE_COLOR = RGBColor(0x1F, 0x4E, 0x79)
 
@@ -1290,7 +1290,6 @@ st.markdown(
     header[data-testid="stHeader"] {visibility: hidden; height: 0;}
     footer {visibility: hidden;}
 
-    /* Page background */
     .stApp, [data-testid="stAppViewContainer"], section.main {
         background-color: #f4f6f9 !important;
     }
@@ -1321,36 +1320,80 @@ st.markdown(
         font-size: 1.05rem;
     }
 
-    /* Expander cards – compact */
+    /* Prevent column stacking on mobile/tablet */
+    @media (max-width: 900px) {
+        div[data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
+            gap: 0.4rem !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+            min-width: 0 !important;
+        }
+    }
+
+    /* Column contents bottom-aligned */
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-end !important;
+    }
+
+    /* Expander: compact, uniform height */
     div[data-testid="stExpander"] {
         background-color: #ffffff !important;
         border: 1px solid #cfd6dd !important;
         border-radius: 6px !important;
-        margin-bottom: 3px !important;
+        margin-bottom: 4px !important;
     }
     div[data-testid="stExpander"] details > summary {
-        padding: 6px 10px !important;
-        min-height: 38px !important;
+        padding: 8px 12px !important;
+        min-height: 42px !important;
+        box-sizing: border-box !important;
+        display: flex !important;
+        align-items: center !important;
     }
     div[data-testid="stExpander"] summary,
     div[data-testid="stExpander"] summary * {
         color: #111111 !important;
         font-weight: 600 !important;
+        font-size: 14px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
     }
     div[data-testid="stExpander"] div[data-testid="stExpanderDetails"],
     div[data-testid="stExpander"] div[data-testid="stExpanderDetails"] * {
         color: #111111 !important;
     }
 
-    /* Inputs */
-    .stTextInput input, .stNumberInput input, .stTextArea textarea,
+    /* Number input: match expander height */
+    div[data-testid="stNumberInput"],
+    div[data-testid="stNumberInput"] > div {
+        margin: 0 !important;
+    }
+    div[data-testid="stNumberInput"] input {
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        border: 1px solid #cfd6dd !important;
+        border-radius: 6px !important;
+        min-height: 42px !important;
+        box-sizing: border-box !important;
+        font-weight: 600 !important;
+        text-align: center !important;
+        padding: 0 6px !important;
+    }
+    div[data-testid="stNumberInput"] button {
+        display: none !important;
+    }
+
+    /* Text inputs */
+    .stTextInput input, .stTextArea textarea,
     [data-baseweb="input"] input, [data-baseweb="base-input"] input {
         background-color: #ffffff !important;
         color: #111111 !important;
         border: 1px solid #cfd6dd !important;
     }
     .stTextInput input::placeholder,
-    .stNumberInput input::placeholder,
     .stTextArea textarea::placeholder {
         color: #888 !important;
     }
@@ -1368,26 +1411,17 @@ st.markdown(
         border: 1px solid #cfd6dd !important;
     }
 
-    /* Small label above compact size inputs */
-    .sz-label {
-        font-size: 11px;
-        color: #555 !important;
-        margin: 0 0 2px 0;
-        padding: 0;
-        line-height: 1.1;
-        text-align: center;
-        white-space: nowrap;
-    }
-
     /* Live preview: black bg, white monospace text */
     .st-key-preview_box textarea,
     div[class*="st-key-preview_box"] textarea {
         background-color: #000000 !important;
         color: #ffffff !important;
         font-family: Consolas, Menlo, 'Courier New', monospace !important;
-        font-size: 13px !important;
-        line-height: 1.5 !important;
+        font-size: 12.5px !important;
+        line-height: 1.45 !important;
         border: 1px solid #333 !important;
+        white-space: pre !important;
+        overflow: auto !important;
     }
 
     /* Impression editor: white bg, dark text */
@@ -1396,7 +1430,7 @@ st.markdown(
         background-color: #ffffff !important;
         color: #111111 !important;
         font-family: Consolas, Menlo, 'Courier New', monospace !important;
-        font-size: 13px !important;
+        font-size: 12.5px !important;
         border: 1px solid #cfd6dd !important;
     }
     </style>
@@ -1413,7 +1447,8 @@ st.markdown(
 )
 
 with st.container():
-    c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 2, 3])
+    c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 2, 3],
+                                     vertical_alignment="bottom")
     with c1:
         p_name = st.text_input("Name", key="p_name_input")
     with c2:
@@ -1439,16 +1474,16 @@ with col_find:
     is_pediatric_top = age_years_top is not None and age_years_top < 18
 
     # ------- LIVER -------
-    col_liver_main, col_liver_sz = st.columns([5, 1])
+    col_liver_main, col_liver_sz = st.columns([5, 1],
+                                              vertical_alignment="bottom")
     with col_liver_main:
         liver_expander = st.expander("LIVER findings (click to open)",
                                      expanded=False)
     with col_liver_sz:
-        st.markdown('<div class="sz-label">LIVER size (mm)</div>',
-                    unsafe_allow_html=True)
         liver_size_num = st.number_input(
             "Liver size mm", min_value=0, max_value=500, value=0, step=1,
-            key="liver_size_num", label_visibility="collapsed")
+            key="liver_size_num", label_visibility="collapsed",
+            placeholder="LIVER mm")
     liver_size = str(int(liver_size_num)) if liver_size_num > 0 else ""
     liver_status = auto_classify_liver(liver_size_num, p_age, p_sex)
     if liver_size_num > 0:
@@ -1692,16 +1727,16 @@ with col_find:
             key="gb_peri_fluid")
 
     # ------- CBD -------
-    col_cbd_main, col_cbd_sz = st.columns([5, 1])
+    col_cbd_main, col_cbd_sz = st.columns([5, 1],
+                                          vertical_alignment="bottom")
     with col_cbd_main:
         cbd_expander = st.expander("COMMON BILE DUCT findings (click to open)",
                                    expanded=False)
     with col_cbd_sz:
-        st.markdown('<div class="sz-label">CBD caliber (mm)</div>',
-                    unsafe_allow_html=True)
         cbd_mm_num = st.number_input(
             "CBD caliber mm", min_value=0, max_value=50, value=0, step=1,
-            key="cbd_mm_num", label_visibility="collapsed")
+            key="cbd_mm_num", label_visibility="collapsed",
+            placeholder="CBD mm")
     cbd_mm = str(int(cbd_mm_num)) if cbd_mm_num > 0 else ""
 
     with cbd_expander:
@@ -1759,16 +1794,16 @@ with col_find:
                              key="pn_status")
 
     # ------- SPLEEN -------
-    col_sp_main, col_sp_sz = st.columns([5, 1])
+    col_sp_main, col_sp_sz = st.columns([5, 1],
+                                        vertical_alignment="bottom")
     with col_sp_main:
         spleen_expander = st.expander("SPLEEN findings (click to open)",
                                       expanded=False)
     with col_sp_sz:
-        st.markdown('<div class="sz-label">SPLEEN size (mm)</div>',
-                    unsafe_allow_html=True)
         sp_size_num = st.number_input(
             "Spleen size mm", min_value=0, max_value=500, value=0, step=1,
-            key="spleen_size_num", label_visibility="collapsed")
+            key="spleen_size_num", label_visibility="collapsed",
+            placeholder="SPLEEN mm")
     sp_size = str(int(sp_size_num)) if sp_size_num > 0 else ""
     sp_desc = auto_classify_spleen(sp_size_num, p_age, p_sex)
     if sp_size_num > 0:
@@ -1826,7 +1861,8 @@ with col_find:
     pr_status = "normal"
 
     if p_sex == "F":
-        hdr_u_l, hdr_u_sz1, hdr_u_sz2 = st.columns([3, 1, 1])
+        hdr_u_l, hdr_u_sz1, hdr_u_sz2 = st.columns([3, 1, 1],
+                                                   vertical_alignment="bottom")
         with hdr_u_sz1:
             ut_size = st.text_input("UTERUS size (mm)", key="ut_size",
                                     placeholder="e.g. 72X25")
@@ -1838,7 +1874,8 @@ with col_find:
                                   "operated", "not_visualized"],
                                  horizontal=True, key="ut_status")
 
-        hdr_o_l, hdr_o_r, hdr_o_lft = st.columns([3, 1, 1])
+        hdr_o_l, hdr_o_r, hdr_o_lft = st.columns([3, 1, 1],
+                                                 vertical_alignment="bottom")
         with hdr_o_r:
             ov_r_size = st.text_input("Rt Ovary (mm)", key="ov_r_size")
         with hdr_o_lft:
@@ -1854,7 +1891,8 @@ with col_find:
                 ov_l = st.radio("Status", ["normal", "cyst", "not_visualized"],
                                 horizontal=True, key="ov_l_status")
     else:
-        hdr_p_l, hdr_p_sz = st.columns([3, 1])
+        hdr_p_l, hdr_p_sz = st.columns([3, 1],
+                                       vertical_alignment="bottom")
         with hdr_p_sz:
             pr_cc = st.text_input("PROSTATE size (cc)", key="pr_cc")
         with st.expander("PROSTATE findings (click to open)", expanded=False):
@@ -2027,9 +2065,24 @@ def render_preview(data):
     return "\n".join(out)
 
 
+preview_text = render_preview(data)
+
+
+def compute_preview_height(text, line_px=19, pad_px=40, min_h=400, max_h=2400):
+    """Estimate a textarea height (in pixels) that fits all lines without scroll."""
+    # Count rendered lines after word-wrap (approx 100 chars per line at ~13px in a ~500px wide box)
+    total = 0
+    for raw_line in text.split("\n"):
+        # Wrap long lines to 100 chars
+        n = max(1, -(-len(raw_line) // 100))
+        total += n
+    return max(min_h, min(max_h, total * line_px + pad_px))
+
+
 with col_prev:
     st.subheader("📄 Live Preview")
-    st.text_area("Report preview", value=render_preview(data), height=780,
+    st.text_area("Report preview", value=preview_text,
+                 height=compute_preview_height(preview_text),
                  disabled=True, label_visibility="collapsed",
                  key="preview_box")
 
