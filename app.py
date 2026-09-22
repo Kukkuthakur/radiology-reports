@@ -1,5 +1,6 @@
 """
 Radiology Report Generator — USG Whole Abdomen
+v1.0.1-stable
 """
 
 import io
@@ -1439,12 +1440,12 @@ with col_find:
                                      expanded=False)
     with col_liver_sz:
         liver_size_num = st.number_input(
-            "Liver size mm", min_value=0, max_value=500, value=0, step=1,
+            "Liver size mm", min_value=0, max_value=500, value=None, step=1,
             key="liver_size_num", label_visibility="collapsed",
             placeholder="LIVER mm")
-    liver_size = str(int(liver_size_num)) if liver_size_num > 0 else ""
-    liver_status = auto_classify_liver(liver_size_num, p_age, p_sex)
-    if liver_size_num > 0:
+    liver_size = str(int(liver_size_num)) if (liver_size_num and liver_size_num > 0) else ""
+    liver_status = auto_classify_liver(liver_size_num or 0, p_age, p_sex)
+    if liver_size_num and liver_size_num > 0:
         if liver_status == "normal":
             st.success(f"✓ Liver: **{LIVER_STATUS_LABELS[liver_status]}**")
         elif liver_status == "enlarged_for_age":
@@ -1689,11 +1690,11 @@ with col_find:
                                    expanded=False)
     with col_cbd_sz:
         cbd_mm_num = st.number_input(
-            "CBD caliber mm", min_value=0.0, max_value=50.0, value=0.0,
+            "CBD caliber mm", min_value=0.0, max_value=50.0, value=None,
             step=0.1, format="%.2f",
             key="cbd_mm_num", label_visibility="collapsed",
             placeholder="CBD mm")
-    cbd_mm = (f"{cbd_mm_num:g}" if cbd_mm_num > 0 else "")
+    cbd_mm = (f"{cbd_mm_num:g}" if (cbd_mm_num and cbd_mm_num > 0) else "")
 
     with cbd_expander:
         cbd_status = st.radio(
@@ -1749,12 +1750,12 @@ with col_find:
                                       expanded=False)
     with col_sp_sz:
         sp_size_num = st.number_input(
-            "Spleen size mm", min_value=0, max_value=500, value=0, step=1,
+            "Spleen size mm", min_value=0, max_value=500, value=None, step=1,
             key="spleen_size_num", label_visibility="collapsed",
             placeholder="SPLEEN mm")
-    sp_size = str(int(sp_size_num)) if sp_size_num > 0 else ""
-    sp_desc = auto_classify_spleen(sp_size_num, p_age, p_sex)
-    if sp_size_num > 0:
+    sp_size = str(int(sp_size_num)) if (sp_size_num and sp_size_num > 0) else ""
+    sp_desc = auto_classify_spleen(sp_size_num or 0, p_age, p_sex)
+    if sp_size_num and sp_size_num > 0:
         if sp_desc == "normal":
             st.success(f"✓ Spleen: **{SPLEEN_STATUS_LABELS[sp_desc]}**")
         elif sp_desc == "enlarged_for_age":
@@ -2030,15 +2031,11 @@ with col_prev:
     def _h(s):
         return hashlib.md5(s.encode("utf-8")).hexdigest()
 
-    # Initialize session state on first ever run
     if "_auto_imp_hash" not in st.session_state:
         st.session_state["impression_box"] = auto_imp_str
         st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
         st.session_state["_last_set_content"] = auto_imp_str
 
-    # If the auto impression changed AND the user hasn't manually edited
-    # the box (widget content still equals what we last wrote to it),
-    # refresh the widget content so it reflects the current findings.
     new_auto_hash = _h(auto_imp_str)
     if new_auto_hash != st.session_state["_auto_imp_hash"]:
         cur_widget = st.session_state.get("impression_box", "")
