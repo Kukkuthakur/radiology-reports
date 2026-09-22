@@ -1279,7 +1279,7 @@ st.markdown(
     .stApp, .stApp p, .stApp label, .stApp span, .stApp div,
     .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
     .stApp li {
-        color: #111111 !important;
+        color: #111111;
     }
 
     .pg-title {
@@ -1360,19 +1360,24 @@ st.markdown(
     }
 
     /* Live preview block: black bg, white monospace, wrapped */
+    .preview-box,
+    .stApp .preview-box,
+    .stApp .preview-box * {
+        color: #ffffff !important;
+    }
     .preview-box {
-        background-color: #000000;
-        color: #ffffff;
-        font-family: Consolas, Menlo, 'Courier New', monospace;
-        font-size: 12.5px;
-        line-height: 1.5;
-        padding: 14px 16px;
-        border-radius: 8px;
-        border: 1px solid #333;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        overflow-wrap: anywhere;
-        margin-bottom: 8px;
+        background-color: #000000 !important;
+        font-family: Consolas, Menlo, 'Courier New', monospace !important;
+        font-size: 12.5px !important;
+        line-height: 1.5 !important;
+        padding: 14px 16px !important;
+        border-radius: 8px !important;
+        border: 1px solid #333 !important;
+        white-space: pre-wrap !important;
+        word-wrap: break-word !important;
+        overflow-wrap: anywhere !important;
+        margin-bottom: 8px !important;
+        display: block !important;
     }
 
     /* Impression editor: black bg, white text */
@@ -2011,10 +2016,11 @@ preview_text = render_preview_findings(data)
 
 with col_prev:
     st.subheader("📄 Live Preview")
-    # Rendered as HTML <pre> block: black bg, white text, word-wrapped.
-    # No text_area means no widget-state caching — updates every rerun.
+    # Rendered as HTML block: black bg, white text, word-wrapped.
+    # Using st.markdown (not st.text_area) so it refreshes on every rerun.
+    _safe = html.escape(preview_text).replace("\n", "<br>")
     st.markdown(
-        f'<div class="preview-box">{html.escape(preview_text)}</div>',
+        f'<div class="preview-box">{_safe}</div>',
         unsafe_allow_html=True,
     )
 
