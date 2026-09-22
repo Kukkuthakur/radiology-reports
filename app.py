@@ -1,17 +1,6 @@
 """
 Radiology Report Generator — USG Whole Abdomen
 Streamlit version (Phase 1)
-
-Layout: Demographics → [Findings (left) | Preview + Impression + Actions (right)]
-
-Rules:
-- Default = Normal report
-- Male → Prostate; Female → Uterus + Ovaries; Age < 18 → pediatric wording
-- Liver/Spleen status auto-derived from size
-- Abnormal findings: bold + italic + mixed case in findings; impression lines ALL CAPS except Adv-
-- Top margin 4.0 cm; bottom 3.5 cm
-- CBD rules: full stop before However; no punctuation before with; all caps except Adv-
-- Flattened size layout: size inputs at top level of each organ header
 """
 
 import io
@@ -542,8 +531,6 @@ def gall_bladder_sentence(d):
     return s
 
 
-# -------- CBD --------
-
 def cbd_location_word(loc):
     return {
         "proximal": "proximal segment",
@@ -920,7 +907,6 @@ def generate_impression(d, sex, age):
     age_years = parse_age(age)
     is_pediatric = age_years is not None and age_years < 18
 
-    # ---- CBD ----
     cbd = d["cbd"]
     cbd_status = cbd.get("status", "normal")
     cbd_size = cbd.get("size_mm", "")
@@ -937,7 +923,6 @@ def generate_impression(d, sex, age):
             return " WITH DILATATION OF IHBR."
         return ""
 
-    # ---- GB ----
     gb = d["gall_bladder"]
     gb_has_calculi = gb.get("calculi") == "present"
     gb_wall_thickened = gb.get("wall_thickened") and gb.get("wall_mm")
@@ -956,7 +941,6 @@ def generate_impression(d, sex, age):
         except (ValueError, TypeError):
             wall_descriptor = ""
 
-    # ---- CBD + GB combined scenarios ----
     if cbd_has_calc and gb_has_calculi and cbd_dilated:
         line = (f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED CBD UPTO {cbd_size}MM"
                 + ihbr_clause() + " Adv- MRCP/CECT Abdomen Correlation.")
@@ -1025,7 +1009,6 @@ def generate_impression(d, sex, age):
         else:
             lines.append("GALL BLADDER ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
 
-    # ---- LIVER ----
     liver = d["liver"]
     liver_line = None
     desc = liver["size_descriptor"]
@@ -1092,7 +1075,6 @@ def generate_impression(d, sex, age):
                              f"{joined} - LIKELY LIVER ABSCESSES. "
                              f"Adv- Lab & Clinical Correlation.")
 
-    # ---- SPLEEN ----
     spleen_desc = d["spleen"]["size_descriptor"]
     if spleen_desc == "enlarged_for_age":
         lines.append("SPLENOMEGALY FOR AGE.")
@@ -1301,35 +1283,23 @@ init_db()
 st.markdown(
     """
     <style>
-    /* Hide Streamlit chrome */
+    /* Force light color scheme regardless of browser dark mode */
+    :root { color-scheme: light !important; }
+
     #MainMenu {visibility: hidden;}
     header[data-testid="stHeader"] {visibility: hidden; height: 0;}
     footer {visibility: hidden;}
 
-    /* Expander card look */
-    div[data-testid="stExpander"] {
-        background-color: #ffffff;
-        border-radius: 8px;
-        border: 1px solid #cccccc;
-        margin-bottom: 6px;
+    /* Page background */
+    .stApp, [data-testid="stAppViewContainer"], section.main {
+        background-color: #f4f6f9 !important;
     }
 
-    /* ---- LIVE PREVIEW: black bg, white text ---- */
-    .st-key-preview_box textarea {
-        background-color: #000000 !important;
-        color: #ffffff !important;
-        font-family: 'Consolas', 'Menlo', 'Courier New', monospace !important;
-        font-size: 13px !important;
-        line-height: 1.45 !important;
-        border: 1px solid #333 !important;
-    }
-
-    /* ---- Impression editor: white bg, dark text ---- */
-    .st-key-impression_box textarea {
-        background-color: #ffffff !important;
+    /* All default text dark */
+    .stApp, .stApp p, .stApp label, .stApp span, .stApp div,
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
+    .stApp li {
         color: #111111 !important;
-        font-family: 'Consolas', 'Menlo', 'Courier New', monospace !important;
-        font-size: 13px !important;
     }
 
     /* Header block */
@@ -1337,18 +1307,97 @@ st.markdown(
         text-align: center;
         margin: 0 0 0.15rem 0;
         padding: 0;
-        color: #1F4E79;
+        color: #1F4E79 !important;
         font-weight: 700;
         font-size: 2rem;
         letter-spacing: 0.5px;
     }
     .pg-tagline {
         text-align: center;
-        margin: 0 0 1.2rem 0;
+        margin: 0 0 1.0rem 0;
         padding: 0;
-        color: #555;
+        color: #555 !important;
         font-style: italic;
         font-size: 1.05rem;
+    }
+
+    /* Expander cards – compact */
+    div[data-testid="stExpander"] {
+        background-color: #ffffff !important;
+        border: 1px solid #cfd6dd !important;
+        border-radius: 6px !important;
+        margin-bottom: 3px !important;
+    }
+    div[data-testid="stExpander"] details > summary {
+        padding: 6px 10px !important;
+        min-height: 38px !important;
+    }
+    div[data-testid="stExpander"] summary,
+    div[data-testid="stExpander"] summary * {
+        color: #111111 !important;
+        font-weight: 600 !important;
+    }
+    div[data-testid="stExpander"] div[data-testid="stExpanderDetails"],
+    div[data-testid="stExpander"] div[data-testid="stExpanderDetails"] * {
+        color: #111111 !important;
+    }
+
+    /* Inputs */
+    .stTextInput input, .stNumberInput input, .stTextArea textarea,
+    [data-baseweb="input"] input, [data-baseweb="base-input"] input {
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        border: 1px solid #cfd6dd !important;
+    }
+    .stTextInput input::placeholder,
+    .stNumberInput input::placeholder,
+    .stTextArea textarea::placeholder {
+        color: #888 !important;
+    }
+
+    /* Radio / checkbox labels */
+    .stRadio label, .stRadio span,
+    .stCheckbox label, .stCheckbox span {
+        color: #111111 !important;
+    }
+
+    /* Buttons */
+    .stButton button, .stDownloadButton button {
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        border: 1px solid #cfd6dd !important;
+    }
+
+    /* Small label above compact size inputs */
+    .sz-label {
+        font-size: 11px;
+        color: #555 !important;
+        margin: 0 0 2px 0;
+        padding: 0;
+        line-height: 1.1;
+        text-align: center;
+        white-space: nowrap;
+    }
+
+    /* Live preview: black bg, white monospace text */
+    .st-key-preview_box textarea,
+    div[class*="st-key-preview_box"] textarea {
+        background-color: #000000 !important;
+        color: #ffffff !important;
+        font-family: Consolas, Menlo, 'Courier New', monospace !important;
+        font-size: 13px !important;
+        line-height: 1.5 !important;
+        border: 1px solid #333 !important;
+    }
+
+    /* Impression editor: white bg, dark text */
+    .st-key-impression_box textarea,
+    div[class*="st-key-impression_box"] textarea {
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        font-family: Consolas, Menlo, 'Courier New', monospace !important;
+        font-size: 13px !important;
+        border: 1px solid #cfd6dd !important;
     }
     </style>
     """,
@@ -1390,14 +1439,16 @@ with col_find:
     is_pediatric_top = age_years_top is not None and age_years_top < 18
 
     # ------- LIVER -------
-    col_liver_main, col_liver_sz = st.columns([4, 1])
-    with col_liver_sz:
-        liver_size_num = st.number_input(
-            "LIVER size (mm)", min_value=0, max_value=500, value=0, step=1,
-            key="liver_size_num")
+    col_liver_main, col_liver_sz = st.columns([5, 1])
     with col_liver_main:
         liver_expander = st.expander("LIVER findings (click to open)",
                                      expanded=False)
+    with col_liver_sz:
+        st.markdown('<div class="sz-label">LIVER size (mm)</div>',
+                    unsafe_allow_html=True)
+        liver_size_num = st.number_input(
+            "Liver size mm", min_value=0, max_value=500, value=0, step=1,
+            key="liver_size_num", label_visibility="collapsed")
     liver_size = str(int(liver_size_num)) if liver_size_num > 0 else ""
     liver_status = auto_classify_liver(liver_size_num, p_age, p_sex)
     if liver_size_num > 0:
@@ -1641,14 +1692,16 @@ with col_find:
             key="gb_peri_fluid")
 
     # ------- CBD -------
-    col_cbd_main, col_cbd_sz = st.columns([4, 1])
-    with col_cbd_sz:
-        cbd_mm_num = st.number_input(
-            "CBD caliber (mm)", min_value=0, max_value=50, value=0, step=1,
-            key="cbd_mm_num")
+    col_cbd_main, col_cbd_sz = st.columns([5, 1])
     with col_cbd_main:
         cbd_expander = st.expander("COMMON BILE DUCT findings (click to open)",
                                    expanded=False)
+    with col_cbd_sz:
+        st.markdown('<div class="sz-label">CBD caliber (mm)</div>',
+                    unsafe_allow_html=True)
+        cbd_mm_num = st.number_input(
+            "CBD caliber mm", min_value=0, max_value=50, value=0, step=1,
+            key="cbd_mm_num", label_visibility="collapsed")
     cbd_mm = str(int(cbd_mm_num)) if cbd_mm_num > 0 else ""
 
     with cbd_expander:
@@ -1706,18 +1759,16 @@ with col_find:
                              key="pn_status")
 
     # ------- SPLEEN -------
-    col_sp_main, col_sp_sz = st.columns([4, 1])
-    with col_sp_sz:
-        sp_size_num = st.number_input(
-            "SPLEEN size (mm)", min_value=0, max_value=500, value=0, step=1,
-            key="spleen_size_num")
+    col_sp_main, col_sp_sz = st.columns([5, 1])
     with col_sp_main:
-        st.markdown(
-            "<div style='padding-top:0.55rem;color:#555;'>"
-            "<b>SPLEEN</b> — size is the only measurement used for this organ."
-            "</div>",
-            unsafe_allow_html=True,
-        )
+        spleen_expander = st.expander("SPLEEN findings (click to open)",
+                                      expanded=False)
+    with col_sp_sz:
+        st.markdown('<div class="sz-label">SPLEEN size (mm)</div>',
+                    unsafe_allow_html=True)
+        sp_size_num = st.number_input(
+            "Spleen size mm", min_value=0, max_value=500, value=0, step=1,
+            key="spleen_size_num", label_visibility="collapsed")
     sp_size = str(int(sp_size_num)) if sp_size_num > 0 else ""
     sp_desc = auto_classify_spleen(sp_size_num, p_age, p_sex)
     if sp_size_num > 0:
@@ -1727,6 +1778,8 @@ with col_find:
             st.info(f"→ Spleen: **{SPLEEN_STATUS_LABELS[sp_desc]}**")
         else:
             st.warning(f"→ Spleen: **{SPLEEN_STATUS_LABELS[sp_desc]}**")
+    with spleen_expander:
+        st.caption("Spleen status is derived automatically from size.")
 
     # ------- KIDNEYS -------
     with st.expander("KIDNEYS (click to open findings)", expanded=False):
@@ -1778,7 +1831,7 @@ with col_find:
             ut_size = st.text_input("UTERUS size (mm)", key="ut_size",
                                     placeholder="e.g. 72X25")
         with hdr_u_sz2:
-            ut_et = st.text_input("UTERUS ET (mm)", key="ut_et")
+            ut_et = st.text_input("Endometrium (mm)", key="ut_et")
         with st.expander("UTERUS findings (click to open)", expanded=False):
             ut_status = st.radio("Status",
                                  ["anteverted", "retroverted", "bulky",
@@ -1787,9 +1840,9 @@ with col_find:
 
         hdr_o_l, hdr_o_r, hdr_o_lft = st.columns([3, 1, 1])
         with hdr_o_r:
-            ov_r_size = st.text_input("R ovary (mm)", key="ov_r_size")
+            ov_r_size = st.text_input("Rt Ovary (mm)", key="ov_r_size")
         with hdr_o_lft:
-            ov_l_size = st.text_input("L ovary (mm)", key="ov_l_size")
+            ov_l_size = st.text_input("LT Ovary (mm)", key="ov_l_size")
         with st.expander("OVARIES findings (click to open)", expanded=False):
             c1, c2 = st.columns(2)
             with c1:
@@ -1976,7 +2029,7 @@ def render_preview(data):
 
 with col_prev:
     st.subheader("📄 Live Preview")
-    st.text_area("Report preview", value=render_preview(data), height=520,
+    st.text_area("Report preview", value=render_preview(data), height=780,
                  disabled=True, label_visibility="collapsed",
                  key="preview_box")
 
