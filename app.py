@@ -1,11 +1,11 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-Streamlit version (Phase 1)
 """
 
 import io
 import os
 import re
+import html
 import sqlite3
 from datetime import datetime
 
@@ -168,18 +168,13 @@ def auto_classify_spleen(size_mm, age_text, sex):
 
 
 LIVER_STATUS_LABELS = {
-    "normal": "Normal size",
-    "borderline": "Borderline enlarged",
-    "mild": "Mildly enlarged",
-    "moderate": "Moderately enlarged",
-    "gross": "Grossly enlarged",
-    "enlarged_for_age": "Enlarged for age",
+    "normal": "Normal size", "borderline": "Borderline enlarged",
+    "mild": "Mildly enlarged", "moderate": "Moderately enlarged",
+    "gross": "Grossly enlarged", "enlarged_for_age": "Enlarged for age",
 }
 SPLEEN_STATUS_LABELS = {
-    "normal": "Normal size",
-    "borderline": "Borderline enlarged",
-    "mild": "Mildly enlarged",
-    "moderate": "Moderately enlarged",
+    "normal": "Normal size", "borderline": "Borderline enlarged",
+    "mild": "Mildly enlarged", "moderate": "Moderately enlarged",
     "enlarged_for_age": "Enlarged for age",
 }
 
@@ -206,15 +201,6 @@ def init_db():
         c.execute("INSERT OR IGNORE INTO referrers (name) VALUES (?)", (name,))
     conn.commit()
     conn.close()
-
-
-def get_referrers():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT name FROM referrers ORDER BY name")
-    rows = [r[0] for r in c.fetchall()]
-    conn.close()
-    return rows
 
 
 def add_referrer(name):
@@ -270,18 +256,11 @@ def new_report(sex="F"):
             "sludge_ball": False, "sludge_ball_count": "single",
             "sludge_ball_size_mm": "", "sludge_ball_wall": "anterior",
             "comet_tail": False, "comet_tail_count": "single",
-            "comet_tail_wall": "anterior",
-            "pericholecystic_fluid": False,
+            "comet_tail_wall": "anterior", "pericholecystic_fluid": False,
         },
-        "cbd": {
-            "size_mm": "",
-            "status": "normal",
-            "calculi": False,
-            "calculi_count": "single",
-            "calculi_size_mm": "",
-            "calculi_location": "distal",
-            "ihbr": "normal",
-        },
+        "cbd": {"size_mm": "", "status": "normal", "calculi": False,
+                "calculi_count": "single", "calculi_size_mm": "",
+                "calculi_location": "distal", "ihbr": "normal"},
         "pancreas": {"status": "normal", "fat_stranding_grade": "mild",
                      "ln_size": "", "mpd_dilated": False, "mpd_mm": ""},
         "spleen": {"size_mm": "", "size_descriptor": "normal", "portal_vein_mm": ""},
@@ -527,16 +506,13 @@ def gall_bladder_sentence(d):
 
     if d.get("pericholecystic_fluid"):
         s += [seg(" "), seg("Thin rim of pericholecystic fluid seen.", True)]
-
     return s
 
 
 def cbd_location_word(loc):
     return {
-        "proximal": "proximal segment",
-        "mid": "mid segment",
-        "distal": "distal segment",
-        "mid_distal": "mid/distal segment",
+        "proximal": "proximal segment", "mid": "mid segment",
+        "distal": "distal segment", "mid_distal": "mid/distal segment",
     }.get(loc, "distal segment")
 
 
@@ -573,7 +549,6 @@ def cbd_sentence(d):
         else:
             s.append(seg(f", with suggestion of few calculi in the {loc_word}, "
                          f"largest of these measuring {calculi_size}MM", True))
-
     s.append(seg("."))
 
     show_ihbr = (status in ("proximal", "dilated")) or calculi
@@ -590,7 +565,6 @@ def cbd_sentence(d):
         elif ihbr == "dilated":
             s.append(seg(" "))
             s.append(seg("Intra hepatic biliary radicals are dilated.", True))
-
     return s
 
 
@@ -942,21 +916,18 @@ def generate_impression(d, sex, age):
             wall_descriptor = ""
 
     if cbd_has_calc and gb_has_calculi and cbd_dilated:
-        line = (f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED CBD UPTO {cbd_size}MM"
-                + ihbr_clause() + " Adv- MRCP/CECT Abdomen Correlation.")
-        lines.append(line)
+        lines.append(f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED CBD UPTO "
+                     f"{cbd_size}MM" + ihbr_clause() +
+                     " Adv- MRCP/CECT Abdomen Correlation.")
     elif cbd_has_calc and gb_has_calculi and not cbd_dilated:
-        line = ("CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND NORMAL CALIBER CBD"
-                + ihbr_clause() + " Adv- MRCP/CECT Abdomen Correlation.")
-        lines.append(line)
+        lines.append("CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND NORMAL CALIBER CBD"
+                     + ihbr_clause() + " Adv- MRCP/CECT Abdomen Correlation.")
     elif cbd_has_calc and cbd_dilated:
-        line = (f"CHOLEDOCHOLITHIASIS WITH DILATED CBD UPTO {cbd_size}MM"
-                + ihbr_clause() + " Adv- MRCP/CECT Abdomen Correlation.")
-        lines.append(line)
+        lines.append(f"CHOLEDOCHOLITHIASIS WITH DILATED CBD UPTO {cbd_size}MM"
+                     + ihbr_clause() + " Adv- MRCP/CECT Abdomen Correlation.")
     elif cbd_has_calc and not cbd_dilated:
-        line = ("CHOLEDOCHOLITHIASIS WITH NORMAL CALIBER CBD"
-                + ihbr_clause() + " Adv- MRCP/CECT Abdomen Correlation.")
-        lines.append(line)
+        lines.append("CHOLEDOCHOLITHIASIS WITH NORMAL CALIBER CBD"
+                     + ihbr_clause() + " Adv- MRCP/CECT Abdomen Correlation.")
 
     gb_calc_already_reported = cbd_has_calc and gb_has_calculi and cbd_dilated
 
@@ -985,8 +956,7 @@ def generate_impression(d, sex, age):
             lines.append("THIN RIM OF PERICHOLECYSTIC FLUID SEEN - ?SIGNIFICANCE. "
                          "Adv- LFT, Lab and Clinical Correlation.")
         elif gb_sludge and not gb_has_calculi:
-            sludge_text = gb["sludge"].upper()
-            lines.append(f"{sludge_text} SLUDGE SEEN IN THE GALLBLADDER LUMEN. "
+            lines.append(f"{gb['sludge'].upper()} SLUDGE SEEN IN THE GALLBLADDER LUMEN. "
                          f"Adv- Review scan after a month.")
         elif gb_sludge_ball and not gb_has_calculi:
             count = gb.get("sludge_ball_count", "single")
@@ -1042,19 +1012,19 @@ def generate_impression(d, sex, age):
     if fl == "cyst":
         count = liver.get("cyst_count", "single")
         if count == "single":
-            lobe = liver.get("cyst_single_lobe", "right").upper()
-            lines.append(f"A SIMPLE HEPATIC CYST IN {lobe} LOBE.")
+            lines.append(f"A SIMPLE HEPATIC CYST IN "
+                         f"{liver.get('cyst_single_lobe', 'right').upper()} LOBE.")
         else:
-            lobe = liver.get("cyst_few_lobe", "right").upper()
-            lines.append(f"FEW SIMPLE HEPATIC CYSTS IN {lobe} LOBE.")
+            lines.append(f"FEW SIMPLE HEPATIC CYSTS IN "
+                         f"{liver.get('cyst_few_lobe', 'right').upper()} LOBE.")
     elif fl == "hemangioma":
         count = liver.get("hemangioma_count", "single")
         if count == "single":
-            lobe = liver.get("hemangioma_single_lobe", "right").upper()
-            lines.append(f"A HEPATIC HEMANGIOMA IN {lobe} LOBE.")
+            lines.append(f"A HEPATIC HEMANGIOMA IN "
+                         f"{liver.get('hemangioma_single_lobe', 'right').upper()} LOBE.")
         else:
-            lobe = liver.get("hemangioma_few_lobe", "right").upper()
-            lines.append(f"FEW HEPATIC HEMANGIOMAS IN {lobe} LOBE.")
+            lines.append(f"FEW HEPATIC HEMANGIOMAS IN "
+                         f"{liver.get('hemangioma_few_lobe', 'right').upper()} LOBE.")
     elif fl == "abscess":
         count = liver.get("abscess_count", "single")
         lesions = liver.get("abscess_lesions", [])
@@ -1066,8 +1036,7 @@ def generate_impression(d, sex, age):
                              f"{l0['segment']} - LIKELY LIVER ABSCESS. "
                              f"Adv- Lab & Clinical Correlation.")
             else:
-                parts = [f"VOL= {l['vol']}CC IN SEGMENT {l['segment']}"
-                         for l in lesions]
+                parts = [f"VOL= {l['vol']}CC IN SEGMENT {l['segment']}" for l in lesions]
                 joined = " & ".join(parts)
                 keyword = "FEW" if count == "few" else "MULTIPLE"
                 lines.append(f"{keyword} IRREGULAR MARGINATED ILL-DEFINED AVASCULAR "
@@ -1088,8 +1057,7 @@ def generate_impression(d, sex, age):
 
     if d["urinary_bladder"]["sedimentation"] in ("free_floating", "significant",
                                                   "extensive"):
-        lines.append("SEDIMENTATION SEEN IN THE UB LUMEN. "
-                     "Adv- Urine R/M Correlation.")
+        lines.append("SEDIMENTATION SEEN IN THE UB LUMEN. Adv- Urine R/M Correlation.")
 
     if sex == "M" and not is_pediatric:
         p = d["prostate"]
@@ -1142,6 +1110,18 @@ def _set_table_borders(table, size=6):
         e.set(qn("w:color"), "000000")
         borders.append(e)
     tblPr.append(borders)
+
+
+def _set_cell_margins(cell, top=40, bottom=40, left=80, right=80):
+    tcPr = cell._tc.get_or_add_tcPr()
+    mar = OxmlElement("w:tcMar")
+    for edge, val in (("top", top), ("left", left),
+                      ("bottom", bottom), ("right", right)):
+        m = OxmlElement(f"w:{edge}")
+        m.set(qn("w:w"), str(val))
+        m.set(qn("w:type"), "dxa")
+        mar.append(m)
+    tcPr.append(mar)
 
 
 def _add_run(paragraph, text, bold=False, underline=False, font=FONT_BODY,
@@ -1264,6 +1244,7 @@ def build_docx_bytes(data):
     disc_table = doc.add_table(rows=1, cols=1)
     _set_table_borders(disc_table)
     cell = disc_table.cell(0, 0)
+    _set_cell_margins(cell, top=20, bottom=20, left=80, right=80)
     cell.text = ""
     para = cell.paragraphs[0]
     para.paragraph_format.space_before = Pt(0)
@@ -1302,27 +1283,18 @@ st.markdown(
     }
 
     .pg-title {
-        text-align: center;
-        margin: 0 0 0.15rem 0;
-        padding: 0;
-        color: #1F4E79 !important;
-        font-weight: 700;
-        font-size: 2rem;
+        text-align: center; margin: 0 0 0.15rem 0; padding: 0;
+        color: #1F4E79 !important; font-weight: 700; font-size: 2rem;
         letter-spacing: 0.5px;
     }
     .pg-tagline {
-        text-align: center;
-        margin: 0 0 1.0rem 0;
-        padding: 0;
-        color: #555 !important;
-        font-style: italic;
-        font-size: 1.05rem;
+        text-align: center; margin: 0 0 1.0rem 0; padding: 0;
+        color: #555 !important; font-style: italic; font-size: 1.05rem;
     }
 
     @media (max-width: 900px) {
         div[data-testid="stHorizontalBlock"] {
-            flex-wrap: nowrap !important;
-            gap: 0.4rem !important;
+            flex-wrap: nowrap !important; gap: 0.4rem !important;
         }
         div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
             min-width: 0 !important;
@@ -1330,12 +1302,10 @@ st.markdown(
     }
 
     div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-        display: flex !important;
-        flex-direction: column !important;
+        display: flex !important; flex-direction: column !important;
         justify-content: flex-end !important;
     }
 
-    /* Expander */
     div[data-testid="stExpander"] {
         background-color: #ffffff !important;
         border: 1px solid #cfd6dd !important;
@@ -1343,19 +1313,15 @@ st.markdown(
         margin-bottom: 4px !important;
     }
     div[data-testid="stExpander"] details > summary {
-        padding: 8px 12px !important;
-        min-height: 42px !important;
-        box-sizing: border-box !important;
-        display: flex !important;
+        padding: 8px 12px !important; min-height: 42px !important;
+        box-sizing: border-box !important; display: flex !important;
         align-items: center !important;
     }
     div[data-testid="stExpander"] summary,
     div[data-testid="stExpander"] summary * {
-        color: #111111 !important;
-        font-weight: 600 !important;
+        color: #111111 !important; font-weight: 600 !important;
         font-size: 14px !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
+        white-space: nowrap !important; overflow: hidden !important;
         text-overflow: ellipsis !important;
     }
     div[data-testid="stExpander"] div[data-testid="stExpanderDetails"],
@@ -1363,64 +1329,50 @@ st.markdown(
         color: #111111 !important;
     }
 
-    /* Number input: match expander height */
-    div[data-testid="stNumberInput"],
-    div[data-testid="stNumberInput"] > div {
+    div[data-testid="stNumberInput"], div[data-testid="stNumberInput"] > div {
         margin: 0 !important;
     }
     div[data-testid="stNumberInput"] input {
-        background-color: #ffffff !important;
-        color: #111111 !important;
-        border: 1px solid #cfd6dd !important;
-        border-radius: 6px !important;
-        min-height: 42px !important;
-        box-sizing: border-box !important;
-        font-weight: 600 !important;
-        text-align: center !important;
+        background-color: #ffffff !important; color: #111111 !important;
+        border: 1px solid #cfd6dd !important; border-radius: 6px !important;
+        min-height: 42px !important; box-sizing: border-box !important;
+        font-weight: 600 !important; text-align: center !important;
         padding: 0 6px !important;
     }
-    div[data-testid="stNumberInput"] button {
-        display: none !important;
-    }
+    div[data-testid="stNumberInput"] button { display: none !important; }
 
-    /* Text inputs */
     .stTextInput input, .stTextArea textarea,
     [data-baseweb="input"] input, [data-baseweb="base-input"] input {
-        background-color: #ffffff !important;
-        color: #111111 !important;
+        background-color: #ffffff !important; color: #111111 !important;
         border: 1px solid #cfd6dd !important;
-        min-height: 42px !important;
-        box-sizing: border-box !important;
+        min-height: 42px !important; box-sizing: border-box !important;
     }
-    .stTextInput input::placeholder,
-    .stTextArea textarea::placeholder {
+    .stTextInput input::placeholder, .stTextArea textarea::placeholder {
         color: #888 !important;
     }
 
-    .stRadio label, .stRadio span,
-    .stCheckbox label, .stCheckbox span {
+    .stRadio label, .stRadio span, .stCheckbox label, .stCheckbox span {
         color: #111111 !important;
     }
-
     .stButton button, .stDownloadButton button {
-        background-color: #ffffff !important;
-        color: #111111 !important;
+        background-color: #ffffff !important; color: #111111 !important;
         border: 1px solid #cfd6dd !important;
     }
 
-    /* Live preview: black bg, white monospace text, wrapping enabled */
-    .st-key-preview_box textarea,
-    div[class*="st-key-preview_box"] textarea {
-        background-color: #000000 !important;
-        color: #ffffff !important;
-        font-family: Consolas, Menlo, 'Courier New', monospace !important;
-        font-size: 12.5px !important;
-        line-height: 1.45 !important;
-        border: 1px solid #333 !important;
-        white-space: pre-wrap !important;
-        word-wrap: break-word !important;
-        overflow-wrap: anywhere !important;
-        overflow-x: hidden !important;
+    /* Live preview block: black bg, white monospace, wrapped */
+    .preview-box {
+        background-color: #000000;
+        color: #ffffff;
+        font-family: Consolas, Menlo, 'Courier New', monospace;
+        font-size: 12.5px;
+        line-height: 1.5;
+        padding: 14px 16px;
+        border-radius: 8px;
+        border: 1px solid #333;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        overflow-wrap: anywhere;
+        margin-bottom: 8px;
     }
 
     /* Impression editor: black bg, white text */
@@ -1430,6 +1382,7 @@ st.markdown(
         color: #ffffff !important;
         font-family: Consolas, Menlo, 'Courier New', monospace !important;
         font-size: 12.5px !important;
+        line-height: 1.5 !important;
         border: 1px solid #333 !important;
         white-space: pre-wrap !important;
         word-wrap: break-word !important;
@@ -1471,9 +1424,6 @@ col_find, col_prev = st.columns([1, 1])
 
 with col_find:
     st.subheader("Findings")
-
-    age_years_top = parse_age(p_age)
-    is_pediatric_top = age_years_top is not None and age_years_top < 18
 
     # ------- LIVER -------
     col_liver_main, col_liver_sz = st.columns([5, 1],
@@ -1562,30 +1512,28 @@ with col_find:
                 c_a, c_b = st.columns(2)
                 with c_a:
                     cyst_few_lobe = st.radio("Lobe", ["right", "left"],
-                                             horizontal=True,
-                                             key="cyst_few_lobe")
+                                             horizontal=True, key="cyst_few_lobe")
                 with c_b:
                     cyst_few_largest_mm = st.text_input("Largest (mm)",
                                                         key="cyst_few_largest")
         elif liver_focal == "hemangioma":
             hemangioma_count = st.radio("Number", ["single", "few"],
-                                        horizontal=True,
-                                        key="hemangioma_count")
+                                        horizontal=True, key="hemangioma_count")
             if hemangioma_count == "single":
                 c_a, c_b = st.columns(2)
                 with c_a:
-                    hemangioma_single_lobe = st.radio("Lobe", ["right", "left"],
-                                                      horizontal=True,
-                                                      key="hemangioma_single_lobe")
+                    hemangioma_single_lobe = st.radio(
+                        "Lobe", ["right", "left"], horizontal=True,
+                        key="hemangioma_single_lobe")
                 with c_b:
                     hemangioma_single_size_mm = st.text_input(
                         "Size (mm)", key="hemangioma_single_size")
             else:
                 c_a, c_b = st.columns(2)
                 with c_a:
-                    hemangioma_few_lobe = st.radio("Lobe", ["right", "left"],
-                                                   horizontal=True,
-                                                   key="hemangioma_few_lobe")
+                    hemangioma_few_lobe = st.radio(
+                        "Lobe", ["right", "left"], horizontal=True,
+                        key="hemangioma_few_lobe")
                 with c_b:
                     hemangioma_few_largest_mm = st.text_input(
                         "Largest (mm)", key="hemangioma_few_largest")
@@ -1690,8 +1638,7 @@ with col_find:
                         "Neck calculus size (mm)", key="gb_neck_size")
 
         gb_sludge = st.radio(
-            "Sludge",
-            ["none", "trace", "significant", "echogenic", "organized"],
+            "Sludge", ["none", "trace", "significant", "echogenic", "organized"],
             horizontal=True, format_func=lambda x: x.title(),
             key="gb_sludge")
 
@@ -1743,9 +1690,7 @@ with col_find:
 
     with cbd_expander:
         cbd_status = st.radio(
-            "Status",
-            ["normal", "proximal", "dilated"],
-            horizontal=True,
+            "Status", ["normal", "proximal", "dilated"], horizontal=True,
             format_func=lambda x: {"normal": "Normal",
                                    "proximal": "Proximally dilated",
                                    "dilated": "Dilated throughout"}[x],
@@ -1763,26 +1708,21 @@ with col_find:
             with c_a:
                 cbd_calc_count = st.radio(
                     "Count", ["single", "few"], horizontal=True,
-                    format_func=lambda x: x.title(),
-                    key="cbd_calc_count")
+                    format_func=lambda x: x.title(), key="cbd_calc_count")
             with c_b:
                 cbd_calc_size = st.text_input("Size (mm, largest if few)",
                                               key="cbd_calc_size")
             cbd_calc_location = st.radio(
-                "Location",
-                ["proximal", "mid", "distal", "mid_distal"],
+                "Location", ["proximal", "mid", "distal", "mid_distal"],
                 horizontal=True,
-                format_func=lambda x: {"proximal": "Proximal",
-                                       "mid": "Mid",
+                format_func=lambda x: {"proximal": "Proximal", "mid": "Mid",
                                        "distal": "Distal",
                                        "mid_distal": "Mid/Distal"}[x],
                 key="cbd_calc_location")
 
         if cbd_status in ("proximal", "dilated") or cbd_calc:
             cbd_ihbr = st.radio(
-                "IHBR",
-                ["normal", "proximal", "dilated"],
-                horizontal=True,
+                "IHBR", ["normal", "proximal", "dilated"], horizontal=True,
                 format_func=lambda x: {"normal": "Normal",
                                        "proximal": "Proximally dilated",
                                        "dilated": "Dilated"}[x],
@@ -1796,8 +1736,7 @@ with col_find:
                              key="pn_status")
 
     # ------- SPLEEN -------
-    col_sp_main, col_sp_sz = st.columns([5, 1],
-                                        vertical_alignment="bottom")
+    col_sp_main, col_sp_sz = st.columns([5, 1], vertical_alignment="bottom")
     with col_sp_main:
         spleen_expander = st.expander("SPLEEN findings (click to open)",
                                       expanded=False)
@@ -1848,8 +1787,7 @@ with col_find:
             "Sedimentation",
             ["none", "trace", "free_floating", "significant", "extensive"],
             horizontal=True,
-            format_func=lambda x: x.replace("_", " ").title(),
-            key="ub_sed")
+            format_func=lambda x: x.replace("_", " ").title(), key="ub_sed")
 
     # ------- UTERUS / OVARIES or PROSTATE -------
     ut_status = "anteverted"
@@ -1863,7 +1801,7 @@ with col_find:
     pr_status = "normal"
 
     if p_sex == "F":
-        # UTERUS row: expander + size + endometrium all on one line
+        # UTERUS row: expander + size + endometrium on one line
         u_exp_col, u_sz_col, u_et_col = st.columns(
             [4, 1, 1], vertical_alignment="bottom")
         with u_exp_col:
@@ -1887,4 +1825,234 @@ with col_find:
         o_exp_col, o_r_col, o_l_col = st.columns(
             [4, 1, 1], vertical_alignment="bottom")
         with o_exp_col:
-            ovaries_expander
+            ovaries_expander = st.expander("OVARIES findings (click to open)",
+                                           expanded=False)
+        with o_r_col:
+            ov_r_size = st.text_input("Rt Ovary (mm)", key="ov_r_size",
+                                      placeholder="Rt Ovary",
+                                      label_visibility="collapsed")
+        with o_l_col:
+            ov_l_size = st.text_input("LT Ovary (mm)", key="ov_l_size",
+                                      placeholder="LT Ovary",
+                                      label_visibility="collapsed")
+        with ovaries_expander:
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**Right Ovary**")
+                ov_r = st.radio("Status", ["normal", "cyst", "not_visualized"],
+                                horizontal=True, key="ov_r_status")
+            with c2:
+                st.markdown("**Left Ovary**")
+                ov_l = st.radio("Status", ["normal", "cyst", "not_visualized"],
+                                horizontal=True, key="ov_l_status")
+    else:
+        p_exp_col, p_sz_col = st.columns([5, 1], vertical_alignment="bottom")
+        with p_exp_col:
+            prostate_expander = st.expander("PROSTATE findings (click to open)",
+                                            expanded=False)
+        with p_sz_col:
+            pr_cc = st.text_input("PROSTATE size (cc)", key="pr_cc",
+                                  placeholder="PROSTATE cc",
+                                  label_visibility="collapsed")
+        with prostate_expander:
+            pr_status = st.radio("Status",
+                                 ["normal", "borderline", "bulky", "grade1"],
+                                 horizontal=True,
+                                 format_func=lambda x: {"normal": "Normal",
+                                                        "borderline": "Borderline",
+                                                        "bulky": "Bulky",
+                                                        "grade1": "Grade-I BPH"}[x],
+                                 key="pr_status")
+
+    # ------- BOWEL -------
+    with st.expander("BOWEL / FREE FLUID (click to open findings)", expanded=False):
+        bw_ff = st.radio("Free fluid",
+                         ["none", "minimal", "mild", "moderate"],
+                         horizontal=True, key="bw_ff")
+        bw_ln = st.radio("Mesenteric LN", ["none", "present"],
+                         horizontal=True, key="bw_ln")
+
+    # ------- APPENDIX -------
+    with st.expander("APPENDIX (optional) (click to open findings)", expanded=False):
+        ap_status = st.radio("Status",
+                             ["not_assessed", "not_visualized", "normal", "dilated"],
+                             horizontal=True,
+                             format_func=lambda x: x.replace("_", " ").title(),
+                             key="ap_status")
+        ap_d = ""
+        if ap_status in ("normal", "dilated"):
+            ap_d = st.text_input("Diameter (mm)", key="ap_d")
+
+
+# ============================================================
+# Assemble data
+# ============================================================
+
+def parse_calc(text):
+    if not text.strip():
+        return []
+    out = []
+    for part in text.split(","):
+        part = part.strip()
+        tokens = part.replace("mm", " ").split()
+        size, loc = "", "mid"
+        for t in tokens:
+            if t.replace(".", "").isdigit():
+                size = t
+            elif any(p in t.lower() for p in ["upper", "mid", "lower", "pole"]):
+                loc = t
+        out.append({"size_mm": size, "location": loc, "hydro": "none"})
+    return out
+
+
+data = new_report(p_sex)
+data["patient"] = {"name": p_name, "age": p_age, "sex": p_sex,
+                   "date": p_date, "referred_by": p_ref}
+
+data["liver"].update({
+    "size_mm": liver_size, "size_descriptor": liver_status,
+    "outline": liver_outline, "echotexture": liver_echo,
+    "steatosis_grade": liver_steatosis,
+    "focal_lesion": liver_focal, "focal_lesion_text": liver_focal_text,
+    "cyst_count": cyst_count, "cyst_single_lobe": cyst_single_lobe,
+    "cyst_single_size_mm": cyst_single_size_mm,
+    "cyst_few_largest_mm": cyst_few_largest_mm, "cyst_few_lobe": cyst_few_lobe,
+    "hemangioma_count": hemangioma_count,
+    "hemangioma_single_lobe": hemangioma_single_lobe,
+    "hemangioma_single_size_mm": hemangioma_single_size_mm,
+    "hemangioma_few_largest_mm": hemangioma_few_largest_mm,
+    "hemangioma_few_lobe": hemangioma_few_lobe,
+    "abscess_count": abscess_count, "abscess_lesions": abscess_lesions,
+    "ihbr": liver_ihbr, "portal_vein": liver_portal,
+    "portal_vein_mm": liver_portal_mm if liver_portal == "dilated" else "",
+})
+
+data["gall_bladder"].update({
+    "status": gb_status, "wall_thickened": gb_wall_thickened,
+    "wall_mm": gb_wall_mm, "calculi": gb_calculi,
+    "calculi_count": gb_calculi_count, "calculi_size_cat": gb_calculi_size_cat,
+    "calculi_size_mm": gb_calculi_size_mm, "calculi_neck": gb_calculi_neck,
+    "calculi_neck_size_mm": gb_calculi_neck_size_mm, "sludge": gb_sludge,
+    "sludge_ball": gb_sludge_ball, "sludge_ball_count": gb_sludge_ball_count,
+    "sludge_ball_size_mm": gb_sludge_ball_size_mm,
+    "sludge_ball_wall": gb_sludge_ball_wall, "comet_tail": gb_comet_tail,
+    "comet_tail_count": gb_comet_tail_count,
+    "comet_tail_wall": gb_comet_tail_wall,
+    "pericholecystic_fluid": gb_peri_fluid,
+})
+
+data["cbd"].update({
+    "size_mm": cbd_mm, "status": cbd_status, "calculi": cbd_calc,
+    "calculi_count": cbd_calc_count, "calculi_size_mm": cbd_calc_size,
+    "calculi_location": cbd_calc_location, "ihbr": cbd_ihbr,
+})
+
+data["pancreas"]["status"] = pn_status
+data["spleen"].update({"size_mm": sp_size, "size_descriptor": sp_desc})
+data["kidneys"]["right"].update({"status": kd_r_status,
+                                  "calculi": parse_calc(kd_r_calc)})
+data["kidneys"]["left"].update({"status": kd_l_status,
+                                 "calculi": parse_calc(kd_l_calc)})
+data["urinary_bladder"].update({"status": ub_status, "sedimentation": ub_sed})
+
+if p_sex == "F":
+    data["uterus"].update({"status": ut_status, "size": ut_size,
+                           "endometrial_thickness_mm": ut_et})
+    data["ovaries"].update({"right_status": ov_r, "right_size": ov_r_size,
+                            "left_status": ov_l, "left_size": ov_l_size})
+else:
+    data["prostate"].update({"status": pr_status, "size_cc": pr_cc})
+
+data["bowel"].update({"free_fluid": bw_ff, "mesenteric_ln": bw_ln})
+data["appendix"].update({"status": ap_status, "diameter_mm": ap_d})
+
+auto_impression = generate_impression(data, p_sex, p_age)
+data["impression"]["lines"] = auto_impression
+
+
+def render_preview_findings(data):
+    """Preview WITHOUT demographics + disclaimer; findings + impression only."""
+    p = data["patient"]
+    out = []
+    out.append("         ULTRASOUND WHOLE ABDOMEN")
+    out.append("")
+    sex, age = p["sex"], p["age"]
+    age_years = parse_age(age)
+    is_ped = age_years is not None and age_years < 18
+    secs = [liver_sentence(data["liver"], sex, age),
+            gall_bladder_sentence(data["gall_bladder"]),
+            cbd_sentence(data["cbd"]),
+            pancreas_sentence(data["pancreas"]),
+            spleen_sentence(data["spleen"]),
+            kidneys_sentence(data["kidneys"]),
+            urinary_bladder_sentence(data["urinary_bladder"])]
+    if sex == "F":
+        secs.append(uterus_sentence(data["uterus"], pediatric=is_ped))
+        if not is_ped:
+            secs.append(ovaries_sentence(data["ovaries"]))
+    else:
+        secs.append(prostate_sentence(data["prostate"], pediatric=is_ped))
+    secs.append(bowel_sentence(data["bowel"], sex))
+    if data["appendix"]["status"] != "not_assessed":
+        secs.append(appendix_sentence(data["appendix"]))
+    for s in secs:
+        if not s:
+            continue
+        out.append("".join(x[0] for x in s))
+        out.append("")
+    out.append("IMPRESSION:")
+    for line in data["impression"]["lines"]:
+        out.append(f"  - {line}")
+    return "\n".join(out)
+
+
+preview_text = render_preview_findings(data)
+
+
+with col_prev:
+    st.subheader("📄 Live Preview")
+    # Rendered as HTML <pre> block: black bg, white text, word-wrapped.
+    # No text_area means no widget-state caching — updates every rerun.
+    st.markdown(
+        f'<div class="preview-box">{html.escape(preview_text)}</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.subheader("✏️ Impression (editable)")
+    st.caption("Edit any line. Leave blank to use auto-generated impression.")
+    edited_imp = st.text_area("Impression lines (one per line)",
+                              value="\n".join(auto_impression),
+                              height=200, label_visibility="collapsed",
+                              key="impression_box")
+
+    st.markdown("---")
+    c_a, c_b = st.columns(2)
+    with c_a:
+        final_data = dict(data)
+        if edited_imp.strip():
+            final_data["impression"] = {
+                "lines": [ln.strip() for ln in edited_imp.splitlines()
+                          if ln.strip()]
+            }
+        docx_bytes = build_docx_bytes(final_data)
+        fname = f"{p_name or 'report'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+        fname = "".join(ch for ch in fname if ch.isalnum() or ch in "._-")
+        st.download_button(
+            "⬇️ Download .docx", docx_bytes, file_name=fname,
+            mime="application/vnd.openxmlformats-officedocument."
+                 "wordprocessingml.document")
+    with c_b:
+        if st.button("💾 Save to Database", key="save_db_btn"):
+            if not p_name.strip():
+                st.warning("Enter patient name first.")
+            else:
+                final_data = dict(data)
+                if edited_imp.strip():
+                    final_data["impression"] = {
+                        "lines": [ln.strip() for ln in edited_imp.splitlines()
+                                  if ln.strip()]
+                    }
+                save_report(final_data)
+                if p_ref.strip():
+                    add_referrer(p_ref)
+                st.success("Saved to local database.")
