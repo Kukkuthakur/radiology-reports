@@ -6,6 +6,7 @@ import io
 import os
 import re
 import html
+import hashlib
 import sqlite3
 from datetime import datetime
 
@@ -1688,10 +1689,11 @@ with col_find:
                                    expanded=False)
     with col_cbd_sz:
         cbd_mm_num = st.number_input(
-            "CBD caliber mm", min_value=0, max_value=50, value=0, step=1,
+            "CBD caliber mm", min_value=0.0, max_value=50.0, value=0.0,
+            step=0.1, format="%.2f",
             key="cbd_mm_num", label_visibility="collapsed",
             placeholder="CBD mm")
-    cbd_mm = str(int(cbd_mm_num)) if cbd_mm_num > 0 else ""
+    cbd_mm = (f"{cbd_mm_num:g}" if cbd_mm_num > 0 else "")
 
     with cbd_expander:
         cbd_status = st.radio(
@@ -1806,7 +1808,6 @@ with col_find:
     pr_status = "normal"
 
     if p_sex == "F":
-        # UTERUS row: expander + size + endometrium on one line
         u_exp_col, u_sz_col, u_et_col = st.columns(
             [4, 1, 1], vertical_alignment="bottom")
         with u_exp_col:
@@ -1826,7 +1827,6 @@ with col_find:
                                   "operated", "not_visualized"],
                                  horizontal=True, key="ut_status")
 
-        # OVARIES row: expander + Rt Ovary + LT Ovary on one line
         o_exp_col, o_r_col, o_l_col = st.columns(
             [4, 1, 1], vertical_alignment="bottom")
         with o_exp_col:
@@ -2016,8 +2016,6 @@ preview_text = render_preview_findings(data)
 
 with col_prev:
     st.subheader("📄 Live Preview")
-    # Rendered as HTML block: black bg, white text, word-wrapped.
-    # Using st.markdown (not st.text_area) so it refreshes on every rerun.
     _safe = html.escape(preview_text).replace("\n", "<br>")
     st.markdown(
         f'<div class="preview-box">{_safe}</div>',
@@ -2025,11 +2023,39 @@ with col_prev:
     )
 
     st.subheader("✏️ Impression (editable)")
-    st.caption("Edit any line. Leave blank to use auto-generated impression.")
+    st.caption("Edit any line. Auto-updates with findings unless you type here.")
+
+    auto_imp_str = "\n".join(auto_impression)
+
+    def _h(s):
+        return hashlib.md5(s.encode("utf-8")).hexdigest()
+
+    # Initialize session state on first ever run
+    if "_auto_imp_hash" not in st.session_state:
+        st.session_state["impression_box"] = auto_imp_str
+        st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
+        st.session_state["_last_set_content"] = auto_imp_str
+
+    # If the auto impression changed AND the user hasn't manually edited
+    # the box (widget content still equals what we last wrote to it),
+    # refresh the widget content so it reflects the current findings.
+    new_auto_hash = _h(auto_imp_str)
+    if new_auto_hash != st.session_state["_auto_imp_hash"]:
+        cur_widget = st.session_state.get("impression_box", "")
+        if cur_widget == st.session_state["_last_set_content"]:
+            st.session_state["impression_box"] = auto_imp_str
+            st.session_state["_last_set_content"] = auto_imp_str
+        st.session_state["_auto_imp_hash"] = new_auto_hash
+
     edited_imp = st.text_area("Impression lines (one per line)",
-                              value="\n".join(auto_impression),
                               height=200, label_visibility="collapsed",
                               key="impression_box")
+
+    if st.button("↺ Reset to auto-generated impression", key="reset_imp_btn"):
+        st.session_state["impression_box"] = auto_imp_str
+        st.session_state["_last_set_content"] = auto_imp_str
+        st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
+        st.rerun()
 
     st.markdown("---")
     c_a, c_b = st.columns(2)
