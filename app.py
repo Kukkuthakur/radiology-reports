@@ -1,6 +1,6 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v1.0.1-stable
+v1.0.2-stable
 """
 
 import io
@@ -1318,13 +1318,25 @@ st.markdown(
         padding: 8px 12px !important; min-height: 42px !important;
         box-sizing: border-box !important; display: flex !important;
         align-items: center !important;
+        background-color: #ffffff !important;
+    }
+    div[data-testid="stExpander"] details[open] > summary {
+        background-color: #eef2f7 !important;
+        border-bottom: 1px solid #cfd6dd !important;
     }
     div[data-testid="stExpander"] summary,
-    div[data-testid="stExpander"] summary * {
+    div[data-testid="stExpander"] summary *,
+    div[data-testid="stExpander"] details[open] > summary,
+    div[data-testid="stExpander"] details[open] > summary * {
         color: #111111 !important; font-weight: 600 !important;
         font-size: 14px !important;
         white-space: nowrap !important; overflow: hidden !important;
         text-overflow: ellipsis !important;
+    }
+    div[data-testid="stExpander"] details[open] > summary svg,
+    div[data-testid="stExpander"] details[open] > summary svg path {
+        fill: #111111 !important;
+        stroke: #111111 !important;
     }
     div[data-testid="stExpander"] div[data-testid="stExpanderDetails"],
     div[data-testid="stExpander"] div[data-testid="stExpanderDetails"] * {
@@ -1361,7 +1373,6 @@ st.markdown(
         border: 1px solid #cfd6dd !important;
     }
 
-    /* Live preview block: black bg, white monospace, wrapped */
     .preview-box,
     .stApp .preview-box,
     .stApp .preview-box * {
@@ -1382,7 +1393,6 @@ st.markdown(
         display: block !important;
     }
 
-    /* Impression editor: black bg, white text */
     .st-key-impression_box textarea,
     div[class*="st-key-impression_box"] textarea {
         background-color: #000000 !important;
@@ -1685,9 +1695,6 @@ with col_find:
     # ------- CBD -------
     col_cbd_main, col_cbd_sz = st.columns([5, 1],
                                           vertical_alignment="bottom")
-    with col_cbd_main:
-        cbd_expander = st.expander("COMMON BILE DUCT findings (click to open)",
-                                   expanded=False)
     with col_cbd_sz:
         cbd_mm_num = st.number_input(
             "CBD caliber mm", min_value=0.0, max_value=50.0, value=None,
@@ -1696,45 +1703,47 @@ with col_find:
             placeholder="CBD mm")
     cbd_mm = (f"{cbd_mm_num:g}" if (cbd_mm_num and cbd_mm_num > 0) else "")
 
-    with cbd_expander:
-        cbd_status = st.radio(
-            "Status", ["normal", "proximal", "dilated"], horizontal=True,
-            format_func=lambda x: {"normal": "Normal",
-                                   "proximal": "Proximally dilated",
-                                   "dilated": "Dilated throughout"}[x],
-            key="cbd_status")
-
-        cbd_calc = False
-        cbd_calc_count = "single"
-        cbd_calc_size = ""
-        cbd_calc_location = "distal"
-        cbd_ihbr = "normal"
-
-        cbd_calc = st.checkbox("Calculus in CBD", key="cbd_calc")
-        if cbd_calc:
-            c_a, c_b = st.columns(2)
-            with c_a:
-                cbd_calc_count = st.radio(
-                    "Count", ["single", "few"], horizontal=True,
-                    format_func=lambda x: x.title(), key="cbd_calc_count")
-            with c_b:
-                cbd_calc_size = st.text_input("Size (mm, largest if few)",
-                                              key="cbd_calc_size")
-            cbd_calc_location = st.radio(
-                "Location", ["proximal", "mid", "distal", "mid_distal"],
-                horizontal=True,
-                format_func=lambda x: {"proximal": "Proximal", "mid": "Mid",
-                                       "distal": "Distal",
-                                       "mid_distal": "Mid/Distal"}[x],
-                key="cbd_calc_location")
-
-        if cbd_status in ("proximal", "dilated") or cbd_calc:
-            cbd_ihbr = st.radio(
-                "IHBR", ["normal", "proximal", "dilated"], horizontal=True,
+    with col_cbd_main:
+        with st.expander("COMMON BILE DUCT findings (click to open)",
+                         expanded=False):
+            cbd_status = st.radio(
+                "Status", ["normal", "proximal", "dilated"], horizontal=True,
                 format_func=lambda x: {"normal": "Normal",
                                        "proximal": "Proximally dilated",
-                                       "dilated": "Dilated"}[x],
-                key="cbd_ihbr")
+                                       "dilated": "Dilated throughout"}[x],
+                key="cbd_status")
+
+            cbd_calc = False
+            cbd_calc_count = "single"
+            cbd_calc_size = ""
+            cbd_calc_location = "distal"
+            cbd_ihbr = "normal"
+
+            cbd_calc = st.checkbox("Calculus in CBD", key="cbd_calc")
+            if cbd_calc:
+                c_a, c_b = st.columns(2)
+                with c_a:
+                    cbd_calc_count = st.radio(
+                        "Count", ["single", "few"], horizontal=True,
+                        format_func=lambda x: x.title(), key="cbd_calc_count")
+                with c_b:
+                    cbd_calc_size = st.text_input("Size (mm, largest if few)",
+                                                  key="cbd_calc_size")
+                cbd_calc_location = st.radio(
+                    "Location", ["proximal", "mid", "distal", "mid_distal"],
+                    horizontal=True,
+                    format_func=lambda x: {"proximal": "Proximal", "mid": "Mid",
+                                           "distal": "Distal",
+                                           "mid_distal": "Mid/Distal"}[x],
+                    key="cbd_calc_location")
+
+            if cbd_status in ("proximal", "dilated") or cbd_calc:
+                cbd_ihbr = st.radio(
+                    "IHBR", ["normal", "proximal", "dilated"], horizontal=True,
+                    format_func=lambda x: {"normal": "Normal",
+                                           "proximal": "Proximally dilated",
+                                           "dilated": "Dilated"}[x],
+                    key="cbd_ihbr")
 
     # ------- PANCREAS -------
     with st.expander("PANCREAS (click to open findings)", expanded=False):
