@@ -915,11 +915,6 @@ def appendix_sentence(d):
 # IMPRESSION GENERATOR
 # ============================================================
 
-def _caps(text):
-    """Return text as all caps except preserve 'Adv-' part in mixed case."""
-    return text
-
-
 def generate_impression(d, sex, age):
     lines = []
     age_years = parse_age(age)
@@ -1297,134 +1292,76 @@ def build_docx_bytes(data):
 
 
 # ============================================================
-# BACKGROUND IMAGE CSS
-# ============================================================
-
-BACKGROUND_IMAGE_URL = "background.jpg"  # placed alongside app.py in repo
-
-# Use raw GitHub URL for reliability
-# If your repo is at github.com/Kukkuthakur/radiology-reports (main branch),
-# the raw URL is:
-# https://raw.githubusercontent.com/Kukkuthakur/radiology-reports/main/background.jpg
-
-RAW_BG_URL = ("https://raw.githubusercontent.com/Kukkuthakur/"
-              "radiology-reports/main/background.jpg")
-
-
-# ============================================================
 # STREAMLIT UI
 # ============================================================
 
-st.set_page_config(page_title="Radiology Report Generator", layout="wide")
+st.set_page_config(page_title="PG Imaging & Diagnostics", layout="wide")
 init_db()
 
-# ---- Background image + hidden Streamlit chrome + readable content ----
 st.markdown(
-    f"""
+    """
     <style>
-    /* Page background image */
-    .stApp {{
-        background-image: url('{RAW_BG_URL}');
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
-        background-repeat: no-repeat;
-    }}
+    /* Hide Streamlit chrome */
+    #MainMenu {visibility: hidden;}
+    header[data-testid="stHeader"] {visibility: hidden; height: 0;}
+    footer {visibility: hidden;}
 
-    /* Hide Streamlit's top menu / toolbar */
-    #MainMenu {{visibility: hidden;}}
-    header[data-testid="stHeader"] {{visibility: hidden; height: 0;}}
-    footer {{visibility: hidden;}}
-
-    /* Force dark text everywhere on the page */
-    .stApp, .stApp p, .stApp label, .stApp span,
-    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
-    .stApp div[data-testid="stMarkdownContainer"],
-    .stApp div[data-testid="stWidgetLabel"] {{
-        color: #111111 !important;
-    }}
-
-    /* Main title: white so it pops on the dark background */
-    h1 {{
-        color: #ffffff !important;
-        text-shadow: 0 2px 6px rgba(0,0,0,0.6);
-    }}
-
-    /* Sub-headers (Findings, Live Preview, Impression) in white */
-    h2, h3 {{
-        color: #ffffff !important;
-        text-shadow: 0 2px 6px rgba(0,0,0,0.6);
-    }}
-
-    /* Expander headers: dark text on white background */
-    div[data-testid="stExpander"] {{
-        background-color: rgba(255, 255, 255, 0.98) !important;
+    /* Expander card look */
+    div[data-testid="stExpander"] {
+        background-color: #ffffff;
         border-radius: 8px;
         border: 1px solid #cccccc;
         margin-bottom: 6px;
-    }}
-    div[data-testid="stExpander"] summary,
-    div[data-testid="stExpander"] summary * {{
-        color: #111111 !important;
-        font-weight: 600;
-    }}
-    div[data-testid="stExpander"] div[data-testid="stExpanderDetails"] * {{
-        color: #111111 !important;
-    }}
+    }
 
-    /* Text inputs and number inputs: white background, dark text */
-    .stTextInput input,
-    .stNumberInput input,
-    .stTextArea textarea,
-    .stSelectbox div[data-baseweb="select"] > div,
-    .stMultiSelect div[data-baseweb="select"] > div {{
+    /* ---- LIVE PREVIEW: black bg, white text ---- */
+    .st-key-preview_box textarea {
+        background-color: #000000 !important;
+        color: #ffffff !important;
+        font-family: 'Consolas', 'Menlo', 'Courier New', monospace !important;
+        font-size: 13px !important;
+        line-height: 1.45 !important;
+        border: 1px solid #333 !important;
+    }
+
+    /* ---- Impression editor: white bg, dark text ---- */
+    .st-key-impression_box textarea {
         background-color: #ffffff !important;
         color: #111111 !important;
-    }}
-    .stTextInput input::placeholder,
-    .stNumberInput input::placeholder,
-    .stTextArea textarea::placeholder {{
-        color: #888888 !important;
-    }}
+        font-family: 'Consolas', 'Menlo', 'Courier New', monospace !important;
+        font-size: 13px !important;
+    }
 
-    /* Radio buttons and checkbox labels */
-    .stRadio label, .stRadio span,
-    .stCheckbox label, .stCheckbox span {{
-        color: #111111 !important;
-    }}
-
-    /* Success / info / warning messages */
-    div[data-testid="stAlert"] * {{
-        color: #111111 !important;
-    }}
-
-    /* Caption text */
-    .stCaption, div[data-testid="stCaptionContainer"] {{
-        color: #dddddd !important;
-    }}
-
-    /* Divider lines: keep them subtle on dark bg */
-    hr {{
-        border-color: rgba(255,255,255,0.3) !important;
-    }}
-
-    /* Buttons stay readable */
-    .stButton button {{
-        background-color: #ffffff !important;
-        color: #111111 !important;
-        border: 1px solid #cccccc !important;
-    }}
-    .stDownloadButton button {{
-        background-color: #ffffff !important;
-        color: #111111 !important;
-        border: 1px solid #cccccc !important;
-    }}
+    /* Header block */
+    .pg-title {
+        text-align: center;
+        margin: 0 0 0.15rem 0;
+        padding: 0;
+        color: #1F4E79;
+        font-weight: 700;
+        font-size: 2rem;
+        letter-spacing: 0.5px;
+    }
+    .pg-tagline {
+        text-align: center;
+        margin: 0 0 1.2rem 0;
+        padding: 0;
+        color: #555;
+        font-style: italic;
+        font-size: 1.05rem;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.title("USG Whole Abdomen — Report Generator")
+st.markdown(
+    """
+    <div class="pg-title">PG Imaging &amp; Diagnostics</div>
+    <div class="pg-tagline">Precision Imaging. Trusted Diagnostics. Agra.</div>
+    """,
+    unsafe_allow_html=True,
+)
 
 with st.container():
     c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 2, 3])
@@ -1453,11 +1390,14 @@ with col_find:
     is_pediatric_top = age_years_top is not None and age_years_top < 18
 
     # ------- LIVER -------
-    hdr_l, hdr_sz = st.columns([3, 1])
-    with hdr_sz:
+    col_liver_main, col_liver_sz = st.columns([4, 1])
+    with col_liver_sz:
         liver_size_num = st.number_input(
             "LIVER size (mm)", min_value=0, max_value=500, value=0, step=1,
-            key="liver_size_num", label_visibility="visible")
+            key="liver_size_num")
+    with col_liver_main:
+        liver_expander = st.expander("LIVER findings (click to open)",
+                                     expanded=False)
     liver_size = str(int(liver_size_num)) if liver_size_num > 0 else ""
     liver_status = auto_classify_liver(liver_size_num, p_age, p_sex)
     if liver_size_num > 0:
@@ -1468,7 +1408,7 @@ with col_find:
         else:
             st.warning(f"→ Liver: **{LIVER_STATUS_LABELS[liver_status]}**")
 
-    with st.expander("LIVER findings (click to open)", expanded=False):
+    with liver_expander:
         liver_outline = "normal"
         liver_echo = "normal"
         liver_steatosis = None
@@ -1701,14 +1641,17 @@ with col_find:
             key="gb_peri_fluid")
 
     # ------- CBD -------
-    hdr_c_l, hdr_c_sz = st.columns([3, 1])
-    with hdr_c_sz:
+    col_cbd_main, col_cbd_sz = st.columns([4, 1])
+    with col_cbd_sz:
         cbd_mm_num = st.number_input(
             "CBD caliber (mm)", min_value=0, max_value=50, value=0, step=1,
             key="cbd_mm_num")
+    with col_cbd_main:
+        cbd_expander = st.expander("COMMON BILE DUCT findings (click to open)",
+                                   expanded=False)
     cbd_mm = str(int(cbd_mm_num)) if cbd_mm_num > 0 else ""
 
-    with st.expander("COMMON BILE DUCT findings (click to open)", expanded=False):
+    with cbd_expander:
         cbd_status = st.radio(
             "Status",
             ["normal", "proximal", "dilated"],
@@ -1763,11 +1706,18 @@ with col_find:
                              key="pn_status")
 
     # ------- SPLEEN -------
-    hdr_sp_l, hdr_sp_sz = st.columns([3, 1])
-    with hdr_sp_sz:
+    col_sp_main, col_sp_sz = st.columns([4, 1])
+    with col_sp_sz:
         sp_size_num = st.number_input(
             "SPLEEN size (mm)", min_value=0, max_value=500, value=0, step=1,
             key="spleen_size_num")
+    with col_sp_main:
+        st.markdown(
+            "<div style='padding-top:0.55rem;color:#555;'>"
+            "<b>SPLEEN</b> — size is the only measurement used for this organ."
+            "</div>",
+            unsafe_allow_html=True,
+        )
     sp_size = str(int(sp_size_num)) if sp_size_num > 0 else ""
     sp_desc = auto_classify_spleen(sp_size_num, p_age, p_sex)
     if sp_size_num > 0:
@@ -2027,13 +1977,15 @@ def render_preview(data):
 with col_prev:
     st.subheader("📄 Live Preview")
     st.text_area("Report preview", value=render_preview(data), height=520,
-                 disabled=True, label_visibility="collapsed")
+                 disabled=True, label_visibility="collapsed",
+                 key="preview_box")
 
     st.subheader("✏️ Impression (editable)")
     st.caption("Edit any line. Leave blank to use auto-generated impression.")
     edited_imp = st.text_area("Impression lines (one per line)",
                               value="\n".join(auto_impression),
-                              height=200, label_visibility="collapsed")
+                              height=200, label_visibility="collapsed",
+                              key="impression_box")
 
     st.markdown("---")
     c_a, c_b = st.columns(2)
