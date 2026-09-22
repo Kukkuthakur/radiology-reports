@@ -31,7 +31,7 @@ PAGE_RIGHT_MARGIN = 2.0
 FONT_BODY = "Calibri"
 FONT_SIZE_BODY = 11
 FONT_SIZE_TITLE = 13
-FONT_SIZE_DISCLAIMER = 7
+FONT_SIZE_DISCLAIMER = 8
 
 TITLE_COLOR = RGBColor(0x1F, 0x4E, 0x79)
 
@@ -1266,6 +1266,8 @@ def build_docx_bytes(data):
     cell = disc_table.cell(0, 0)
     cell.text = ""
     para = cell.paragraphs[0]
+    para.paragraph_format.space_before = Pt(0)
+    para.paragraph_format.space_after = Pt(0)
     _add_run(para, DISCLAIMER_TEXT, bold=True, size=FONT_SIZE_DISCLAIMER)
 
     buf = io.BytesIO()
@@ -1283,7 +1285,6 @@ init_db()
 st.markdown(
     """
     <style>
-    /* Force light color scheme regardless of browser dark mode */
     :root { color-scheme: light !important; }
 
     #MainMenu {visibility: hidden;}
@@ -1294,14 +1295,12 @@ st.markdown(
         background-color: #f4f6f9 !important;
     }
 
-    /* All default text dark */
     .stApp, .stApp p, .stApp label, .stApp span, .stApp div,
     .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
     .stApp li {
         color: #111111 !important;
     }
 
-    /* Header block */
     .pg-title {
         text-align: center;
         margin: 0 0 0.15rem 0;
@@ -1320,7 +1319,6 @@ st.markdown(
         font-size: 1.05rem;
     }
 
-    /* Prevent column stacking on mobile/tablet */
     @media (max-width: 900px) {
         div[data-testid="stHorizontalBlock"] {
             flex-wrap: nowrap !important;
@@ -1331,14 +1329,13 @@ st.markdown(
         }
     }
 
-    /* Column contents bottom-aligned */
     div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
         display: flex !important;
         flex-direction: column !important;
         justify-content: flex-end !important;
     }
 
-    /* Expander: compact, uniform height */
+    /* Expander */
     div[data-testid="stExpander"] {
         background-color: #ffffff !important;
         border: 1px solid #cfd6dd !important;
@@ -1392,26 +1389,26 @@ st.markdown(
         background-color: #ffffff !important;
         color: #111111 !important;
         border: 1px solid #cfd6dd !important;
+        min-height: 42px !important;
+        box-sizing: border-box !important;
     }
     .stTextInput input::placeholder,
     .stTextArea textarea::placeholder {
         color: #888 !important;
     }
 
-    /* Radio / checkbox labels */
     .stRadio label, .stRadio span,
     .stCheckbox label, .stCheckbox span {
         color: #111111 !important;
     }
 
-    /* Buttons */
     .stButton button, .stDownloadButton button {
         background-color: #ffffff !important;
         color: #111111 !important;
         border: 1px solid #cfd6dd !important;
     }
 
-    /* Live preview: black bg, white monospace text */
+    /* Live preview: black bg, white monospace text, wrapping enabled */
     .st-key-preview_box textarea,
     div[class*="st-key-preview_box"] textarea {
         background-color: #000000 !important;
@@ -1420,18 +1417,23 @@ st.markdown(
         font-size: 12.5px !important;
         line-height: 1.45 !important;
         border: 1px solid #333 !important;
-        white-space: pre !important;
-        overflow: auto !important;
+        white-space: pre-wrap !important;
+        word-wrap: break-word !important;
+        overflow-wrap: anywhere !important;
+        overflow-x: hidden !important;
     }
 
-    /* Impression editor: white bg, dark text */
+    /* Impression editor: black bg, white text */
     .st-key-impression_box textarea,
     div[class*="st-key-impression_box"] textarea {
-        background-color: #ffffff !important;
-        color: #111111 !important;
+        background-color: #000000 !important;
+        color: #ffffff !important;
         font-family: Consolas, Menlo, 'Courier New', monospace !important;
         font-size: 12.5px !important;
-        border: 1px solid #cfd6dd !important;
+        border: 1px solid #333 !important;
+        white-space: pre-wrap !important;
+        word-wrap: break-word !important;
+        overflow-wrap: anywhere !important;
     }
     </style>
     """,
@@ -1861,266 +1863,28 @@ with col_find:
     pr_status = "normal"
 
     if p_sex == "F":
-        hdr_u_l, hdr_u_sz1, hdr_u_sz2 = st.columns([3, 1, 1],
-                                                   vertical_alignment="bottom")
-        with hdr_u_sz1:
+        # UTERUS row: expander + size + endometrium all on one line
+        u_exp_col, u_sz_col, u_et_col = st.columns(
+            [4, 1, 1], vertical_alignment="bottom")
+        with u_exp_col:
+            uterus_expander = st.expander("UTERUS findings (click to open)",
+                                          expanded=False)
+        with u_sz_col:
             ut_size = st.text_input("UTERUS size (mm)", key="ut_size",
-                                    placeholder="e.g. 72X25")
-        with hdr_u_sz2:
-            ut_et = st.text_input("Endometrium (mm)", key="ut_et")
-        with st.expander("UTERUS findings (click to open)", expanded=False):
+                                    placeholder="UTERUS mm",
+                                    label_visibility="collapsed")
+        with u_et_col:
+            ut_et = st.text_input("Endometrium (mm)", key="ut_et",
+                                  placeholder="Endometrium",
+                                  label_visibility="collapsed")
+        with uterus_expander:
             ut_status = st.radio("Status",
                                  ["anteverted", "retroverted", "bulky",
                                   "operated", "not_visualized"],
                                  horizontal=True, key="ut_status")
 
-        hdr_o_l, hdr_o_r, hdr_o_lft = st.columns([3, 1, 1],
-                                                 vertical_alignment="bottom")
-        with hdr_o_r:
-            ov_r_size = st.text_input("Rt Ovary (mm)", key="ov_r_size")
-        with hdr_o_lft:
-            ov_l_size = st.text_input("LT Ovary (mm)", key="ov_l_size")
-        with st.expander("OVARIES findings (click to open)", expanded=False):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**Right Ovary**")
-                ov_r = st.radio("Status", ["normal", "cyst", "not_visualized"],
-                                horizontal=True, key="ov_r_status")
-            with c2:
-                st.markdown("**Left Ovary**")
-                ov_l = st.radio("Status", ["normal", "cyst", "not_visualized"],
-                                horizontal=True, key="ov_l_status")
-    else:
-        hdr_p_l, hdr_p_sz = st.columns([3, 1],
-                                       vertical_alignment="bottom")
-        with hdr_p_sz:
-            pr_cc = st.text_input("PROSTATE size (cc)", key="pr_cc")
-        with st.expander("PROSTATE findings (click to open)", expanded=False):
-            pr_status = st.radio("Status",
-                                 ["normal", "borderline", "bulky", "grade1"],
-                                 horizontal=True,
-                                 format_func=lambda x: {"normal": "Normal",
-                                                        "borderline": "Borderline",
-                                                        "bulky": "Bulky",
-                                                        "grade1": "Grade-I BPH"}[x],
-                                 key="pr_status")
-
-    # ------- BOWEL -------
-    with st.expander("BOWEL / FREE FLUID (click to open findings)",
-                     expanded=False):
-        bw_ff = st.radio("Free fluid",
-                         ["none", "minimal", "mild", "moderate"],
-                         horizontal=True, key="bw_ff")
-        bw_ln = st.radio("Mesenteric LN", ["none", "present"],
-                         horizontal=True, key="bw_ln")
-
-    # ------- APPENDIX -------
-    with st.expander("APPENDIX (optional) (click to open findings)",
-                     expanded=False):
-        ap_status = st.radio("Status",
-                             ["not_assessed", "not_visualized", "normal", "dilated"],
-                             horizontal=True,
-                             format_func=lambda x: x.replace("_", " ").title(),
-                             key="ap_status")
-        ap_d = ""
-        if ap_status in ("normal", "dilated"):
-            ap_d = st.text_input("Diameter (mm)", key="ap_d")
-
-
-# ============================================================
-# Assemble data
-# ============================================================
-
-def parse_calc(text):
-    if not text.strip():
-        return []
-    out = []
-    for part in text.split(","):
-        part = part.strip()
-        tokens = part.replace("mm", " ").split()
-        size, loc = "", "mid"
-        for t in tokens:
-            if t.replace(".", "").isdigit():
-                size = t
-            elif any(p in t.lower() for p in ["upper", "mid", "lower", "pole"]):
-                loc = t
-        out.append({"size_mm": size, "location": loc, "hydro": "none"})
-    return out
-
-
-data = new_report(p_sex)
-data["patient"] = {"name": p_name, "age": p_age, "sex": p_sex,
-                   "date": p_date, "referred_by": p_ref}
-
-data["liver"].update({
-    "size_mm": liver_size, "size_descriptor": liver_status,
-    "outline": liver_outline, "echotexture": liver_echo,
-    "steatosis_grade": liver_steatosis,
-    "focal_lesion": liver_focal, "focal_lesion_text": liver_focal_text,
-    "cyst_count": cyst_count, "cyst_single_lobe": cyst_single_lobe,
-    "cyst_single_size_mm": cyst_single_size_mm,
-    "cyst_few_largest_mm": cyst_few_largest_mm, "cyst_few_lobe": cyst_few_lobe,
-    "hemangioma_count": hemangioma_count,
-    "hemangioma_single_lobe": hemangioma_single_lobe,
-    "hemangioma_single_size_mm": hemangioma_single_size_mm,
-    "hemangioma_few_largest_mm": hemangioma_few_largest_mm,
-    "hemangioma_few_lobe": hemangioma_few_lobe,
-    "abscess_count": abscess_count, "abscess_lesions": abscess_lesions,
-    "ihbr": liver_ihbr, "portal_vein": liver_portal,
-    "portal_vein_mm": liver_portal_mm if liver_portal == "dilated" else "",
-})
-
-data["gall_bladder"].update({
-    "status": gb_status,
-    "wall_thickened": gb_wall_thickened,
-    "wall_mm": gb_wall_mm,
-    "calculi": gb_calculi,
-    "calculi_count": gb_calculi_count,
-    "calculi_size_cat": gb_calculi_size_cat,
-    "calculi_size_mm": gb_calculi_size_mm,
-    "calculi_neck": gb_calculi_neck,
-    "calculi_neck_size_mm": gb_calculi_neck_size_mm,
-    "sludge": gb_sludge,
-    "sludge_ball": gb_sludge_ball,
-    "sludge_ball_count": gb_sludge_ball_count,
-    "sludge_ball_size_mm": gb_sludge_ball_size_mm,
-    "sludge_ball_wall": gb_sludge_ball_wall,
-    "comet_tail": gb_comet_tail,
-    "comet_tail_count": gb_comet_tail_count,
-    "comet_tail_wall": gb_comet_tail_wall,
-    "pericholecystic_fluid": gb_peri_fluid,
-})
-
-data["cbd"].update({
-    "size_mm": cbd_mm,
-    "status": cbd_status,
-    "calculi": cbd_calc,
-    "calculi_count": cbd_calc_count,
-    "calculi_size_mm": cbd_calc_size,
-    "calculi_location": cbd_calc_location,
-    "ihbr": cbd_ihbr,
-})
-
-data["pancreas"]["status"] = pn_status
-data["spleen"].update({"size_mm": sp_size, "size_descriptor": sp_desc})
-data["kidneys"]["right"].update({"status": kd_r_status,
-                                  "calculi": parse_calc(kd_r_calc)})
-data["kidneys"]["left"].update({"status": kd_l_status,
-                                 "calculi": parse_calc(kd_l_calc)})
-data["urinary_bladder"].update({"status": ub_status, "sedimentation": ub_sed})
-
-if p_sex == "F":
-    data["uterus"].update({"status": ut_status, "size": ut_size,
-                           "endometrial_thickness_mm": ut_et})
-    data["ovaries"].update({"right_status": ov_r, "right_size": ov_r_size,
-                            "left_status": ov_l, "left_size": ov_l_size})
-else:
-    data["prostate"].update({"status": pr_status, "size_cc": pr_cc})
-
-data["bowel"].update({"free_fluid": bw_ff, "mesenteric_ln": bw_ln})
-data["appendix"].update({"status": ap_status, "diameter_mm": ap_d})
-
-auto_impression = generate_impression(data, p_sex, p_age)
-data["impression"]["lines"] = auto_impression
-
-
-def render_preview(data):
-    p = data["patient"]
-    out = []
-    out.append(f"NAME :- {p['name']}               DATE :- {p['date']}")
-    out.append(f"AGE/SEX :- {p['age']}Y/{p['sex']}          REF. BY: "
-               f"{p['referred_by']}")
-    out.append("")
-    out.append("         ULTRASOUND WHOLE ABDOMEN")
-    out.append("")
-    sex, age = p["sex"], p["age"]
-    age_years = parse_age(age)
-    is_ped = age_years is not None and age_years < 18
-    secs = [liver_sentence(data["liver"], sex, age),
-            gall_bladder_sentence(data["gall_bladder"]),
-            cbd_sentence(data["cbd"]),
-            pancreas_sentence(data["pancreas"]),
-            spleen_sentence(data["spleen"]),
-            kidneys_sentence(data["kidneys"]),
-            urinary_bladder_sentence(data["urinary_bladder"])]
-    if sex == "F":
-        secs.append(uterus_sentence(data["uterus"], pediatric=is_ped))
-        if not is_ped:
-            secs.append(ovaries_sentence(data["ovaries"]))
-    else:
-        secs.append(prostate_sentence(data["prostate"], pediatric=is_ped))
-    secs.append(bowel_sentence(data["bowel"], sex))
-    if data["appendix"]["status"] != "not_assessed":
-        secs.append(appendix_sentence(data["appendix"]))
-    for s in secs:
-        if not s:
-            continue
-        out.append("".join(x[0] for x in s))
-        out.append("")
-    out.append("IMPRESSION:")
-    for line in data["impression"]["lines"]:
-        out.append(f"  - {line}")
-    out.append("")
-    out.append(DISCLAIMER_TEXT)
-    return "\n".join(out)
-
-
-preview_text = render_preview(data)
-
-
-def compute_preview_height(text, line_px=19, pad_px=40, min_h=400, max_h=2400):
-    """Estimate a textarea height (in pixels) that fits all lines without scroll."""
-    # Count rendered lines after word-wrap (approx 100 chars per line at ~13px in a ~500px wide box)
-    total = 0
-    for raw_line in text.split("\n"):
-        # Wrap long lines to 100 chars
-        n = max(1, -(-len(raw_line) // 100))
-        total += n
-    return max(min_h, min(max_h, total * line_px + pad_px))
-
-
-with col_prev:
-    st.subheader("📄 Live Preview")
-    st.text_area("Report preview", value=preview_text,
-                 height=compute_preview_height(preview_text),
-                 disabled=True, label_visibility="collapsed",
-                 key="preview_box")
-
-    st.subheader("✏️ Impression (editable)")
-    st.caption("Edit any line. Leave blank to use auto-generated impression.")
-    edited_imp = st.text_area("Impression lines (one per line)",
-                              value="\n".join(auto_impression),
-                              height=200, label_visibility="collapsed",
-                              key="impression_box")
-
-    st.markdown("---")
-    c_a, c_b = st.columns(2)
-    with c_a:
-        final_data = dict(data)
-        if edited_imp.strip():
-            final_data["impression"] = {
-                "lines": [ln.strip() for ln in edited_imp.splitlines()
-                          if ln.strip()]
-            }
-        docx_bytes = build_docx_bytes(final_data)
-        fname = f"{p_name or 'report'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-        fname = "".join(ch for ch in fname if ch.isalnum() or ch in "._-")
-        st.download_button(
-            "⬇️ Download .docx", docx_bytes, file_name=fname,
-            mime="application/vnd.openxmlformats-officedocument."
-                 "wordprocessingml.document")
-    with c_b:
-        if st.button("💾 Save to Database", key="save_db_btn"):
-            if not p_name.strip():
-                st.warning("Enter patient name first.")
-            else:
-                final_data = dict(data)
-                if edited_imp.strip():
-                    final_data["impression"] = {
-                        "lines": [ln.strip() for ln in edited_imp.splitlines()
-                                  if ln.strip()]
-                    }
-                save_report(final_data)
-                if p_ref.strip():
-                    add_referrer(p_ref)
-                st.success("Saved to local database.")
+        # OVARIES row: expander + Rt Ovary + LT Ovary on one line
+        o_exp_col, o_r_col, o_l_col = st.columns(
+            [4, 1, 1], vertical_alignment="bottom")
+        with o_exp_col:
+            ovaries_expander
