@@ -1,13 +1,14 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v1.1.0-stable
+v1.2.0
 
 Progress:
-- Liver, Gall Bladder, CBD: complete (per rules defined)
-- Pancreas: Normal + Early/evolving + Acute (Walled-off necrosis, Pseudocyst, Chronic to come)
-- Other organs: v1.0.2 baseline
+- Liver, Gall Bladder, CBD: complete
+- Pancreas: Normal + Early/evolving + Acute
+- Fixes applied: combined fat+fluid, steato-hepatitis spelling, liver combination,
+  acute pancreatitis bowel/ascites handling, text wrapping
 
-Walled-off necrosis, pancreatic pseudocyst, chronic pancreatitis: tomorrow.
+Walled-off necrosis, pancreatic pseudocyst, chronic pancreatitis: pending.
 """
 
 import io
@@ -270,20 +271,17 @@ def new_report(sex="F"):
         "cbd": {"size_mm": "", "status": "normal", "calculi": False,
                 "calculi_count": "single", "calculi_size_mm": "",
                 "calculi_location": "distal", "ihbr": "normal"},
-        # ---- PANCREAS ----
         "pancreas": {
-            "status": "normal",  # normal / early_evolving / acute
-            # early/evolving fields
-            "ee_size": "normal",             # normal / mildly_bulky
+            "status": "normal",
+            "ee_size": "normal",
             "ee_fat_stranding": False,
-            "ee_fat_location": "none",       # head_neck / body / neck_body / perisplenic / none
+            "ee_fat_location": "none",
             "ee_free_fluid": False,
-            "ee_fluid_location": "none",     # same options
-            # acute fields
-            "ac_size": "normal",             # normal / bulky
-            "ac_echo": "normal",             # normal / hypoechoic
-            "ac_echo_location": "none",      # head_neck / body / none
-            "ac_margins": "normal",          # normal / irregular
+            "ee_fluid_location": "none",
+            "ac_size": "normal",
+            "ac_echo": "normal",
+            "ac_echo_location": "none",
+            "ac_margins": "normal",
         },
         "spleen": {"size_mm": "", "size_descriptor": "normal", "portal_vein_mm": ""},
         "kidneys": {
@@ -614,7 +612,6 @@ def pancreas_sentence(d):
         fat_loc = d.get("ee_fat_location", "none")
         fluid_loc = d.get("ee_fluid_location", "none")
 
-        # Base sentence
         if ee_size == "mildly_bulky":
             s.append(seg(" is "))
             s.append(seg("mildly bulky in size", True))
@@ -631,7 +628,21 @@ def pancreas_sentence(d):
             "none": "",
         }
 
-        if fat:
+        # Combined fat + fluid
+        if fat and fluid:
+            loc = loc_phrase_map.get(fat_loc, "")
+            if fat_loc == "perisplenic":
+                s.append(seg(" "))
+                s.append(seg("Mild peri-splenic fat stranding and free fluid seen.", True))
+            elif loc:
+                s.append(seg(" "))
+                s.append(seg(f"Mild peri-pancreatic fat stranding and free fluid "
+                             f"seen {loc}.", True))
+            else:
+                s.append(seg(" "))
+                s.append(seg("Mild peri-pancreatic fat stranding and free fluid "
+                             "seen.", True))
+        elif fat:
             loc = loc_phrase_map.get(fat_loc, "")
             if fat_loc == "perisplenic":
                 s.append(seg(" "))
@@ -642,8 +653,7 @@ def pancreas_sentence(d):
             else:
                 s.append(seg(" "))
                 s.append(seg("Mild peri-pancreatic fat stranding is seen.", True))
-
-        if fluid:
+        elif fluid:
             loc = loc_phrase_map.get(fluid_loc, "")
             if fluid_loc == "perisplenic":
                 s.append(seg(" "))
@@ -663,7 +673,6 @@ def pancreas_sentence(d):
         ac_echo_loc = d.get("ac_echo_location", "none")
         ac_margins = d.get("ac_margins", "normal")
 
-        # Build base sentence
         if ac_size == "bulky":
             s.append(seg(" is "))
             s.append(seg("bulky in size", True))
@@ -685,7 +694,6 @@ def pancreas_sentence(d):
                 s.append(seg(" with normal echotexture and irregular/fuzzy margins", True))
                 s.append(seg("."))
         else:
-            # Not bulky
             if ac_echo == "normal" and ac_margins == "normal":
                 s.append(seg(" is normal in size, outline and echotexture. No focal "
                              "lesion is seen."))
@@ -708,7 +716,6 @@ def pancreas_sentence(d):
                 s.append(seg("irregular/fuzzy margins", True))
                 s.append(seg("."))
 
-        # Always append
         s.append(seg(" "))
         s.append(seg("Mild to moderate peri-pancreatic fat stranding and mild free "
                      "fluid is seen.", True))
@@ -949,26 +956,30 @@ def prostate_sentence(d, pediatric=False):
     return s
 
 
-def bowel_sentence(d, sex):
+def bowel_sentence(d, sex, pancreas_status="normal"):
+    """If pancreas_status == 'acute', suppress free fluid phrase and append Mild ascites."""
+    acute = (pancreas_status == "acute")
     s = []
     if sex == "F":
         if not d["wall_thickening"]:
             s.append(seg("No obvious bowel wall thickening seen.", True))
         else:
             s.append(seg("Bowel wall thickening seen.", True))
-        s.append(seg(" "))
-        if d["free_fluid"] == "none":
-            s.append(seg("No free fluid seen in the peritoneal cavity."))
-        else:
-            s.append(seg(f"{d['free_fluid'].replace('_', ' ').title()} free fluid seen.",
-                         True))
+        if not acute:
+            s.append(seg(" "))
+            if d["free_fluid"] == "none":
+                s.append(seg("No free fluid seen in the peritoneal cavity."))
+            else:
+                s.append(seg(f"{d['free_fluid'].replace('_', ' ').title()} free fluid seen.",
+                             True))
     else:
-        if d["free_fluid"] == "none":
-            s.append(seg("No free fluid is seen in the peritoneal cavity."))
-        else:
-            s.append(seg(f"{d['free_fluid'].replace('_', ' ').title()} free fluid seen.",
-                         True))
-        s.append(seg(" "))
+        if not acute:
+            if d["free_fluid"] == "none":
+                s.append(seg("No free fluid is seen in the peritoneal cavity."))
+            else:
+                s.append(seg(f"{d['free_fluid'].replace('_', ' ').title()} free fluid seen.",
+                             True))
+            s.append(seg(" "))
         if not d["wall_thickening"]:
             s.append(seg("No obvious bowel wall thickening seen.", True))
         else:
@@ -988,6 +999,8 @@ def bowel_sentence(d, sex):
                 "mild_right": "Mild right pleural effusion is seen",
                 "mild_bilateral": "Trace left & mild right pleural effusion seen"}.get(pe, "")
         s += [seg(" "), seg(text, True), seg(".", True)]
+    if acute:
+        s.append(seg("\nMild ascites is seen.", True))
     return s
 
 
@@ -1026,6 +1039,7 @@ def generate_impression(d, sex, age):
         fat = p.get("ee_fat_stranding", False)
         fluid = p.get("ee_free_fluid", False)
         fat_loc = p.get("ee_fat_location", "none")
+        fluid_loc = p.get("ee_fluid_location", "none")
 
         loc_full = {
             "head_neck": "HEAD AND NECK REGION",
@@ -1034,61 +1048,47 @@ def generate_impression(d, sex, age):
             "perisplenic": "PERI-SPLENIC REGION",
             "none": "",
         }
-        loc_short = {
-            "head_neck": "HEAD AND NECK",
-            "body": "BODY",
-            "neck_body": "NECK AND BODY",
-            "perisplenic": "PERI-SPLENIC",
-            "none": "",
-        }
 
-        # Case C: mildly bulky pancreas, no fat stranding, no fluid
-        if ee_size == "mildly_bulky" and not fat and not fluid:
-            lines.append(
-                "MILDLY BULKY PANCREAS, HOWEVER NO PERI-PANCREATIC FAT STRANDING "
-                "OR FREE FLUID SEEN. ?EARLY / EVOLVING PANCREATITIS. "
-                "Adv- S.Amylase/Lipase Correlation."
-            )
-        elif fat and not fluid and fat_loc != "none":
-            lines.append(
-                f"MILD PERI-PANCREATIC FAT STRANDING SEEN AROUND THE "
-                f"{loc_full[fat_loc]}. ?EARLY / EVOLVING PANCREATITIS. "
-                f"Adv- S.Amylase/Lipase Correlation."
-            )
-        elif fluid and not fat and loc_full.get(p.get('ee_fluid_location', 'none')):
-            fluid_loc = p.get("ee_fluid_location", "none")
+        def tail():
+            return (" ?EARLY / EVOLVING PANCREATITIS. "
+                    "Adv- S.Amylase/Lipase Correlation.")
+
+        if fat and fluid:
+            if fat_loc == "perisplenic":
+                lines.append("MILD PERI-SPLENIC FAT STRANDING & FREE FLUID SEEN."
+                             + tail())
+            elif fat_loc != "none":
+                lines.append(f"MILD PERI-PANCREATIC FAT STRANDING & FREE FLUID SEEN "
+                             f"AROUND THE {loc_full[fat_loc]}." + tail())
+            else:
+                lines.append("MILD PERI-PANCREATIC FAT STRANDING & FREE FLUID SEEN."
+                             + tail())
+        elif fat:
+            if fat_loc == "perisplenic":
+                lines.append("MILD PERI-SPLENIC FAT STRANDING SEEN." + tail())
+            elif fat_loc != "none":
+                lines.append(f"MILD PERI-PANCREATIC FAT STRANDING SEEN AROUND THE "
+                             f"{loc_full[fat_loc]}." + tail())
+            else:
+                lines.append("MILD PERI-PANCREATIC FAT STRANDING SEEN." + tail())
+        elif fluid:
             if fluid_loc == "perisplenic":
-                lines.append(
-                    "MILD FREE FLUID SEEN IN THE PERI-SPLENIC REGION. "
-                    "?EARLY / EVOLVING PANCREATITIS. "
-                    "Adv- S.Amylase/Lipase Correlation."
-                )
+                lines.append("MILD FREE FLUID SEEN IN THE PERI-SPLENIC REGION."
+                             + tail())
+            elif fluid_loc != "none":
+                lines.append(f"MILD PERI-PANCREATIC FREE FLUID SEEN AROUND THE "
+                             f"{loc_full[fluid_loc]}." + tail())
             else:
-                lines.append(
-                    f"MILD PERI-PANCREATIC FREE FLUID SEEN AROUND THE "
-                    f"{loc_full[fluid_loc]}. ?EARLY / EVOLVING PANCREATITIS. "
-                    f"Adv- S.Amylase/Lipase Correlation."
-                )
-        elif ee_size == "mildly_bulky" and (fat or fluid):
-            if fat_loc != "none":
-                loc_phrase = f"AROUND THE {loc_short[fat_loc]} REGION"
+                lines.append("MILD PERI-PANCREATIC FREE FLUID SEEN." + tail())
+
+        if ee_size == "mildly_bulky":
+            if lines and (fat or fluid):
+                last = lines.pop()
+                new_last = "MILDLY BULKY PANCREAS WITH " + last
+                lines.append(new_last)
             else:
-                loc_phrase = ""
-            lines.append(
-                f"MILDLY BULKY PANCREAS WITH MILD FAT STRANDING OR FREE FLUID"
-                f"{' ' + loc_phrase if loc_phrase else ''}. "
-                f"?EARLY / EVOLVING PANCREATITIS. "
-                f"Adv- S.Amylase/Lipase Correlation."
-            )
-        elif fat or fluid:
-            lines.append(
-                "MILD PERI-PANCREATIC FAT STRANDING OR FREE FLUID SEEN. "
-                "?EARLY / EVOLVING PANCREATITIS. "
-                "Adv- S.Amylase/Lipase Correlation."
-            )
-        else:
-            # No findings selected — mildly bulky was already handled, else nothing
-            pass
+                lines.append("MILDLY BULKY PANCREAS, HOWEVER NO PERI-PANCREATIC "
+                             "FAT STRANDING OR FREE FLUID SEEN." + tail())
 
     elif p_status == "acute":
         ac_size = p.get("ac_size", "normal")
@@ -1211,72 +1211,77 @@ def generate_impression(d, sex, age):
         else:
             lines.append("GALL BLADDER ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
 
-    # ---- LIVER ----
+    # ---- LIVER (combined) ----
     liver = d["liver"]
-    liver_line = None
     desc = liver["size_descriptor"]
+    hepatomegaly = None
     if desc == "enlarged_for_age":
-        liver_line = "HEPATOMEGALY FOR AGE"
+        hepatomegaly = "HEPATOMEGALY FOR AGE"
     elif desc != "normal":
-        desc_map = {"borderline": "BORDERLINE HEPATOMEGALY",
-                    "mild": "MILD HEPATOMEGALY",
-                    "moderate": "MODERATE HEPATOMEGALY",
-                    "gross": "GROSS HEPATOMEGALY"}
-        liver_line = desc_map.get(desc, "")
+        dm = {"borderline": "BORDERLINE HEPATOMEGALY",
+              "mild": "MILD HEPATOMEGALY",
+              "moderate": "MODERATE HEPATOMEGALY",
+              "gross": "GROSS HEPATOMEGALY"}
+        hepatomegaly = dm.get(desc, "")
+
+    lf = []
 
     if liver["echotexture"] == "increased":
         grade = liver.get("steatosis_grade") or ""
         if grade == "Severe+++":
-            severe_line = ("SIGNIFICANT FATTY INFILTRATION(SEVERE+++) - "
-                           "SUSPICIOUS FOR NON-ALCOHOLIC STEAT-HEPATITIS.")
-            if liver_line:
-                lines.append(liver_line + ". Adv- LFT Correlation.")
-            lines.append(severe_line + " Adv- LFT Correlation.")
-            liver_line = None
+            lf.append("SIGNIFICANT FATTY INFILTRATION - "
+                      "?NON-ALCOHOLIC STEATO-HEPATITIS")
+        elif grade:
+            lf.append(f"HEPATIC STEATOSIS({grade.upper()})")
         else:
-            steatosis = (f" WITH HEPATIC STEATOSIS({grade.upper()})"
-                         if grade else " WITH HEPATIC STEATOSIS")
-            liver_line = (liver_line + steatosis) if liver_line else (
-                "HEPATIC STEATOSIS" + (f"({grade.upper()})" if grade else ""))
-    if liver_line:
-        lines.append(liver_line + ". Adv- LFT Correlation.")
+            lf.append("HEPATIC STEATOSIS")
 
     fl = liver["focal_lesion"]
-    if fl == "cyst":
+    if fl == "calcified":
+        lf.append("A CALCIFIED FOCUS IN THE RIGHT HEPATIC LOBE")
+    elif fl == "cyst":
         count = liver.get("cyst_count", "single")
         if count == "single":
-            lines.append(f"A SIMPLE HEPATIC CYST IN "
-                         f"{liver.get('cyst_single_lobe', 'right').upper()} LOBE.")
+            lobe = liver.get("cyst_single_lobe", "right").upper()
+            lf.append(f"A SIMPLE HEPATIC CYST IN {lobe} LOBE")
         else:
-            lines.append(f"FEW SIMPLE HEPATIC CYSTS IN "
-                         f"{liver.get('cyst_few_lobe', 'right').upper()} LOBE.")
+            lobe = liver.get("cyst_few_lobe", "right").upper()
+            lf.append(f"FEW SIMPLE HEPATIC CYSTS IN {lobe} LOBE")
     elif fl == "hemangioma":
         count = liver.get("hemangioma_count", "single")
         if count == "single":
-            lines.append(f"A HEPATIC HEMANGIOMA IN "
-                         f"{liver.get('hemangioma_single_lobe', 'right').upper()} LOBE.")
+            lobe = liver.get("hemangioma_single_lobe", "right").upper()
+            lf.append(f"A HEPATIC HEMANGIOMA IN {lobe} LOBE")
         else:
-            lines.append(f"FEW HEPATIC HEMANGIOMAS IN "
-                         f"{liver.get('hemangioma_few_lobe', 'right').upper()} LOBE.")
+            lobe = liver.get("hemangioma_few_lobe", "right").upper()
+            lf.append(f"FEW HEPATIC HEMANGIOMAS IN {lobe} LOBE")
     elif fl == "abscess":
         count = liver.get("abscess_count", "single")
         lesions = liver.get("abscess_lesions", [])
         if lesions:
             if count == "single":
                 l0 = lesions[0]
-                lines.append(f"AN IRREGULAR MARGINATED ILL-DEFINED AVASCULAR SOL SEEN "
-                             f"IN THE LIVER MEASURING VOL= {l0['vol']}CC IN SEGMENT "
-                             f"{l0['segment']} - LIKELY LIVER ABSCESS. "
-                             f"Adv- Lab & Clinical Correlation.")
+                lf.append(f"AN IRREGULAR MARGINATED ILL-DEFINED AVASCULAR SOL IN THE "
+                          f"LIVER MEASURING VOL= {l0['vol']}CC IN SEGMENT "
+                          f"{l0['segment']} - LIKELY LIVER ABSCESS")
             else:
-                parts = [f"VOL= {l['vol']}CC IN SEGMENT {l['segment']}" for l in lesions]
+                parts = [f"VOL= {l['vol']}CC IN SEGMENT {l['segment']}"
+                         for l in lesions]
                 joined = " & ".join(parts)
                 keyword = "FEW" if count == "few" else "MULTIPLE"
-                lines.append(f"{keyword} IRREGULAR MARGINATED ILL-DEFINED AVASCULAR "
-                             f"SOLS SEEN IN THE LIVER, LARGEST OF THESE MEASURING "
-                             f"{joined} - LIKELY LIVER ABSCESSES. "
-                             f"Adv- Lab & Clinical Correlation.")
+                lf.append(f"{keyword} IRREGULAR MARGINATED ILL-DEFINED AVASCULAR SOLS "
+                          f"IN THE LIVER, LARGEST OF THESE MEASURING {joined} - "
+                          f"LIKELY LIVER ABSCESSES")
 
+    if hepatomegaly and lf:
+        lines.append(hepatomegaly + " WITH " + " AND ".join(lf)
+                     + ". Adv- LFT Correlation.")
+    elif hepatomegaly:
+        lines.append(hepatomegaly + ". Adv- LFT Correlation.")
+    elif lf:
+        lines.append(" AND ".join(lf) + ". Adv- LFT Correlation.")
+
+    # ---- SPLEEN ----
     spleen_desc = d["spleen"]["size_descriptor"]
     if spleen_desc == "enlarged_for_age":
         lines.append("SPLENOMEGALY FOR AGE.")
@@ -1310,7 +1315,8 @@ def generate_impression(d, sex, age):
         loc = b["ln_location"].replace("_", " ").upper()
         lines.append(f"MESENTERIC LYMPH NODES IN THE {loc} REGION - ?SIGNIFICANCE. "
                      f"Adv- Lab & Clinical Correlation.")
-    if b["free_fluid"] not in ("none",):
+    # Suppress free fluid impression if acute pancreatitis (mild ascites already mentioned)
+    if p_status != "acute" and b["free_fluid"] not in ("none",):
         lines.append(f"{b['free_fluid'].replace('_', ' ').upper()} FREE FLUID SEEN.")
     if b["pleural_effusion"] != "none":
         lines.append("PLEURAL EFFUSION SEEN - ?ETIOLOGY.")
@@ -1330,7 +1336,7 @@ def generate_impression(d, sex, age):
 
 def _set_table_borders(table, size=6):
     tbl = table._tbl
-    tblPr = tbl.tblPr
+    tblPr = table.tbl.tblPr if False else table._tbl.tblPr
     borders = OxmlElement("w:tblBorders")
     for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
         e = OxmlElement(f"w:{edge}")
@@ -1419,6 +1425,7 @@ def build_docx_bytes(data):
     sex, age = p["sex"], p["age"]
     age_years = parse_age(age)
     is_ped = age_years is not None and age_years < 18
+    p_status = data["pancreas"].get("status", "normal")
 
     sections = [
         liver_sentence(data["liver"], sex, age),
@@ -1435,7 +1442,7 @@ def build_docx_bytes(data):
             sections.append(ovaries_sentence(data["ovaries"]))
     else:
         sections.append(prostate_sentence(data["prostate"], pediatric=is_ped))
-    sections.append(bowel_sentence(data["bowel"], sex))
+    sections.append(bowel_sentence(data["bowel"], sex, pancreas_status=p_status))
     if data["appendix"]["status"] != "not_assessed":
         sections.append(appendix_sentence(data["appendix"]))
 
@@ -1616,6 +1623,7 @@ st.markdown(
         white-space: pre-wrap !important;
         word-wrap: break-word !important;
         overflow-wrap: anywhere !important;
+        word-break: break-word !important;
         margin-bottom: 8px !important;
         display: block !important;
     }
@@ -1631,6 +1639,7 @@ st.markdown(
         white-space: pre-wrap !important;
         word-wrap: break-word !important;
         overflow-wrap: anywhere !important;
+        word-break: break-word !important;
     }
     </style>
     """,
@@ -1983,7 +1992,6 @@ with col_find:
                                    "acute": "Acute pancreatitis"}[x],
             key="pn_status")
 
-        # Defaults
         pn_ee_size = "normal"
         pn_ee_fat = False
         pn_ee_fat_loc = "none"
@@ -2066,7 +2074,8 @@ with col_find:
                 key="pn_ac_margins")
 
             st.caption("Mild to moderate peri-pancreatic fat stranding and mild "
-                       "free fluid are automatically included.")
+                       "free fluid are automatically included. Bowel free-fluid "
+                       "line suppressed; Mild ascites will appear above impression.")
 
     # ------- SPLEEN -------
     col_sp_main, col_sp_sz = st.columns([5, 1], vertical_alignment="bottom")
@@ -2278,7 +2287,6 @@ data["cbd"].update({
     "calculi_location": cbd_calc_location, "ihbr": cbd_ihbr,
 })
 
-# Pancreas
 data["pancreas"].update({
     "status": pn_status,
     "ee_size": pn_ee_size, "ee_fat_stranding": pn_ee_fat,
@@ -2318,6 +2326,7 @@ def render_preview_findings(data):
     sex, age = p["sex"], p["age"]
     age_years = parse_age(age)
     is_ped = age_years is not None and age_years < 18
+    p_status = data["pancreas"].get("status", "normal")
     secs = [liver_sentence(data["liver"], sex, age),
             gall_bladder_sentence(data["gall_bladder"]),
             cbd_sentence(data["cbd"]),
@@ -2331,7 +2340,7 @@ def render_preview_findings(data):
             secs.append(ovaries_sentence(data["ovaries"]))
     else:
         secs.append(prostate_sentence(data["prostate"], pediatric=is_ped))
-    secs.append(bowel_sentence(data["bowel"], sex))
+    secs.append(bowel_sentence(data["bowel"], sex, pancreas_status=p_status))
     if data["appendix"]["status"] != "not_assessed":
         secs.append(appendix_sentence(data["appendix"]))
     for s in secs:
