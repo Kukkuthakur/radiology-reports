@@ -1,12 +1,13 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v1.2.0
+v1.2.1
 
 Progress:
 - Liver, Gall Bladder, CBD: complete
 - Pancreas: Normal + Early/evolving + Acute
-- Fixes applied: combined fat+fluid, steato-hepatitis spelling, liver combination,
-  acute pancreatitis bowel/ascites handling, text wrapping
+- Fixes: combined fat+fluid, steato-hepatitis spelling, liver combination,
+  acute pancreatitis bowel/ascites handling, text wrapping,
+  justify alignment, non-breaking hyphen in STEATO-HEPATITIS
 
 Walled-off necrosis, pancreatic pseudocyst, chronic pancreatitis: pending.
 """
@@ -628,7 +629,6 @@ def pancreas_sentence(d):
             "none": "",
         }
 
-        # Combined fat + fluid
         if fat and fluid:
             loc = loc_phrase_map.get(fat_loc, "")
             if fat_loc == "perisplenic":
@@ -1230,7 +1230,7 @@ def generate_impression(d, sex, age):
         grade = liver.get("steatosis_grade") or ""
         if grade == "Severe+++":
             lf.append("SIGNIFICANT FATTY INFILTRATION - "
-                      "?NON-ALCOHOLIC STEATO-HEPATITIS")
+                      "?NON-ALCOHOLIC STEATO\u2011HEPATITIS")
         elif grade:
             lf.append(f"HEPATIC STEATOSIS({grade.upper()})")
         else:
@@ -1315,7 +1315,6 @@ def generate_impression(d, sex, age):
         loc = b["ln_location"].replace("_", " ").upper()
         lines.append(f"MESENTERIC LYMPH NODES IN THE {loc} REGION - ?SIGNIFICANCE. "
                      f"Adv- Lab & Clinical Correlation.")
-    # Suppress free fluid impression if acute pancreatitis (mild ascites already mentioned)
     if p_status != "acute" and b["free_fluid"] not in ("none",):
         lines.append(f"{b['free_fluid'].replace('_', ' ').upper()} FREE FLUID SEEN.")
     if b["pleural_effusion"] != "none":
@@ -1336,7 +1335,7 @@ def generate_impression(d, sex, age):
 
 def _set_table_borders(table, size=6):
     tbl = table._tbl
-    tblPr = table.tbl.tblPr if False else table._tbl.tblPr
+    tblPr = table._tbl.tblPr
     borders = OxmlElement("w:tblBorders")
     for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
         e = OxmlElement(f"w:{edge}")
@@ -1450,6 +1449,7 @@ def build_docx_bytes(data):
         if not segs:
             continue
         para = doc.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         for text, bold, underline in segs:
             italic = bold and not underline
             if "\n" in text:
@@ -1471,6 +1471,7 @@ def build_docx_bytes(data):
 
     for line in data["impression"]["lines"]:
         para = doc.add_paragraph(style="List Bullet")
+        para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         main, adv = _split_adv(line)
         _add_run(para, main, bold=True)
         if adv:
