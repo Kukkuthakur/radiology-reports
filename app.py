@@ -1,15 +1,13 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v1.2.1
+v1.3.0-stable
 
 Progress:
 - Liver, Gall Bladder, CBD: complete
-- Pancreas: Normal + Early/evolving + Acute
-- Fixes: combined fat+fluid, steato-hepatitis spelling, liver combination,
-  acute pancreatitis bowel/ascites handling, text wrapping,
-  justify alignment, non-breaking hyphen in STEATO-HEPATITIS
-
-Walled-off necrosis, pancreatic pseudocyst, chronic pancreatitis: pending.
+- Pancreas: Normal (default) + Early/evolving + Acute + WON/Pseudocyst + Chronic
+- Bowel line updated: "...bowel wall thickening or lymphadenitis appreciated."
+- Previous fixes: steato-hepatitis, non-breaking hyphen, combined fat+fluid,
+  acute pancreatitis ascites handling, justify alignment, text wrapping
 """
 
 import io
@@ -273,16 +271,28 @@ def new_report(sex="F"):
                 "calculi_count": "single", "calculi_size_mm": "",
                 "calculi_location": "distal", "ihbr": "normal"},
         "pancreas": {
-            "status": "normal",
+            "status": "normal",           # normal / early_evolving / acute / won_pseudocyst / chronic
+            # early/evolving
             "ee_size": "normal",
             "ee_fat_stranding": False,
             "ee_fat_location": "none",
             "ee_free_fluid": False,
             "ee_fluid_location": "none",
+            # acute
             "ac_size": "normal",
             "ac_echo": "normal",
             "ac_echo_location": "none",
             "ac_margins": "normal",
+            # won / pseudocyst
+            "wp_type": "won",             # won / pseudocyst / won_pseudocyst
+            "wp_dims": "",
+            "wp_vol": "",
+            "wp_location": "lesser_sac",  # lesser_sac / overlying_body
+            # chronic
+            "ch_foci": False,
+            "ch_mpd": False,
+            "ch_mpd_size": "",
+            "ch_fat": False,
         },
         "spleen": {"size_mm": "", "size_descriptor": "normal", "portal_vein_mm": ""},
         "kidneys": {
@@ -721,6 +731,78 @@ def pancreas_sentence(d):
                      "fluid is seen.", True))
         return s
 
+    if status == "won_pseudocyst":
+        wp_type = d.get("wp_type", "won")
+        dims = d.get("wp_dims", "")
+        vol = d.get("wp_vol", "")
+        loc = d.get("wp_location", "lesser_sac")
+        loc_phrase = "in the lesser sac" if loc == "lesser_sac" else "overlying the body of the pancreas"
+
+        dims_vol = f"({dims}mm; Vol= {vol}cc)"
+
+        if wp_type == "won":
+            s.append(seg(" is "))
+            s.append(seg("irregularly defined and obscured by a thick-walled collection",
+                         True))
+            s.append(seg(f"{dims_vol} {loc_phrase} with debris within and significant "
+                         f"peripancreatic fat stranding and mild free fluid."))
+        elif wp_type == "pseudocyst":
+            s.append(seg(" appears "))
+            s.append(seg("hypotrophied with irregular margins with a loculated collection",
+                         True))
+            s.append(seg(f"{dims_vol} with clear contents {loc_phrase} and mild "
+                         f"peripancreatic fat stranding with mild free fluid."))
+        else:  # won_pseudocyst
+            s.append(seg(" appears "))
+            s.append(seg("hypotrophied with irregular margins & a loculated mildly thick "
+                         "walled collection", True))
+            s.append(seg(f"{dims_vol} with internal echoes seen {loc_phrase} and mild "
+                         f"peripancreatic fat stranding with mild free fluid."))
+        return s
+
+    if status == "chronic":
+        foci = d.get("ch_foci", False)
+        mpd = d.get("ch_mpd", False)
+        mpd_size = d.get("ch_mpd_size", "")
+        fat = d.get("ch_fat", False)
+
+        # Base sentence
+        s.append(seg(" is "))
+        s.append(seg("poorly defined and appears hypotrophied", True))
+
+        # Combinations
+        if foci and mpd and fat:
+            s.append(seg(", studded with foci of calcification and dilated MPD"
+                         f"(upto {mpd_size} mm). "))
+            s.append(seg("Associated mild fat stranding is also present.", True))
+        elif foci and mpd:
+            s.append(seg(", studded with foci of calcification & dilated MPD"
+                         f"(upto {mpd_size} mm). ", True))
+            s.append(seg("However, no associated fat stranding appreciated."))
+        elif foci and fat:
+            s.append(seg(", studded with foci of calcification & reveals associated "
+                         "mild fat stranding. ", True))
+            s.append(seg("MPD is, however, not dilated."))
+        elif mpd and fat:
+            s.append(seg(f", with dilated MPD(upto {mpd_size} mm) & reveals associated "
+                         f"mild fat stranding.", True))
+        elif foci:
+            s.append(seg(", studded with foci of calcification. ", True))
+            s.append(seg("MPD is, however, not dilated."))
+        elif mpd:
+            s.append(seg(f", with dilated MPD(upto {mpd_size} mm). ", True))
+            s.append(seg("However, no foci of calcification or associated fat stranding "
+                         "appreciated."))
+        elif fat:
+            s.append(seg(", associated with mild fat stranding. ", True))
+            s.append(seg("However, MPD is not dilated & no foci of calcification "
+                         "appreciated."))
+        else:
+            # No findings selected
+            s.append(seg("."))
+
+        return s
+
     return s
 
 
@@ -962,7 +1044,8 @@ def bowel_sentence(d, sex, pancreas_status="normal"):
     s = []
     if sex == "F":
         if not d["wall_thickening"]:
-            s.append(seg("No obvious bowel wall thickening seen.", True))
+            s.append(seg("No obvious bowel wall thickening or lymphadenitis appreciated.",
+                         True))
         else:
             s.append(seg("Bowel wall thickening seen.", True))
         if not acute:
@@ -981,7 +1064,8 @@ def bowel_sentence(d, sex, pancreas_status="normal"):
                              True))
             s.append(seg(" "))
         if not d["wall_thickening"]:
-            s.append(seg("No obvious bowel wall thickening seen.", True))
+            s.append(seg("No obvious bowel wall thickening or lymphadenitis appreciated.",
+                         True))
         else:
             s.append(seg("Bowel wall thickening seen.", True))
     if d["mesenteric_ln"] == "present":
@@ -1111,6 +1195,69 @@ def generate_impression(d, sex, age):
                 "AND MILD PERI-PANCREATIC FREE FLUID - ?ACUTE PANCREATITIS. "
                 "Adv- S.Amylase/Lipase Correlation."
             )
+
+    elif p_status == "won_pseudocyst":
+        wp_type = p.get("wp_type", "won")
+        vol = p.get("wp_vol", "")
+        loc = p.get("wp_location", "lesser_sac")
+        loc_caps = "IN THE LESSER SAC" if loc == "lesser_sac" else "OVERLYING THE BODY OF THE PANCREAS"
+
+        if wp_type == "won":
+            lines.append(
+                f"IRREGULARLY DEFINED PANCREAS OBSCURED BY A THICK-WALLED COLLECTION "
+                f"{loc_caps} (VOL= {vol}CC) WITH DEBRIS WITHIN AND SIGNIFICANT "
+                f"PERIPANCREATIC FAT STRANDING AND MILD FREE FLUID - LIKELY "
+                f"WALLED-OFF NECROSIS (WON) AS A SEQUELAE TO ACUTE PANCREATITIS. "
+                f"Adv- S.Amylase/Lipase Correlation."
+            )
+        elif wp_type == "pseudocyst":
+            lines.append(
+                f"HYPOTROPHIED PANCREAS WITH IRREGULAR MARGINS WITH A LOCULATED "
+                f"COLLECTION (VOL= {vol}CC) WITH CLEAR CONTENTS {loc_caps} AND MILD "
+                f"PERIPANCREATIC FAT STRANDING WITH MILD FREE FLUID - LIKELY "
+                f"PANCREATIC PSEUDOCYST AS A SEQUELAE TO ACUTE PANCREATITIS. "
+                f"Adv- S.Amylase/Lipase Correlation."
+            )
+        else:  # won_pseudocyst
+            lines.append(
+                f"HYPOTROPHIED PANCREAS WITH IRREGULAR MARGINS & A LOCULATED MILDLY "
+                f"THICK WALLED COLLECTION (VOL= {vol}CC) WITH INTERNAL ECHOES "
+                f"{loc_caps} AND MILD PERIPANCREATIC FAT STRANDING WITH MILD FREE "
+                f"FLUID - LIKELY WON/PANCREATIC PSEUDOCYST AS A SEQUELAE TO ACUTE "
+                f"PANCREATITIS. Adv- S.Amylase/Lipase Correlation."
+            )
+
+    elif p_status == "chronic":
+        foci = p.get("ch_foci", False)
+        mpd = p.get("ch_mpd", False)
+        fat = p.get("ch_fat", False)
+
+        if foci and mpd and fat:
+            lines.append("FEATURES SUGGESTIVE OF ?ACUTE ON CHRONIC PANCREATITIS. "
+                         "Adv- S.Amylase/Lipase Correlation.")
+        elif foci and mpd:
+            lines.append("FEATURES SUGGESTIVE OF CHRONIC PANCREATITIS. "
+                         "Adv- S.Amylase/Lipase Correlation.")
+        elif foci and fat:
+            lines.append("FEATURES SUGGESTIVE OF ?ACUTE ON CHRONIC PANCREATITIS. "
+                         "Adv- S.Amylase/Lipase Correlation.")
+        elif mpd and fat:
+            lines.append("FEATURES SUGGESTIVE OF ?ACUTE ON CHRONIC PANCREATITIS / "
+                         "SEQUELAE TO ACUTE PANCREATITIS. "
+                         "Adv- S.Amylase/Lipase Correlation.")
+        elif foci:
+            lines.append("FEATURES SUGGESTIVE OF CHRONIC PANCREATITIS. "
+                         "Adv- S.Amylase/Lipase Correlation.")
+        elif mpd:
+            lines.append("FEATURES SUGGESTIVE OF CHRONIC PANCREATITIS. "
+                         "Adv- S.Amylase/Lipase Correlation.")
+        elif fat:
+            lines.append("FEATURES SUGGESTIVE OF ?ACUTE ON CHRONIC PANCREATITIS / "
+                         "SEQUELAE TO ACUTE PANCREATITIS. "
+                         "Adv- S.Amylase/Lipase Correlation.")
+        else:
+            lines.append("FEATURES SUGGESTIVE OF CHRONIC PANCREATITIS. "
+                         "Adv- S.Amylase/Lipase Correlation.")
 
     # ---- CBD + GB ----
     cbd = d["cbd"]
@@ -1335,7 +1482,7 @@ def generate_impression(d, sex, age):
 
 def _set_table_borders(table, size=6):
     tbl = table._tbl
-    tblPr = table._tbl.tblPr
+    tblPr = tbl.tblPr
     borders = OxmlElement("w:tblBorders")
     for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
         e = OxmlElement(f"w:{edge}")
@@ -1986,11 +2133,14 @@ with col_find:
     with st.expander("PANCREAS (click to open findings)", expanded=False):
         pn_status = st.radio(
             "Status",
-            ["normal", "early_evolving", "acute"],
+            ["early_evolving", "acute", "won_pseudocyst", "chronic"],
+            index=None,
             horizontal=True,
-            format_func=lambda x: {"normal": "Normal",
-                                   "early_evolving": "Early/evolving pancreatitis",
-                                   "acute": "Acute pancreatitis"}[x],
+            format_func=lambda x: {
+                "early_evolving": "Early/evolving pancreatitis",
+                "acute": "Acute pancreatitis",
+                "won_pseudocyst": "WON / Pseudocyst",
+                "chronic": "Chronic pancreatitis"}[x],
             key="pn_status")
 
         pn_ee_size = "normal"
@@ -2002,6 +2152,14 @@ with col_find:
         pn_ac_echo = "normal"
         pn_ac_echo_loc = "none"
         pn_ac_margins = "normal"
+        pn_wp_type = "won"
+        pn_wp_dims = ""
+        pn_wp_vol = ""
+        pn_wp_location = "lesser_sac"
+        pn_ch_foci = False
+        pn_ch_mpd = False
+        pn_ch_mpd_size = ""
+        pn_ch_fat = False
 
         if pn_status == "early_evolving":
             pn_ee_size = st.radio(
@@ -2077,6 +2235,38 @@ with col_find:
             st.caption("Mild to moderate peri-pancreatic fat stranding and mild "
                        "free fluid are automatically included. Bowel free-fluid "
                        "line suppressed; Mild ascites will appear above impression.")
+
+        elif pn_status == "won_pseudocyst":
+            pn_wp_type = st.radio(
+                "Type",
+                ["won", "pseudocyst", "won_pseudocyst"],
+                horizontal=True,
+                format_func=lambda x: {"won": "WON",
+                                       "pseudocyst": "Pseudocyst",
+                                       "won_pseudocyst": "WON + Pseudocyst"}[x],
+                key="pn_wp_type")
+
+            c_a, c_b = st.columns(2)
+            with c_a:
+                pn_wp_dims = st.text_input("Dimensions (e.g. 65x54x36)",
+                                            key="pn_wp_dims")
+            with c_b:
+                pn_wp_vol = st.text_input("Volume (cc)", key="pn_wp_vol")
+
+            pn_wp_location = st.radio(
+                "Location",
+                ["lesser_sac", "overlying_body"],
+                horizontal=True,
+                format_func=lambda x: {"lesser_sac": "In the lesser sac",
+                                       "overlying_body": "Overlying the body of the pancreas"}[x],
+                key="pn_wp_location")
+
+        elif pn_status == "chronic":
+            pn_ch_foci = st.checkbox("Foci of calcification", key="pn_ch_foci")
+            pn_ch_mpd = st.checkbox("MPD dilation", key="pn_ch_mpd")
+            if pn_ch_mpd:
+                pn_ch_mpd_size = st.text_input("MPD size (mm)", key="pn_ch_mpd_size")
+            pn_ch_fat = st.checkbox("Mild fat stranding", key="pn_ch_fat")
 
     # ------- SPLEEN -------
     col_sp_main, col_sp_sz = st.columns([5, 1], vertical_alignment="bottom")
@@ -2289,12 +2479,16 @@ data["cbd"].update({
 })
 
 data["pancreas"].update({
-    "status": pn_status,
+    "status": pn_status if pn_status else "normal",
     "ee_size": pn_ee_size, "ee_fat_stranding": pn_ee_fat,
     "ee_fat_location": pn_ee_fat_loc, "ee_free_fluid": pn_ee_fluid,
     "ee_fluid_location": pn_ee_fluid_loc,
     "ac_size": pn_ac_size, "ac_echo": pn_ac_echo,
     "ac_echo_location": pn_ac_echo_loc, "ac_margins": pn_ac_margins,
+    "wp_type": pn_wp_type, "wp_dims": pn_wp_dims, "wp_vol": pn_wp_vol,
+    "wp_location": pn_wp_location,
+    "ch_foci": pn_ch_foci, "ch_mpd": pn_ch_mpd,
+    "ch_mpd_size": pn_ch_mpd_size, "ch_fat": pn_ch_fat,
 })
 
 data["spleen"].update({"size_mm": sp_size, "size_descriptor": sp_desc})
