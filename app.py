@@ -2376,25 +2376,25 @@ def generate_impression(d, sex, age):
                 rpc = " - ?RECENTLY PASSED CALCULUS"
             lines.append(f"{g} {side_up} HYDROURETERONEPHROSIS{extra}{rpc}.")
 
-    # 6. Contralateral normal clause
-    for side_key, side in (("right", r), ("left", l)):
-        if side.get("contralateral_normal_clause"):
-            other = "left" if side_key == "right" else "right"
-            side_up = _ureter_side_label(side_key)
-            other_up = other.upper()
-            # attach to last renal calculi line if present
-            if side["calculi"] and no_ureterical := True:
-                # find the calculus line
-                for i in range(len(lines) - 1, -1, -1):
-                    if "RENAL CALCULUS" in lines[i] or "RENAL CALCULI" in lines[i] \
-                            or "NEPHROLITHIASIS" in lines[i]:
-                        base = lines[i].rstrip(".")
-                        # remove existing "however no hydronephrosis" if present
-                        base = base.replace(", HOWEVER NO HYDRONEPHROSIS SEEN AT THE TIME OF SCAN", "")
-                        base = base.rstrip("., ")
-                        lines[i] = (base + f", HOWEVER NO CALCULUS/HYDRONEPHROSIS SEEN ON "
-                                    f"THE {other_up} KIDNEY AT THE TIME OF SCAN.")
-                        break
+        # 6. Contralateral normal clause
+        for side_key, side in (("right", r), ("left", l)):
+            if side.get("contralateral_normal_clause"):
+                other = "left" if side_key == "right" else "right"
+                other_up = other.upper()
+                # attach to last renal calculi line if present
+                if side["calculi"]:
+                    for i in range(len(lines) - 1, -1, -1):
+                        if ("RENAL CALCULUS" in lines[i]
+                                or "RENAL CALCULI" in lines[i]
+                                or "NEPHROLITHIASIS" in lines[i]):
+                            base = lines[i].rstrip(".")
+                            base = base.replace(
+                                ", HOWEVER NO HYDRONEPHROSIS SEEN AT THE TIME OF SCAN", "")
+                            base = base.rstrip("., ")
+                            lines[i] = (base
+                                        + f", HOWEVER NO CALCULUS/HYDRONEPHROSIS SEEN ON "
+                                          f"THE {other_up} KIDNEY AT THE TIME OF SCAN.")
+                            break
 
     # 7. Negative renal line (MADHU rule)
     if k.get("negative_renal_line"):
