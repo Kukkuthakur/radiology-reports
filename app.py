@@ -1,11 +1,11 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v1.4.0-stable
+v1.5.0-stable
 
 Progress:
 - Liver, Gall Bladder, CBD: complete
 - Pancreas: Normal (default) + Early/evolving + Acute + WON/Pseudocyst + Chronic
-- Spleen: complete (size + focal lesions + portal-vein swap rule)
+- Spleen: complete (size + hyper/hypoechoic foci + portal-vein swap rule)
 - Bowel line updated: "...bowel wall thickening or lymphadenitis appreciated."
 - Previous fixes: steato-hepatitis, non-breaking hyphen, combined fat+fluid,
   acute pancreatitis ascites handling, justify alignment, text wrapping
@@ -92,6 +92,24 @@ PEDIATRIC_LIVER_MAX_MM = {
 }
 
 
+def _parse_mm_value(val):
+    """Extract a float from '13.5', '13.5mm', '13,5', ' 13.5 ', etc."""
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip()
+    if not s:
+        return None
+    m = re.search(r"(\d+(?:[.,]\d+)?)", s)
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+
+
 def parse_age(age_text):
     if age_text is None:
         return None
@@ -153,9 +171,8 @@ def classify_spleen_adult(size_mm):
 
 def classify_portal_vein(pv_mm):
     """<=13 normal, >13 & <14 prominent, >=14 dilated."""
-    try:
-        v = float(pv_mm)
-    except (ValueError, TypeError):
+    v = _parse_mm_value(pv_mm)
+    if v is None:
         return "unknown"
     if v <= 13.0:
         return "normal"
@@ -330,11 +347,8 @@ def new_report(sex="F"):
         },
         "spleen": {
             "size_mm": "", "size_descriptor": "normal",
-            "echotexture": "normal",
-            "focal_lesion": "none", "focal_lesion_text": "",
-            "cyst_count": "single", "cyst_size_mm": "", "cyst_location": "upper",
-            "hemangioma_count": "single", "hemangioma_size_mm": "",
-            "infarct_size_mm": "", "infarct_location": "upper",
+            "focal_lesion": "none",
+            "focal_count": "few",
             "portal_vein_mm": "",
             "accessory_spleen": False, "accessory_size_mm": "",
             "accessory_location": "hilum",
@@ -855,7 +869,6 @@ def spleen_sentence(d):
     s = [seg("SPLEEN", True, True)]
     size = d["size_mm"] or "___"
     desc = d["size_descriptor"]
-    echo = d.get("echotexture", "normal")
 
     # ---- size ----
     if desc == "normal":
@@ -882,47 +895,28 @@ def spleen_sentence(d):
         s += [seg(" is "), seg("enlarged for age in size", True),
               seg(f" ({size}MM)")]
 
-    # ---- echotexture ----
-    if echo == "normal":
-        s.append(seg(" with normal echotexture."))
-    else:
-        s += [seg(" with "), seg(f"{echo} echotexture", True), seg(".")]
+    s.append(seg(" with normal echotexture."))
 
     # ---- focal lesion ----
     fl = d.get("focal_lesion", "none")
+    cnt = d.get("focal_count", "few")
+
     if fl == "none":
         s.append(seg(" No focal lesion is seen."))
-    elif fl == "cyst":
-        count = d.get("cyst_count", "single")
-        csize = d.get("cyst_size_mm", "")
-        loc = d.get("cyst_location", "upper").lower()
-        if count == "single":
-            s += [seg(" "), seg(f"A simple cyst ({csize}MM) is seen in the "
-                                 f"{loc} pole of spleen.", True)]
+    elif fl == "hyperechoic_foci":
+        if cnt == "multiple":
+            s += [seg(" "), seg("Multiple hyperechoic foci seen scattered "
+                                 "across the splenic parenchyma.", True)]
         else:
-            word = "Few" if count == "few" else "Multiple"
-            s += [seg(" "), seg(f"{word} simple cysts are seen in the spleen, "
-                                 f"largest of these measuring {csize}MM in the "
-                                 f"{loc} pole.", True)]
-    elif fl == "hemangioma":
-        count = d.get("hemangioma_count", "single")
-        hsize = d.get("hemangioma_size_mm", "")
-        if count == "single":
-            s += [seg(" "), seg(f"A hyperechoic small SOL ({hsize}MM) is seen in "
-                                 f"the spleen - likely hemangioma.", True)]
+            s += [seg(" "), seg("Few hyperechoic foci scattered across splenic "
+                                 "parenchyma.", True)]
+    elif fl == "hypoechoic_foci":
+        if cnt == "multiple":
+            s += [seg(" "), seg("Multiple hypoechoic foci seen scattered "
+                                 "across the splenic parenchyma.", True)]
         else:
-            word = "Few" if count == "few" else "Multiple"
-            s += [seg(" "), seg(f"{word} hyperechoic small SOLs are seen in the "
-                                 f"spleen, largest of these measuring {hsize}MM "
-                                 f"- likely hemangiomas.", True)]
-    elif fl == "infarct":
-        isize = d.get("infarct_size_mm", "")
-        iloc = d.get("infarct_location", "upper").lower()
-        s += [seg(" "), seg(f"A wedge-shaped hypoechoic area ({isize}MM) is seen "
-                             f"in the {iloc} pole of spleen - likely splenic "
-                             f"infarct.", True)]
-    elif fl == "other" and d.get("focal_lesion_text"):
-        s += [seg(" "), seg(d["focal_lesion_text"], True)]
+            s += [seg(" "), seg("Few hypoechoic foci scattered across splenic "
+                                 "parenchyma.", True)]
 
     # ---- vein line ----
     enlarged = desc != "normal"
@@ -1556,6 +1550,7 @@ def generate_impression(d, sex, age):
     spleen = d["spleen"]
     spleen_desc = spleen["size_descriptor"]
     spleen_focal = spleen.get("focal_lesion", "none")
+    spleen_count = spleen.get("focal_count", "few")
 
     if spleen_desc == "enlarged_for_age":
         spleno_term = "SPLENOMEGALY FOR AGE"
@@ -1589,26 +1584,20 @@ def generate_impression(d, sex, age):
             lines.append(f"{spleno_term}.")
 
     spleen_focal_line = None
-    if spleen_focal == "cyst":
-        csize = spleen.get("cyst_size_mm", "")
-        if spleen.get("cyst_count", "single") == "single":
-            spleen_focal_line = f"A SIMPLE SPLENIC CYST ({csize}MM)."
+    if spleen_focal == "hyperechoic_foci":
+        if spleen_count == "multiple":
+            spleen_focal_line = ("STARRY SKY SPLEEN APPEARANCE - "
+                                 "?OLD GRANULOMATOUS ETIOLOGY.")
         else:
-            spleen_focal_line = (f"FEW SIMPLE SPLENIC CYSTS, LARGEST MEASURING "
-                                 f"{csize}MM.")
-    elif spleen_focal == "hemangioma":
-        hsize = spleen.get("hemangioma_size_mm", "")
-        if spleen.get("hemangioma_count", "single") == "single":
-            spleen_focal_line = f"A SPLENIC HEMANGIOMA ({hsize}MM)."
+            spleen_focal_line = ("FEW HYPERECHOIC FOCI SCATTERED ACROSS SPLENIC "
+                                 "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
+    elif spleen_focal == "hypoechoic_foci":
+        if spleen_count == "multiple":
+            spleen_focal_line = ("MULTIPLE HYPOECHOIC FOCI SCATTERED ACROSS "
+                                 "SPLENIC PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
         else:
-            spleen_focal_line = (f"FEW SPLENIC HEMANGIOMAS, LARGEST MEASURING "
-                                 f"{hsize}MM.")
-    elif spleen_focal == "infarct":
-        isize = spleen.get("infarct_size_mm", "")
-        iloc = spleen.get("infarct_location", "upper").upper()
-        spleen_focal_line = (f"A WEDGE-SHAPED HYPOECHOIC AREA ({isize}MM) IN THE "
-                             f"{iloc} POLE OF SPLEEN - LIKELY SPLENIC INFARCT. "
-                             f"Adv- Clinical Correlation.")
+            spleen_focal_line = ("FEW HYPOECHOIC FOCI SCATTERED ACROSS SPLENIC "
+                                 "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
 
     if spleen_focal_line:
         lines.append(spleen_focal_line)
@@ -2471,54 +2460,21 @@ with col_find:
     with spleen_expander:
         st.caption("Size status is derived automatically from the mm value above.")
 
-        sp_echo = st.radio(
-            "Echotexture", ["normal", "coarse", "hypoechoic", "heterogeneous"],
-            horizontal=True, format_func=lambda x: x.title(), key="sp_echo")
-
         st.markdown("**Focal lesion**")
         sp_focal = st.radio(
             "Focal lesion type",
-            ["none", "cyst", "hemangioma", "infarct", "other"],
+            ["none", "hyperechoic_foci", "hypoechoic_foci"],
             horizontal=True, label_visibility="collapsed",
-            format_func=lambda x: {"none": "None", "cyst": "Simple cyst",
-                                   "hemangioma": "Hemangioma",
-                                   "infarct": "Infarct",
-                                   "other": "Other"}[x],
+            format_func=lambda x: {"none": "None",
+                                   "hyperechoic_foci": "Hyperechoic foci",
+                                   "hypoechoic_foci": "Hypoechoic foci"}[x],
             key="sp_focal")
 
-        sp_cyst_count, sp_cyst_size, sp_cyst_loc = "single", "", "upper"
-        sp_hem_count, sp_hem_size = "single", ""
-        sp_infarct_size, sp_infarct_loc = "", "upper"
-        sp_focal_text = ""
-
-        if sp_focal == "cyst":
-            c_a, c_b, c_c = st.columns(3)
-            with c_a:
-                sp_cyst_count = st.radio("Count", ["single", "few", "multiple"],
-                                         horizontal=True, key="sp_cyst_count")
-            with c_b:
-                sp_cyst_size = st.text_input("Size (mm; largest if few)",
-                                             key="sp_cyst_size")
-            with c_c:
-                sp_cyst_loc = st.radio("Pole", ["upper", "lower"],
-                                       horizontal=True, key="sp_cyst_loc")
-        elif sp_focal == "hemangioma":
-            c_a, c_b = st.columns(2)
-            with c_a:
-                sp_hem_count = st.radio("Count", ["single", "few", "multiple"],
-                                        horizontal=True, key="sp_hem_count")
-            with c_b:
-                sp_hem_size = st.text_input("Size (mm; largest if few)",
-                                            key="sp_hem_size")
-        elif sp_focal == "infarct":
-            c_a, c_b = st.columns(2)
-            with c_a:
-                sp_infarct_size = st.text_input("Size (mm)", key="sp_infarct_size")
-            with c_b:
-                sp_infarct_loc = st.radio("Pole", ["upper", "lower"],
-                                          horizontal=True, key="sp_infarct_loc")
-        elif sp_focal == "other":
-            sp_focal_text = st.text_input("Description", key="sp_focal_text")
+        sp_focal_count = "few"
+        if sp_focal != "none":
+            sp_focal_count = st.radio(
+                "Count", ["few", "multiple"], horizontal=True,
+                format_func=lambda x: x.title(), key="sp_focal_count")
 
         sp_portal_mm = ""
         if spleen_enlarged:
@@ -2746,12 +2702,7 @@ data["pancreas"].update({
 
 data["spleen"].update({
     "size_mm": sp_size, "size_descriptor": sp_desc,
-    "echotexture": sp_echo,
-    "focal_lesion": sp_focal, "focal_lesion_text": sp_focal_text,
-    "cyst_count": sp_cyst_count, "cyst_size_mm": sp_cyst_size,
-    "cyst_location": sp_cyst_loc,
-    "hemangioma_count": sp_hem_count, "hemangioma_size_mm": sp_hem_size,
-    "infarct_size_mm": sp_infarct_size, "infarct_location": sp_infarct_loc,
+    "focal_lesion": sp_focal, "focal_count": sp_focal_count,
     "portal_vein_mm": sp_portal_mm if spleen_enlarged else "",
     "accessory_spleen": sp_acc, "accessory_size_mm": sp_acc_size,
     "accessory_location": sp_acc_loc,
@@ -2888,4 +2839,3 @@ with col_prev:
                 if p_ref.strip():
                     add_referrer(p_ref)
                 st.success("Saved to local database.")
-  
