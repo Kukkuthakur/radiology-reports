@@ -1,11 +1,17 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v1.5.0-stable
+v1.6.0-stable
 
 Progress:
 - Liver, Gall Bladder, CBD: complete
 - Pancreas: Normal (default) + Early/evolving + Acute + WON/Pseudocyst + Chronic
 - Spleen: complete (size + hyper/hypoechoic foci + portal-vein swap rule)
+- Kidneys: complete (renal calculi, ureteric calculi unilateral + bilateral,
+  standalone hydronephrosis, cortical cyst w/ auto-Bosniak-I, cortical
+  echogenicity w/ ?age-related, size brackets, negative renal line,
+  contralateral-normal clause, ureter-not-traced)
+- Spleen &-merge fix: splenomegaly + portal vein + focal lesion in one line
+- Hepatosplenomegaly combination: same descriptor, no focal lesion either organ
 - Bowel line updated: "...bowel wall thickening or lymphadenitis appreciated."
 - Previous fixes: steato-hepatitis, non-breaking hyphen, combined fat+fluid,
   acute pancreatitis ascites handling, justify alignment, text wrapping
@@ -242,6 +248,56 @@ SPLEEN_IMPRESSION_LABELS = {
     "gross": "GROSS SPLENOMEGALY",
 }
 
+# Hepatosplenomegaly: matching adjective pairs (liver desc -> combined adjective)
+HEPATOSPLENOMEGALY_COMBINE = {
+    "borderline": "BORDERLINE",
+    "mild": "MILD",
+    "moderate": "MODERATE",
+    "gross": "GROSS",
+    "mild_to_moderate": "MILD TO MODERATE",
+    "moderate_to_gross": "MODERATE TO GROSS",
+}
+
+
+# ============================================================
+# KIDNEY CONSTANTS
+# ============================================================
+
+# Ureteric calculus levels:
+#   renal_pelvis / puj  -> HYDRONEPHROSIS, preposition "in" / "at"
+#   proximal/mid/distal_ureter / vuj -> HYDROURETERONEPHROSIS, prep "in" / "at"
+URETER_LEVELS = {
+    # key: (preposition, term, impression_adjective, body_phrase, bilateral_phrase)
+    "renal_pelvis": ("in", "HYDRONEPHROSIS", "RENAL PELVIS",
+                     "renal pelvis", "renal pelvis cal"),
+    "puj": ("at", "HYDRONEPHROSIS", "PELVI-URETERIC JUNCTION",
+            "pelvi-ureteric junction", "pelvi-ureteric junction cal"),
+    "proximal_ureter": ("in", "HYDROURETERONEPHROSIS", "PROXIMAL URETERIC",
+                        "proximal ureter", "proximal ureteric cal"),
+    "mid_ureter": ("in", "HYDROURETERONEPHROSIS", "MID-URETERIC",
+                   "mid-ureter", "mid-ureteric cal"),
+    "distal_ureter": ("in", "HYDROURETERONEPHROSIS", "DISTAL URETERIC",
+                      "distal ureter", "distal ureteric cal"),
+    "vuj": ("at", "HYDROURETERONEPHROSIS", "VESICO-URETERIC JUNCTION",
+            "vesico-ureteric junction", "vesico-ureteric junction cal"),
+}
+
+URETER_GRADES = {
+    "none": None,
+    "no_significant": "NO SIGNIFICANT",
+    "minimal": "MINIMAL",
+    "mild": "MILD",
+    "moderate": "MODERATE",
+}
+
+POLE_LABELS = {
+    "upper": "upper-pole",
+    "upper_mid": "upper-mid pole",
+    "mid": "mid pole",
+    "lower_mid": "lower-mid pole",
+    "lower": "lower-pole",
+}
+
 
 # ============================================================
 # DATABASE
@@ -294,6 +350,34 @@ def save_report(data):
 # ============================================================
 # DATA MODEL
 # ============================================================
+
+def _new_ureter_calculus():
+    return {
+        "count": "none",
+        "sizes": [],
+        "level": "distal_ureter",
+        "grade": "none",
+    }
+
+
+def _new_kidney_side():
+    return {
+        "status": "normal",
+        "size_text": "",
+        "calculi": [],
+        "ureter_calculus": _new_ureter_calculus(),
+        "ureter_not_traced": False,
+        "cyst": "none",
+        "cyst_size_mm": "",
+        "cyst_location": "",
+        "bosniak": "",
+        "hydronephrosis": "none",
+        "hydronephrosis_no_obstructive_calculus": False,
+        "recently_passed_calculus_suspected": False,
+        "nephrocalcinosis": "none",
+        "contralateral_normal_clause": False,
+    }
+
 
 def new_report(sex="F"):
     return {
@@ -354,13 +438,14 @@ def new_report(sex="F"):
             "accessory_location": "hilum",
         },
         "kidneys": {
-            "right": {"status": "normal", "calculi": [], "cyst": "none",
-                      "cyst_size_mm": "", "cyst_location": "", "bosniak": "",
-                      "hydronephrosis": "none", "nephrocalcinosis": "none"},
-            "left": {"status": "normal", "calculi": [], "cyst": "none",
-                     "cyst_size_mm": "", "cyst_location": "", "bosniak": "",
-                     "hydronephrosis": "none", "nephrocalcinosis": "none"},
-            "cortical_echogenicity": "normal"},
+            "right": _new_kidney_side(),
+            "left": _new_kidney_side(),
+            "cortical_echogenicity": "normal",
+            "cortical_echogenicity_laterality": "bilateral",
+            "age_related_echogenicity": False,
+            "negative_renal_line": False,
+            "bilateral_ureter_calculi": False,
+        },
         "urinary_bladder": {"status": "adequately_distended", "mass_calculus": False,
                             "sedimentation": "none"},
         "uterus": {"status": "anteverted", "size": "", "myometrium": "homogenous",
@@ -870,7 +955,6 @@ def spleen_sentence(d):
     size = d["size_mm"] or "___"
     desc = d["size_descriptor"]
 
-    # ---- size ----
     if desc == "normal":
         s.append(seg(f" is normal in size ({size}MM)"))
     elif desc == "borderline":
@@ -897,7 +981,6 @@ def spleen_sentence(d):
 
     s.append(seg(" with normal echotexture."))
 
-    # ---- focal lesion ----
     fl = d.get("focal_lesion", "none")
     cnt = d.get("focal_count", "few")
 
@@ -918,7 +1001,6 @@ def spleen_sentence(d):
             s += [seg(" "), seg("Few hypoechoic foci scattered across splenic "
                                  "parenchyma.", True)]
 
-    # ---- vein line ----
     enlarged = desc != "normal"
 
     if enlarged:
@@ -937,7 +1019,6 @@ def spleen_sentence(d):
     else:
         s.append(seg(" Splenic vein is normal in course and caliber."))
 
-    # ---- accessory spleen ----
     if d.get("accessory_spleen"):
         asize = d.get("accessory_size_mm", "")
         aloc = d.get("accessory_location", "hilum")
@@ -953,60 +1034,324 @@ def spleen_sentence(d):
 
 # -------- KIDNEYS --------
 
-def kidneys_sentence(d):
+def _kidney_both_normal(k):
+    for side in ("right", "left"):
+        s = k[side]
+        if s["status"] != "normal":
+            return False
+        if s["calculi"]:
+            return False
+        if s["ureter_calculus"]["count"] != "none":
+            return False
+        if s["ureter_not_traced"]:
+            return False
+        if s["cyst"] != "none":
+            return False
+        if s["hydronephrosis"] != "none":
+            return False
+        if s["nephrocalcinosis"] != "none":
+            return False
+    return True
+
+
+def _size_bracket(k):
+    r = k["right"].get("size_text", "").strip()
+    l = k["left"].get("size_text", "").strip()
+    parts = []
+    if r:
+        parts.append(f"RK={r}")
+    if l:
+        parts.append(f"LK={l}")
+    if not parts:
+        return ""
+    return "[" + ";".join(parts) + "]"
+
+
+def _format_pole(pole_key):
+    return POLE_LABELS.get(pole_key, pole_key.replace("_", "-"))
+
+
+def _renal_calculi_body(k, side_label):
+    """Returns a list of segments for renal calculi for one side."""
+    calcs = k["calculi"]
+    if not calcs:
+        return []
+    side_low = side_label.lower()
+    n = len(calcs)
+    out = [seg(" ")]
+    if n == 1:
+        c = calcs[0]
+        out.append(seg(
+            f"A calculus measuring {c['size_mm']}MM is seen at the "
+            f"{_format_pole(c['pole'])} of {side_low} kidney", True))
+        out.append(seg(".", True))
+        return out
+
+    # group by pole, preserving order of first appearance
+    groups = []
+    for c in calcs:
+        found = False
+        for g in groups:
+            if g["pole"] == c["pole"]:
+                g["sizes"].append(c["size_mm"])
+                found = True
+                break
+        if not found:
+            groups.append({"pole": c["pole"], "sizes": [c["size_mm"]]})
+
+    def group_text(g):
+        sizes = g["sizes"]
+        pole_txt = _format_pole(g["pole"])
+        if len(sizes) == 1:
+            return f"{sizes[0]}MM at the {pole_txt}"
+        elif len(sizes) == 2:
+            return f"{sizes[0]}MM & {sizes[1]}MM, both at the {pole_txt}"
+        else:
+            joined = ", ".join(f"{s}MM" for s in sizes[:-1])
+            return f"{joined} & {sizes[-1]}MM, all at the {pole_txt}"
+
+    parts = [group_text(g) for g in groups]
+    if n == 2:
+        lead = "A couple of calculi"
+    else:
+        lead = "Few calculi"
+    if len(parts) == 1:
+        joined = parts[0]
+    elif len(parts) == 2:
+        joined = f"{parts[0]} & {parts[1]}"
+    else:
+        joined = ", ".join(parts[:-1]) + " & " + parts[-1]
+    out.append(seg(f"{lead} seen in the {side_low} kidney, largest of these "
+                   f"measuring {joined}", True))
+    out.append(seg(".", True))
+    return out
+
+
+def _ureter_calculus_count_word(count):
+    return {
+        "single": "A CALCULUS",
+        "couple": "A COUPLE OF CALCULI",
+        "few": "FEW CALCULI",
+        "multiple": "MULTIPLE CALCULI",
+    }.get(count, "")
+
+
+def _ureter_calculus_count_word_lower(count):
+    return {
+        "single": "A calculus",
+        "couple": "A couple of calculi",
+        "few": "Few calculi",
+        "multiple": "Multiple calculi",
+    }.get(count, "")
+
+
+def _ureter_side_label(side_key):
+    return "RIGHT" if side_key == "right" else "LEFT"
+
+
+def _ureter_calculus_body(d_side, side_key):
+    """Returns segments for a unilateral ureteric calculus sentence."""
+    uc = d_side["ureter_calculus"]
+    if uc["count"] == "none":
+        return []
+    prep, term, imp_adj, body_level, _bi = URETER_LEVELS[uc["level"]]
+    side_up = _ureter_side_label(side_key)
+    side_low = side_key
+    grade = uc["grade"]
+    sizes = uc["sizes"]
+
+    s = [seg(" ")]
+    if uc["count"] == "single":
+        size_txt = sizes[0] if sizes else ""
+        s.append(seg(f"A calculus measuring {size_txt}MM seen {prep} the "
+                     f"{side_low} {body_level}", True))
+    elif uc["count"] == "couple":
+        a = sizes[0] if len(sizes) > 0 else ""
+        b = sizes[1] if len(sizes) > 1 else ""
+        s.append(seg(f"A couple of calculi seen {prep} the {side_low} "
+                     f"{body_level}, measuring {a}MM & {b}MM", True))
+    elif uc["count"] in ("few", "multiple"):
+        size_txt = sizes[0] if sizes else ""
+        word = "Few" if uc["count"] == "few" else "Multiple"
+        s.append(seg(f"{word} calculi seen {prep} the {side_low} "
+                     f"{body_level}, largest of these measuring {size_txt}MM", True))
+
+    if grade == "none":
+        s.append(seg(".", True))
+    elif grade == "no_significant":
+        s.append(seg(f", HOWEVER CAUSING NO SIGNIFICANT {term}", True))
+        s.append(seg(".", True))
+    else:
+        g_word = URETER_GRADES[grade]
+        s.append(seg(f", CAUSING {side_up} SIDED {g_word} {term}", True))
+        s.append(seg(".", True))
+    return s
+
+
+def _ureter_calculus_bilateral_body(k):
+    """Returns segments for bilateral ureteric calculus sentence.
+    Precedence: larger side first."""
+    r = k["right"]["ureter_calculus"]
+    l = k["left"]["ureter_calculus"]
+    if r["count"] == "none" and l["count"] == "none":
+        return []
+    if r["count"] == "none" or l["count"] == "none":
+        return []
+
+    def max_size(uc):
+        nums = []
+        for s in uc["sizes"]:
+            v = _parse_mm_value(s)
+            if v is not None:
+                nums.append(v)
+        return max(nums) if nums else 0
+
+    r_max = max_size(r)
+    l_max = max_size(l)
+    if l_max > r_max:
+        first_side, second_side = "left", "right"
+    else:
+        first_side, second_side = "right", "left"
+
+    def side_phrase(side_key):
+        uc = k[side_key]["ureter_calculus"]
+        _, _, _, _, bilateral_phrase = URETER_LEVELS[uc["level"]]
+        rt_lt = "Rt" if side_key == "right" else "Lt"
+        sizes_join = " & ".join(f"{s}mm" for s in uc["sizes"] if s)
+        return f"{rt_lt} {bilateral_phrase} = {sizes_join}"
+
+    p1 = side_phrase(first_side)
+    p2 = side_phrase(second_side)
+
+    # consequence clause
+    def consequence(side_key):
+        uc = k[side_key]["ureter_calculus"]
+        _, term, _, _, _ = URETER_LEVELS[uc["level"]]
+        grade = uc["grade"]
+        side_low = side_key
+        if grade == "none":
+            return None
+        if grade == "no_significant":
+            return f"no significant {term.lower()} seen on the {side_low}"
+        g_word = URETER_GRADES[grade]
+        return f"{side_low} {g_word.lower()} {term.lower()}"
+
+    c1 = consequence(first_side)
+    c2 = consequence(second_side)
+
+    s = [seg(" ")]
+    s.append(seg(f"Bilateral ureteric calculi are present ({p1} & {p2})", True))
+    if c1 and c2:
+        s.append(seg(f" causing {c1} & {c2}", True))
+    elif c1 and not c2:
+        s.append(seg(f" causing {c1}, while {c2}", True))
+    elif c2 and not c1:
+        s.append(seg(f" causing {c2}, while {c1}", True))
+    s.append(seg(".", True))
+    return s
+
+
+def _kidney_side_block(name, k, side_key):
+    """Per-side block used when at least one kidney is abnormal."""
+    b = [seg(name, True, True)]
+    if k["status"] == "not_visualized":
+        b.append(seg(" is not visualized."))
+        return b
+    b.append(seg(" is normal in size, outline and echogenicity. "
+                 "Corticomedullary differentiation is maintained."))
+    b.extend(_renal_calculi_body(k, name.replace(" KIDNEY", "")))
+    # cyst
+    if k["cyst"] != "none":
+        bosniak = k.get("bosniak", "")
+        bosniak_txt = f" (Bosniak cat-{bosniak})" if bosniak else ""
+        loc = k.get("cyst_location", "")
+        loc_txt = f" at the {_format_pole(loc)}" if loc else ""
+        b += [seg(" "), seg(f"A {k['cyst']} cyst measuring {k['cyst_size_mm']}MM "
+                             f"is seen{loc_txt} of {side_key.lower()} kidney"
+                             f"{bosniak_txt}", True), seg(".", True)]
+    # standalone hydronephrosis
+    if k["hydronephrosis"] != "none":
+        g = k["hydronephrosis"].upper()
+        b += [seg(" "), seg(f"{g} hydroureteronephrosis is present on the "
+                             f"{side_key.lower()}", True)]
+        if k.get("hydronephrosis_no_obstructive_calculus"):
+            b.append(seg(", however no obstructive calculus is seen upto the "
+                         "visualized distal ureter", True))
+        b.append(seg(".", True))
+    if k["nephrocalcinosis"] != "none":
+        b += [seg(" "), seg(f"Multiple foci of calcification seen in the "
+                             f"{side_key.lower()} renal cortex", True),
+              seg(".", True)]
+    return b
+
+
+def kidneys_sentence(d, ub_status="adequately_distended"):
     s = []
     r, l = d["right"], d["left"]
-    both_normal = (r["status"] == "normal" and not r["calculi"] and r["cyst"] == "none"
-                   and r["hydronephrosis"] == "none" and r["nephrocalcinosis"] == "none"
-                   and l["status"] == "normal" and not l["calculi"] and l["cyst"] == "none"
-                   and l["hydronephrosis"] == "none"
-                   and l["nephrocalcinosis"] == "none")
+
+    both_normal = _kidney_both_normal(d)
+    bracket = _size_bracket(d)
+
     if both_normal:
         s.append(seg("BOTH KIDNEYS", True, True))
-        s.append(seg(" are normal in size, outline and "))
-        if d["cortical_echogenicity"] == "mildly_raised_bilateral":
-            s += [seg("mildly raised bilateral renal cortical echogenicity", True),
-                  seg(". Corticomedullary differentiation is maintained. "
-                      "No evidence of hydronephrotic changes/calculus seen.")]
+        if bracket:
+            s.append(seg(f" are normal in size{bracket}, outline and "))
+        else:
+            s.append(seg(" are normal in size, outline and "))
+        if d["cortical_echogenicity"] == "mildly_raised":
+            laterality = d.get("cortical_echogenicity_laterality", "bilateral")
+            if laterality == "bilateral":
+                s += [seg("mildly raised bilateral renal cortical echogenicity", True),
+                      seg(". Corticomedullary differentiation is maintained. "
+                          "No evidence of hydronephrotic changes/calculus seen.")]
+            else:
+                s += [seg(f"mildly raised {laterality} renal cortical echogenicity", True),
+                      seg(". Corticomedullary differentiation is maintained. "
+                          "No evidence of hydronephrotic changes/calculus seen.")]
         else:
             s.append(seg("echogenicity. Corticomedullary differentiation is maintained. "
                          "No evidence of hydronephrotic changes/calculus seen."))
+        # bilateral ureteric calculi live only if both sides have a ureter calculus
+        # (both_normal would be False in that case, so this path won't fire)
         return s
 
-    def block(name, k, side_label):
-        b = [seg(name, True, True)]
-        if k["status"] == "not_visualized":
-            b.append(seg(" is not visualized."))
-            return b
-        b.append(seg(" is normal in size, outline and echogenicity. "
-                     "Corticomedullary differentiation is maintained."))
-        for calc in k["calculi"]:
-            b += [seg(" "), seg(f"A calculus measuring {calc.get('size_mm','')}MM is seen "
-                                 f"at the {calc.get('location','')} of "
-                                 f"{side_label.lower()} kidney", True)]
-            if calc.get("hydro") and calc["hydro"] != "none":
-                b.append(seg(f" causing {side_label.lower()} sided "
-                             f"{calc['hydro']} hydroureteronephrosis", True))
-            b.append(seg(".", True))
-        if k["cyst"] != "none":
-            bosniak = f" (Bosniak cat-{k['bosniak']})" if k["bosniak"] else ""
-            b += [seg(" "), seg(f"A {k['cyst']} cyst measuring "
-                                 f"{k['cyst_size_mm']}MM is seen at the "
-                                 f"{k['cyst_location']} of {side_label.lower()} "
-                                 f"kidney{bosniak}", True), seg(".", True)]
-        if k["hydronephrosis"] != "none":
-            b += [seg(" "), seg(f"{k['hydronephrosis'].title()} hydroureteronephrosis "
-                                 f"is present on the {side_label.lower()}", True),
-                  seg(".", True)]
-        if k["nephrocalcinosis"] != "none":
-            b += [seg(" "), seg(f"Multiple foci of calcification seen in the "
-                                 f"{side_label.lower()} renal cortex", True),
-                  seg(".", True)]
-        return b
+    # at least one side abnormal
+    # If both sides have a ureter calculus AND bilateral flag is on, use combined sentence
+    if (d.get("bilateral_ureter_calculi")
+            and r["ureter_calculus"]["count"] != "none"
+            and l["ureter_calculus"]["count"] != "none"):
+        s.append(seg("BOTH KIDNEYS", True, True))
+        if bracket:
+            s.append(seg(f" are normal in size{bracket}, outline and "))
+        else:
+            s.append(seg(" are normal in size, outline and "))
+        if d["cortical_echogenicity"] == "mildly_raised":
+            laterality = d.get("cortical_echogenicity_laterality", "bilateral")
+            if laterality == "bilateral":
+                s += [seg("mildly raised bilateral renal cortical echogenicity", True),
+                      seg(". Corticomedullary differentiation is maintained.")]
+            else:
+                s += [seg(f"mildly raised {laterality} renal cortical echogenicity", True),
+                      seg(". Corticomedullary differentiation is maintained.")]
+        else:
+            s.append(seg("echogenicity. Corticomedullary differentiation is maintained."))
+        s.extend(_ureter_calculus_bilateral_body(d))
+        return s
 
-    s.extend(block("RIGHT KIDNEY", r, "RIGHT"))
+    # Otherwise: per-side blocks
+    s.extend(_kidney_side_block("RIGHT KIDNEY", r, "right"))
     s.append(seg("\n"))
-    s.extend(block("LEFT KIDNEY", l, "LEFT"))
+    s.extend(_kidney_side_block("LEFT KIDNEY", l, "left"))
+
+    # unilateral ureter calculi (if only one side has it)
+    r_uc = r["ureter_calculus"]["count"] != "none"
+    l_uc = l["ureter_calculus"]["count"] != "none"
+    if r_uc and not l_uc:
+        s.extend(_ureter_calculus_body(r, "right"))
+    elif l_uc and not r_uc:
+        s.extend(_ureter_calculus_body(l, "left"))
+    # if both, fall through to bilateral sentence (already handled above if flag was on)
+
     return s
 
 
@@ -1157,7 +1502,6 @@ def prostate_sentence(d, pediatric=False):
 
 
 def bowel_sentence(d, sex, pancreas_status="normal"):
-    """If pancreas_status == 'acute', suppress free fluid phrase and append Mild ascites."""
     acute = (pancreas_status == "acute")
     s = []
     if sex == "F":
@@ -1226,6 +1570,380 @@ def appendix_sentence(d):
 # ============================================================
 # IMPRESSION GENERATOR
 # ============================================================
+
+def _ureter_impression_adjective(level):
+    return URETER_LEVELS[level][2]
+
+
+def _ureter_impression_term(level):
+    return URETER_LEVELS[level][1]
+
+
+def _ureter_impression_consequence(uc, side_up):
+    """Returns the suffix string ('CAUSING ...' or 'HOWEVER CAUSING NO SIGNIFICANT ...')
+    or '' if grade == none."""
+    grade = uc["grade"]
+    term = _ureter_impression_term(uc["level"])
+    if grade == "none":
+        return ""
+    if grade == "no_significant":
+        return f" HOWEVER CAUSING NO SIGNIFICANT {term}"
+    g = URETER_GRADES[grade]
+    return f" CAUSING {side_up} SIDED {g} {term}"
+
+
+def _ureter_calculus_impression_line(side_key, uc):
+    if uc["count"] == "none":
+        return None
+    side_up = _ureter_side_label(side_key)
+    adj = _ureter_impression_adjective(uc["level"])
+    sizes = uc["sizes"]
+    suffix = _ureter_impression_consequence(uc, side_up)
+
+    if uc["count"] == "single":
+        sz = sizes[0] if sizes else ""
+        line = f"A {side_up} {adj} CALCULUS({sz}MM)"
+    elif uc["count"] == "couple":
+        a = sizes[0] if len(sizes) > 0 else ""
+        b = sizes[1] if len(sizes) > 1 else ""
+        line = f"A COUPLE OF CALCULI({a}MM & {b}MM) IN THE {side_up} {adj.replace(' URETERIC','')} URETER" \
+            if "URETERIC" in adj else f"A COUPLE OF CALCULI({a}MM & {b}MM) AT THE {side_up} {adj}"
+        # Simplify: use the level adjective with the same structure
+        level_word = {
+            "renal_pelvis": f"A COUPLE OF CALCULI({a}MM & {b}MM) IN THE {side_up} RENAL PELVIS",
+            "puj": f"A COUPLE OF CALCULI({a}MM & {b}MM) AT THE {side_up} PELVI-URETERIC JUNCTION",
+            "proximal_ureter": f"A COUPLE OF CALCULI({a}MM & {b}MM) IN THE {side_up} PROXIMAL URETER",
+            "mid_ureter": f"A COUPLE OF CALCULI({a}MM & {b}MM) IN THE {side_up} MID-URETER",
+            "distal_ureter": f"A COUPLE OF CALCULI({a}MM & {b}MM) IN THE {side_up} DISTAL URETER",
+            "vuj": f"A COUPLE OF CALCULI({a}MM & {b}MM) AT THE {side_up} VESICO-URETERIC JUNCTION",
+        }[uc["level"]]
+        line = level_word
+    elif uc["count"] in ("few", "multiple"):
+        sz = sizes[0] if sizes else ""
+        word = "FEW" if uc["count"] == "few" else "MULTIPLE"
+        level_word = {
+            "renal_pelvis": f"{word} CALCULI, LARGEST MEASURING {sz}MM, IN THE {side_up} RENAL PELVIS",
+            "puj": f"{word} CALCULI, LARGEST MEASURING {sz}MM, AT THE {side_up} PELVI-URETERIC JUNCTION",
+            "proximal_ureter": f"{word} CALCULI, LARGEST MEASURING {sz}MM, IN THE {side_up} PROXIMAL URETER",
+            "mid_ureter": f"{word} CALCULI, LARGEST MEASURING {sz}MM, IN THE {side_up} MID-URETER",
+            "distal_ureter": f"{word} CALCULI, LARGEST MEASURING {sz}MM, IN THE {side_up} DISTAL URETER",
+            "vuj": f"{word} CALCULI, LARGEST MEASURING {sz}MM, AT THE {side_up} VESICO-URETERIC JUNCTION",
+        }[uc["level"]]
+        line = level_word
+    else:
+        line = ""
+
+    return (line + suffix + ".").strip()
+
+
+def _ureter_calculus_impression_adjective_form(level):
+    """For single-calculus impression: A RIGHT PROXIMAL URETERIC CALCULUS(XMM) ..."""
+    return URETER_LEVELS[level][2]
+
+
+def _ureter_calculus_impression_single(side_up, uc):
+    adj = URETER_LEVELS[uc["level"]][2]
+    sz = uc["sizes"][0] if uc["sizes"] else ""
+    suffix = _ureter_impression_consequence(uc, side_up)
+    return f"A {side_up} {adj} CALCULUS({sz}MM){suffix}"
+
+
+def _ureter_calculus_impression_couple(side_up, uc):
+    a = uc["sizes"][0] if len(uc["sizes"]) > 0 else ""
+    b = uc["sizes"][1] if len(uc["sizes"]) > 1 else ""
+    _, _, _, _, bi = URETER_LEVELS[uc["level"]]
+    # "Rt mid-ureteric cal" style used in bilateral parenthetical; here we use full form
+    place = {
+        "renal_pelvis": f"IN THE {side_up} RENAL PELVIS",
+        "puj": f"AT THE {side_up} PELVI-URETERIC JUNCTION",
+        "proximal_ureter": f"IN THE {side_up} PROXIMAL URETER",
+        "mid_ureter": f"IN THE {side_up} MID-URETER",
+        "distal_ureter": f"IN THE {side_up} DISTAL URETER",
+        "vuj": f"AT THE {side_up} VESICO-URETERIC JUNCTION",
+    }[uc["level"]]
+    suffix = _ureter_impression_consequence(uc, side_up)
+    return f"A COUPLE OF CALCULI({a}MM & {b}MM) {place}{suffix}"
+
+
+def _ureter_calculus_impression_few(side_up, uc):
+    word = "FEW" if uc["count"] == "few" else "MULTIPLE"
+    sz = uc["sizes"][0] if uc["sizes"] else ""
+    place = {
+        "renal_pelvis": f"IN THE {side_up} RENAL PELVIS",
+        "puj": f"AT THE {side_up} PELVI-URETERIC JUNCTION",
+        "proximal_ureter": f"IN THE {side_up} PROXIMAL URETER",
+        "mid_ureter": f"IN THE {side_up} MID-URETER",
+        "distal_ureter": f"IN THE {side_up} DISTAL URETER",
+        "vuj": f"AT THE {side_up} VESICO-URETERIC JUNCTION",
+    }[uc["level"]]
+    suffix = _ureter_impression_consequence(uc, side_up)
+    return f"{word} CALCULI, LARGEST MEASURING {sz}MM, {place}{suffix}"
+
+
+def _ureter_calculus_impression_line2(side_key, uc):
+    if uc["count"] == "none":
+        return None
+    side_up = _ureter_side_label(side_key)
+    if uc["count"] == "single":
+        return _ureter_calculus_impression_single(side_up, uc) + "."
+    if uc["count"] == "couple":
+        return _ureter_calculus_impression_couple(side_up, uc) + "."
+    if uc["count"] in ("few", "multiple"):
+        return _ureter_calculus_impression_few(side_up, uc) + "."
+    return None
+
+
+def _renal_calculi_impression(k, side_key):
+    """Returns a phrase describing renal calculi for the impression.
+    Used when ureteric calculus is present and renal calculi are demoted to a
+    trailing clause."""
+    calcs = k["calculi"]
+    if not calcs:
+        return None
+    side_up = _ureter_side_label(side_key)
+    n = len(calcs)
+    if n == 1:
+        return f"A {side_up} RENAL CALCULUS"
+    if n == 2:
+        return f"A COUPLE OF {side_up} RENAL CALCULI"
+    return f"FEW {side_up} RENAL CALCULI"
+
+
+def _renal_calculi_impression_standalone(k, side_key):
+    """Standalone renal calculi impression line (no ureteric calculus)."""
+    calcs = k["calculi"]
+    if not calcs:
+        return None
+    side_up = _ureter_side_label(side_key)
+    n = len(calcs)
+    if n == 1:
+        return f"A {side_up} RENAL CALCULUS"
+    if n == 2:
+        return f"A COUPLE OF {side_up} RENAL CALCULI"
+    return f"FEW {side_up} RENAL CALCULI"
+
+
+def _spleen_impression_line(spleen):
+    """Returns the spleen line(s). Handles &-merge fix.
+    Returns a list of strings."""
+    desc = spleen["size_descriptor"]
+    spleen_focal = spleen.get("focal_lesion", "none")
+    spleen_count = spleen.get("focal_count", "few")
+
+    if desc == "enlarged_for_age":
+        spleno_term = "SPLENOMEGALY FOR AGE"
+        is_enlarged = True
+    elif desc in SPLEEN_IMPRESSION_LABELS:
+        spleno_term = (f"{SPLEEN_IMPRESSION_LABELS[desc]} "
+                       f"({spleen['size_mm']}MM)")
+        is_enlarged = True
+    else:
+        spleno_term = ""
+        is_enlarged = False
+
+    out = []
+    if is_enlarged:
+        pv_mm = spleen.get("portal_vein_mm", "")
+        pv_class = classify_portal_vein(pv_mm) if pv_mm else "unknown"
+
+        # focal line text (if any)
+        focal_line = None
+        if spleen_focal == "hyperechoic_foci":
+            if spleen_count == "multiple":
+                focal_line = ("STARRY SKY SPLEEN APPEARANCE - "
+                              "?OLD GRANULOMATOUS ETIOLOGY.")
+            else:
+                focal_line = ("FEW HYPERECHOIC FOCI SCATTERED ACROSS SPLENIC "
+                              "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
+        elif spleen_focal == "hypoechoic_foci":
+            if spleen_count == "multiple":
+                focal_line = ("MULTIPLE HYPOECHOIC FOCI SCATTERED ACROSS "
+                              "SPLENIC PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
+            else:
+                focal_line = ("FEW HYPOECHOIC FOCI SCATTERED ACROSS SPLENIC "
+                              "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
+
+        # build portal vein clause
+        if pv_class == "prominent":
+            pv_clause = f"PORTAL VEIN PROMINENT IN CALIBER ({pv_mm}MM)"
+        elif pv_class == "dilated":
+            if desc in ("moderate", "moderate_to_gross", "gross"):
+                tail = "SUGGESTIVE OF PORTAL HYPERTENSION."
+            else:
+                tail = "? PORTAL HYPERTENSION."
+            # portal vein dilated is its own line, do not merge with focal
+            pv_clause = f"PORTAL VEIN DILATED IN CALIBER ({pv_mm}MM) - {tail}"
+        elif pv_class == "normal":
+            pv_clause = f"NORMAL CALIBER PORTAL VEIN ({pv_mm}MM)"
+        else:
+            pv_clause = None
+
+        # Merged case: splenomegaly + focal line + (portal vein if normal/prominent)
+        # Portal vein dilated does NOT merge with focal.
+        if focal_line and pv_clause and pv_class in ("normal", "prominent"):
+            merged = f"{spleno_term} WITH {pv_clause} & {focal_line}"
+            out.append(merged)
+            return out
+
+        # No focal: current behaviour
+        if pv_class == "prominent":
+            out.append(f"{spleno_term} WITH PORTAL VEIN PROMINENT IN "
+                       f"CALIBER ({pv_mm}MM).")
+        elif pv_class == "dilated":
+            out.append(f"{spleno_term} WITH PORTAL VEIN DILATED IN CALIBER "
+                       f"({pv_mm}MM) - {tail}")
+        elif pv_class == "normal":
+            out.append(f"{spleno_term} WITH NORMAL CALIBER PORTAL VEIN "
+                       f"({pv_mm}MM).")
+        else:
+            out.append(f"{spleno_term}.")
+
+        if focal_line:
+            out.append(focal_line)
+    else:
+        # spleen normal, only focal matters (rare)
+        if spleen_focal == "hyperechoic_foci":
+            if spleen_count == "multiple":
+                out.append("STARRY SKY SPLEEN APPEARANCE - ?OLD GRANULOMATOUS ETIOLOGY.")
+            else:
+                out.append("FEW HYPERECHOIC FOCI SCATTERED ACROSS SPLENIC "
+                           "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
+        elif spleen_focal == "hypoechoic_foci":
+            if spleen_count == "multiple":
+                out.append("MULTIPLE HYPOECHOIC FOCI SCATTERED ACROSS SPLENIC "
+                           "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
+            else:
+                out.append("FEW HYPOECHOIC FOCI SCATTERED ACROSS SPLENIC "
+                           "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
+
+    return out
+
+
+def _liver_impression_line(liver):
+    """Returns the liver line as a list of strings, or empty list if nothing
+    to report (i.e. no hepatomegaly and no focal findings)."""
+    desc = liver["size_descriptor"]
+    hepatomegaly = None
+    if desc == "enlarged_for_age":
+        hepatomegaly = "HEPATOMEGALY FOR AGE"
+    elif desc != "normal":
+        dm = {"borderline": "BORDERLINE HEPATOMEGALY",
+              "mild": "MILD HEPATOMEGALY",
+              "moderate": "MODERATE HEPATOMEGALY",
+              "gross": "GROSS HEPATOMEGALY"}
+        hepatomegaly = dm.get(desc, "")
+
+    lf = []
+    if liver["echotexture"] == "increased":
+        grade = liver.get("steatosis_grade") or ""
+        if grade == "Severe+++":
+            lf.append("SIGNIFICANT FATTY INFILTRATION - "
+                      "?NON-ALCOHOLIC STEATO\u2011HEPATITIS")
+        elif grade:
+            lf.append(f"HEPATIC STEATOSIS({grade.upper()})")
+        else:
+            lf.append("HEPATIC STEATOSIS")
+
+    fl = liver["focal_lesion"]
+    if fl == "calcified":
+        lf.append("A CALCIFIED FOCUS IN THE RIGHT HEPATIC LOBE")
+    elif fl == "cyst":
+        count = liver.get("cyst_count", "single")
+        if count == "single":
+            lobe = liver.get("cyst_single_lobe", "right").upper()
+            lf.append(f"A SIMPLE HEPATIC CYST IN {lobe} LOBE")
+        else:
+            lobe = liver.get("cyst_few_lobe", "right").upper()
+            lf.append(f"FEW SIMPLE HEPATIC CYSTS IN {lobe} LOBE")
+    elif fl == "hemangioma":
+        count = liver.get("hemangioma_count", "single")
+        if count == "single":
+            lobe = liver.get("hemangioma_single_lobe", "right").upper()
+            lf.append(f"A HEPATIC HEMANGIOMA IN {lobe} LOBE")
+        else:
+            lobe = liver.get("hemangioma_few_lobe", "right").upper()
+            lf.append(f"FEW HEPATIC HEMANGIOMAS IN {lobe} LOBE")
+    elif fl == "abscess":
+        count = liver.get("abscess_count", "single")
+        lesions = liver.get("abscess_lesions", [])
+        if lesions:
+            if count == "single":
+                l0 = lesions[0]
+                lf.append(f"AN IRREGULAR MARGINATED ILL-DEFINED AVASCULAR SOL IN THE "
+                          f"LIVER MEASURING VOL= {l0['vol']}CC IN SEGMENT "
+                          f"{l0['segment']} - LIKELY LIVER ABSCESS")
+            else:
+                parts = [f"VOL= {l['vol']}CC IN SEGMENT {l['segment']}"
+                         for l in lesions]
+                joined = " & ".join(parts)
+                keyword = "FEW" if count == "few" else "MULTIPLE"
+                lf.append(f"{keyword} IRREGULAR MARGINATED ILL-DEFINED AVASCULAR SOLS "
+                          f"IN THE LIVER, LARGEST OF THESE MEASURING {joined} - "
+                          f"LIKELY LIVER ABSCESSES")
+
+    out = []
+    if hepatomegaly and lf:
+        out.append(hepatomegaly + " WITH " + " AND ".join(lf)
+                   + ". Adv- LFT Correlation.")
+    elif hepatomegaly:
+        out.append(hepatomegaly + ". Adv- LFT Correlation.")
+    elif lf:
+        out.append(" AND ".join(lf) + ". Adv- LFT Correlation.")
+    return out
+
+
+def _try_hepatosplenomegaly(liver, spleen):
+    """Returns combined line (string) if conditions met, else None."""
+    ldesc = liver["size_descriptor"]
+    sdesc = spleen["size_descriptor"]
+    if ldesc == "normal" or sdesc == "normal":
+        return None
+    if ldesc not in HEPATOSPLENOMEGALY_COMBINE:
+        return None
+    if sdesc not in HEPATOSPLENOMEGALY_COMBINE:
+        return None
+    if HEPATOSPLENOMEGALY_COMBINE[ldesc] != HEPATOSPLENOMEGALY_COMBINE[sdesc]:
+        return None
+    # focal lesion check
+    if liver["focal_lesion"] != "none":
+        return None
+    if spleen.get("focal_lesion", "none") != "none":
+        return None
+    # build combined line
+    desc_word = HEPATOSPLENOMEGALY_COMBINE[ldesc]
+    base = f"{desc_word} HEPATOSPLENOMEGALY"
+    parts = [base]
+    # liver non-focal findings (steatosis)
+    liver_extras = []
+    if liver["echotexture"] == "increased":
+        grade = liver.get("steatosis_grade") or ""
+        if grade:
+            liver_extras.append(f"HEPATIC STEATOSIS ({grade.upper()})")
+        else:
+            liver_extras.append("HEPATIC STEATOSIS")
+    # portal vein clause (spleen is enlarged here by definition)
+    pv_mm = spleen.get("portal_vein_mm", "")
+    pv_class = classify_portal_vein(pv_mm) if pv_mm else "unknown"
+    pv_clause = None
+    if pv_class == "normal":
+        pv_clause = f"NORMAL CALIBER PORTAL VEIN ({pv_mm}MM)"
+    elif pv_class == "prominent":
+        pv_clause = f"PORTAL VEIN PROMINENT IN CALIBER ({pv_mm}MM)"
+    elif pv_class == "dilated":
+        # do not combine with dilated portal vein - fall back to separate lines
+        return None
+
+    body_parts = []
+    if liver_extras:
+        body_parts.append(" WITH " + " AND ".join(liver_extras))
+    if pv_clause:
+        if liver_extras:
+            body_parts.append(" & " + pv_clause)
+        else:
+            body_parts.append(" & " + pv_clause)
+    combined = base + "".join(body_parts) + ". Adv- LFT Correlation."
+    return combined
+
 
 def generate_impression(d, sex, age):
     lines = []
@@ -1476,132 +2194,214 @@ def generate_impression(d, sex, age):
         else:
             lines.append("GALL BLADDER ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
 
-    # ---- LIVER (combined) ----
+    # ---- LIVER + SPLEEN (with hepatosplenomegaly combination) ----
     liver = d["liver"]
-    desc = liver["size_descriptor"]
-    hepatomegaly = None
-    if desc == "enlarged_for_age":
-        hepatomegaly = "HEPATOMEGALY FOR AGE"
-    elif desc != "normal":
-        dm = {"borderline": "BORDERLINE HEPATOMEGALY",
-              "mild": "MILD HEPATOMEGALY",
-              "moderate": "MODERATE HEPATOMEGALY",
-              "gross": "GROSS HEPATOMEGALY"}
-        hepatomegaly = dm.get(desc, "")
-
-    lf = []
-
-    if liver["echotexture"] == "increased":
-        grade = liver.get("steatosis_grade") or ""
-        if grade == "Severe+++":
-            lf.append("SIGNIFICANT FATTY INFILTRATION - "
-                      "?NON-ALCOHOLIC STEATO\u2011HEPATITIS")
-        elif grade:
-            lf.append(f"HEPATIC STEATOSIS({grade.upper()})")
-        else:
-            lf.append("HEPATIC STEATOSIS")
-
-    fl = liver["focal_lesion"]
-    if fl == "calcified":
-        lf.append("A CALCIFIED FOCUS IN THE RIGHT HEPATIC LOBE")
-    elif fl == "cyst":
-        count = liver.get("cyst_count", "single")
-        if count == "single":
-            lobe = liver.get("cyst_single_lobe", "right").upper()
-            lf.append(f"A SIMPLE HEPATIC CYST IN {lobe} LOBE")
-        else:
-            lobe = liver.get("cyst_few_lobe", "right").upper()
-            lf.append(f"FEW SIMPLE HEPATIC CYSTS IN {lobe} LOBE")
-    elif fl == "hemangioma":
-        count = liver.get("hemangioma_count", "single")
-        if count == "single":
-            lobe = liver.get("hemangioma_single_lobe", "right").upper()
-            lf.append(f"A HEPATIC HEMANGIOMA IN {lobe} LOBE")
-        else:
-            lobe = liver.get("hemangioma_few_lobe", "right").upper()
-            lf.append(f"FEW HEPATIC HEMANGIOMAS IN {lobe} LOBE")
-    elif fl == "abscess":
-        count = liver.get("abscess_count", "single")
-        lesions = liver.get("abscess_lesions", [])
-        if lesions:
-            if count == "single":
-                l0 = lesions[0]
-                lf.append(f"AN IRREGULAR MARGINATED ILL-DEFINED AVASCULAR SOL IN THE "
-                          f"LIVER MEASURING VOL= {l0['vol']}CC IN SEGMENT "
-                          f"{l0['segment']} - LIKELY LIVER ABSCESS")
-            else:
-                parts = [f"VOL= {l['vol']}CC IN SEGMENT {l['segment']}"
-                         for l in lesions]
-                joined = " & ".join(parts)
-                keyword = "FEW" if count == "few" else "MULTIPLE"
-                lf.append(f"{keyword} IRREGULAR MARGINATED ILL-DEFINED AVASCULAR SOLS "
-                          f"IN THE LIVER, LARGEST OF THESE MEASURING {joined} - "
-                          f"LIKELY LIVER ABSCESSES")
-
-    if hepatomegaly and lf:
-        lines.append(hepatomegaly + " WITH " + " AND ".join(lf)
-                     + ". Adv- LFT Correlation.")
-    elif hepatomegaly:
-        lines.append(hepatomegaly + ". Adv- LFT Correlation.")
-    elif lf:
-        lines.append(" AND ".join(lf) + ". Adv- LFT Correlation.")
-
-    # ---- SPLEEN ----
     spleen = d["spleen"]
-    spleen_desc = spleen["size_descriptor"]
-    spleen_focal = spleen.get("focal_lesion", "none")
-    spleen_count = spleen.get("focal_count", "few")
 
-    if spleen_desc == "enlarged_for_age":
-        spleno_term = "SPLENOMEGALY FOR AGE"
-        is_enlarged = True
-    elif spleen_desc in SPLEEN_IMPRESSION_LABELS:
-        spleno_term = (f"{SPLEEN_IMPRESSION_LABELS[spleen_desc]} "
-                       f"({spleen['size_mm']}MM)")
-        is_enlarged = True
+    combined = _try_hepatosplenomegaly(liver, spleen)
+    if combined:
+        lines.append(combined)
     else:
-        spleno_term = ""
-        is_enlarged = False
+        liver_lines = _liver_impression_line(liver)
+        for ln in liver_lines:
+            lines.append(ln)
+        spleen_lines = _spleen_impression_line(spleen)
+        for ln in spleen_lines:
+            lines.append(ln)
 
-    if is_enlarged:
-        pv_mm = spleen.get("portal_vein_mm", "")
-        pv_class = classify_portal_vein(pv_mm) if pv_mm else "unknown"
+    # ---- KIDNEYS ----
+    k = d["kidneys"]
+    r = k["right"]
+    l = k["left"]
 
-        if pv_class == "prominent":
-            lines.append(f"{spleno_term} WITH PORTAL VEIN PROMINENT IN "
-                         f"CALIBER ({pv_mm}MM).")
-        elif pv_class == "dilated":
-            if spleen_desc in ("moderate", "moderate_to_gross", "gross"):
-                tail = "SUGGESTIVE OF PORTAL HYPERTENSION."
-            else:
-                tail = "? PORTAL HYPERTENSION."
-            lines.append(f"{spleno_term} WITH PORTAL VEIN DILATED IN CALIBER "
-                         f"({pv_mm}MM) - {tail}")
-        elif pv_class == "normal":
-            lines.append(f"{spleno_term} WITH NORMAL CALIBER PORTAL VEIN "
-                         f"({pv_mm}MM).")
+    # 1. Ureteric calculus (unilateral or bilateral, highest priority)
+    r_uc = r["ureter_calculus"]
+    l_uc = l["ureter_calculus"]
+
+    # Bilateral flag
+    bilateral_flag = k.get("bilateral_ureter_calculi", False)
+
+    if (bilateral_flag
+            and r_uc["count"] != "none"
+            and l_uc["count"] != "none"):
+        # build bilateral impression
+        def side_desc(side_key, uc):
+            rt_lt = "Rt" if side_key == "right" else "Lt"
+            _, _, _, _, bi = URETER_LEVELS[uc["level"]]
+            sizes_join = " & ".join(f"{s}mm" for s in uc["sizes"] if s)
+            return f"{rt_lt} {bi} = {sizes_join}"
+        # order larger first
+        def max_size(uc):
+            nums = []
+            for s in uc["sizes"]:
+                v = _parse_mm_value(s)
+                if v is not None:
+                    nums.append(v)
+            return max(nums) if nums else 0
+        if max_size(l_uc) > max_size(r_uc):
+            first, second = "left", "right"
         else:
-            lines.append(f"{spleno_term}.")
+            first, second = "right", "left"
+        p1 = side_desc(first, k[first]["ureter_calculus"])
+        p2 = side_desc(second, k[second]["ureter_calculus"])
 
-    spleen_focal_line = None
-    if spleen_focal == "hyperechoic_foci":
-        if spleen_count == "multiple":
-            spleen_focal_line = ("STARRY SKY SPLEEN APPEARANCE - "
-                                 "?OLD GRANULOMATOUS ETIOLOGY.")
+        def cons(side_key, uc):
+            _, term, _, _, _ = URETER_LEVELS[uc["level"]]
+            grade = uc["grade"]
+            if grade == "none":
+                return None
+            if grade == "no_significant":
+                return f"no significant {term.lower()} seen on the {side_key}"
+            g = URETER_GRADES[grade]
+            return f"{side_key} {g.lower()} {term.lower()}"
+
+        c1 = cons(first, k[first]["ureter_calculus"])
+        c2 = cons(second, k[second]["ureter_calculus"])
+        if c1 and c2:
+            imp = (f"BILATERAL URETERIC CALCULI ({p1} & {p2}) CAUSING "
+                   f"{c1.upper()} & {c2.upper()}.")
+        elif c1:
+            imp = (f"BILATERAL URETERIC CALCULI ({p1} & {p2}) CAUSING "
+                   f"{c1.upper()}, WHILE {c2.upper()}.")
+        elif c2:
+            imp = (f"BILATERAL URETERIC CALCULI ({p1} & {p2}) CAUSING "
+                   f"{c2.upper()}, WHILE {c1.upper()}.")
         else:
-            spleen_focal_line = ("FEW HYPERECHOIC FOCI SCATTERED ACROSS SPLENIC "
-                                 "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
-    elif spleen_focal == "hypoechoic_foci":
-        if spleen_count == "multiple":
-            spleen_focal_line = ("MULTIPLE HYPOECHOIC FOCI SCATTERED ACROSS "
-                                 "SPLENIC PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
+            imp = f"BILATERAL URETERIC CALCULI ({p1} & {p2})."
+        lines.append(imp)
+    else:
+        # unilateral ureteric calculus? Priority order right then left (only one)
+        if r_uc["count"] != "none":
+            line_r = _ureter_calculus_impression_line2("right", r_uc)
+            if line_r:
+                # append renal calculi clause from either/both kidneys
+                r_renal = _renal_calculi_impression(r, "right")
+                l_renal = _renal_calculi_impression(l, "left")
+                renal_clause = None
+                if r_renal and l_renal:
+                    renal_clause = "BILATERAL RENAL CALCULI"
+                elif r_renal:
+                    renal_clause = r_renal
+                elif l_renal:
+                    renal_clause = l_renal
+                if renal_clause:
+                    # strip trailing period, add & clause
+                    base = line_r.rstrip(".")
+                    line_r = base + " & " + renal_clause + "."
+                lines.append(line_r)
+        if l_uc["count"] != "none":
+            line_l = _ureter_calculus_impression_line2("left", l_uc)
+            if line_l:
+                # Only if right didn't already absorb both
+                if r_uc["count"] == "none":
+                    r_renal = _renal_calculi_impression(r, "right")
+                    l_renal = _renal_calculi_impression(l, "left")
+                    renal_clause = None
+                    if r_renal and l_renal:
+                        renal_clause = "BILATERAL RENAL CALCULI"
+                    elif r_renal:
+                        renal_clause = r_renal
+                    elif l_renal:
+                        renal_clause = l_renal
+                    if renal_clause:
+                        base = line_l.rstrip(".")
+                        line_l = base + " & " + renal_clause + "."
+                lines.append(line_l)
+
+    # 2. Standalone renal calculi impression (only if no ureteric calculus line)
+    has_ureter_line = any(
+        ("URETERIC CALCULUS" in ln or "URETERIC CALCULI" in ln
+         or "URETER CALCULUS" in ln or "RENAL PELVIS CALCULUS" in ln
+         or "PELVI-URETERIC JUNCTION CALCULUS" in ln
+         or "VESICO-URETERIC JUNCTION CALCULUS" in ln
+         or "BILATERAL URETERIC CALCULI" in ln)
+        for ln in lines)
+    if not has_ureter_line:
+        r_calcs = r["calculi"]
+        l_calcs = l["calculi"]
+        no_hydro = (r["hydronephrosis"] == "none" and l["hydronephrosis"] == "none"
+                    and r_uc["count"] == "none" and l_uc["count"] == "none")
+        if r_calcs and l_calcs:
+            suffix = ", HOWEVER NO HYDRONEPHROSIS SEEN AT THE TIME OF SCAN." if no_hydro else "."
+            lines.append(f"BILATERAL NEPHROLITHIASIS{suffix}")
+        elif r_calcs:
+            phrase = _renal_calculi_impression_standalone(r, "right")
+            suffix = ", HOWEVER NO HYDRONEPHROSIS SEEN AT THE TIME OF SCAN." if no_hydro else "."
+            lines.append(f"{phrase}{suffix}")
+        elif l_calcs:
+            phrase = _renal_calculi_impression_standalone(l, "left")
+            suffix = ", HOWEVER NO HYDRONEPHROSIS SEEN AT THE TIME OF SCAN." if no_hydro else "."
+            lines.append(f"{phrase}{suffix}")
+
+    # 3. Cysts
+    cyst_lines = []
+    for side_key, side in (("right", r), ("left", l)):
+        if side["cyst"] != "none":
+            side_up = _ureter_side_label(side_key)
+            bosniak = side.get("bosniak", "")
+            # auto Bosniak I for cortical/simple
+            if not bosniak and side["cyst"] in ("cortical", "simple"):
+                bosniak = "I"
+            bosniak_txt = f" (BOSNIAK CAT-{bosniak})" if bosniak else ""
+            cyst_lines.append(f"A {side_up} RENAL {side['cyst'].upper()} CYST{bosniak_txt}.")
+    for ln in cyst_lines:
+        lines.append(ln)
+
+    # 4. Cortical echogenicity
+    if k["cortical_echogenicity"] == "mildly_raised":
+        laterality = k.get("cortical_echogenicity_laterality", "bilateral")
+        lat_txt = {
+            "bilateral": "BILATERAL",
+            "right": "RIGHT",
+            "left": "LEFT",
+        }.get(laterality, "BILATERAL")
+        tail = ""
+        if k.get("age_related_echogenicity"):
+            tail = "- ?AGE RELATED. Adv- KFT Correlation"
         else:
-            spleen_focal_line = ("FEW HYPOECHOIC FOCI SCATTERED ACROSS SPLENIC "
-                                 "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
+            tail = ". Adv- KFT Correlation"
+        lines.append(f"MILDLY RAISED {lat_txt} RENAL CORTICAL ECHOGENICITY{tail}")
 
-    if spleen_focal_line:
-        lines.append(spleen_focal_line)
+    # 5. Standalone hydronephrosis (no ureteric calculus)
+    for side_key, side in (("right", r), ("left", l)):
+        if side["hydronephrosis"] != "none" and side["ureter_calculus"]["count"] == "none":
+            side_up = _ureter_side_label(side_key)
+            g = side["hydronephrosis"].upper()
+            extra = ""
+            if side.get("hydronephrosis_no_obstructive_calculus"):
+                extra = (", HOWEVER NO OBSTRUCTIVE CALCULUS IS SEEN UPTO THE "
+                         "VISUALIZED DISTAL URETER")
+            rpc = ""
+            if side.get("recently_passed_calculus_suspected"):
+                rpc = " - ?RECENTLY PASSED CALCULUS"
+            lines.append(f"{g} {side_up} HYDROURETERONEPHROSIS{extra}{rpc}.")
 
+    # 6. Contralateral normal clause
+    for side_key, side in (("right", r), ("left", l)):
+        if side.get("contralateral_normal_clause"):
+            other = "left" if side_key == "right" else "right"
+            side_up = _ureter_side_label(side_key)
+            other_up = other.upper()
+            # attach to last renal calculi line if present
+            if side["calculi"] and no_ureterical := True:
+                # find the calculus line
+                for i in range(len(lines) - 1, -1, -1):
+                    if "RENAL CALCULUS" in lines[i] or "RENAL CALCULI" in lines[i] \
+                            or "NEPHROLITHIASIS" in lines[i]:
+                        base = lines[i].rstrip(".")
+                        # remove existing "however no hydronephrosis" if present
+                        base = base.replace(", HOWEVER NO HYDRONEPHROSIS SEEN AT THE TIME OF SCAN", "")
+                        base = base.rstrip("., ")
+                        lines[i] = (base + f", HOWEVER NO CALCULUS/HYDRONEPHROSIS SEEN ON "
+                                    f"THE {other_up} KIDNEY AT THE TIME OF SCAN.")
+                        break
+
+    # 7. Negative renal line (MADHU rule)
+    if k.get("negative_renal_line"):
+        lines.append("NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS SEEN AT THE "
+                     "TIME OF SCAN.")
+
+    # ---- URINARY BLADDER ----
     if d["urinary_bladder"]["sedimentation"] in ("free_floating", "significant",
                                                   "extensive"):
         lines.append("SEDIMENTATION SEEN IN THE UB LUMEN. Adv- Urine R/M Correlation.")
@@ -1739,6 +2539,7 @@ def build_docx_bytes(data):
     is_ped = age_years is not None and age_years < 18
     p_status = data["pancreas"].get("status", "normal")
     spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
+    ub_status = data["urinary_bladder"].get("status", "adequately_distended")
 
     sections = [
         liver_sentence(data["liver"], sex, age, spleen_enlarged=spleen_enlarged),
@@ -1746,7 +2547,7 @@ def build_docx_bytes(data):
         cbd_sentence(data["cbd"]),
         pancreas_sentence(data["pancreas"]),
         spleen_sentence(data["spleen"]),
-        kidneys_sentence(data["kidneys"]),
+        kidneys_sentence(data["kidneys"], ub_status=ub_status),
         urinary_bladder_sentence(data["urinary_bladder"]),
     ]
     if sex == "F":
@@ -2501,22 +3302,298 @@ with col_find:
 
     # ------- KIDNEYS -------
     with st.expander("KIDNEYS (click to open findings)", expanded=False):
-        kd_r_status = st.radio("Right kidney", ["normal", "not_visualized"],
-                               horizontal=True, key="kd_r_status")
-        kd_l_status = st.radio("Left kidney", ["normal", "not_visualized"],
-                               horizontal=True, key="kd_l_status")
-
-        kd_r_calc = ""
-        kd_l_calc = ""
+        # Size brackets
         c_a, c_b = st.columns(2)
         with c_a:
-            kd_r_calc = st.text_area(
-                "Right calculi (e.g. '4.6 upper-mid, 4.1 lower-mid')",
-                height=60, key="kd_r_calc")
+            kd_r_size_text = st.text_input("Right kidney size (e.g. 100x52mm)",
+                                            key="kd_r_size_text")
         with c_b:
-            kd_l_calc = st.text_area(
-                "Left calculi (e.g. '5.2 lower, 4.3 mid')",
-                height=60, key="kd_l_calc")
+            kd_l_size_text = st.text_input("Left kidney size (e.g. 97x50mm)",
+                                            key="kd_l_size_text")
+
+        # Cortical echogenicity (both kidneys)
+        c_a, c_b, c_c = st.columns([2, 2, 1])
+        with c_a:
+            kd_cort_echo = st.radio("Cortical echogenicity",
+                                     ["normal", "mildly_raised"],
+                                     horizontal=True,
+                                     format_func=lambda x: {
+                                         "normal": "Normal",
+                                         "mildly_raised": "Mildly raised"}[x],
+                                     key="kd_cort_echo")
+        with c_b:
+            kd_cort_lat = "bilateral"
+            if kd_cort_echo == "mildly_raised":
+                kd_cort_lat = st.radio("Laterality",
+                                        ["bilateral", "right", "left"],
+                                        horizontal=True,
+                                        format_func=lambda x: x.title(),
+                                        key="kd_cort_lat")
+        with c_c:
+            kd_age_related = False
+            if kd_cort_echo == "mildly_raised":
+                kd_age_related = st.checkbox("?Age related",
+                                              key="kd_age_related")
+
+        st.markdown("---")
+        st.markdown("### Right Kidney")
+        kd_r_status = st.radio("Right kidney status",
+                                ["normal", "not_visualized"],
+                                horizontal=True, key="kd_r_status")
+
+        # Renal calculi repeater
+        st.markdown("**Renal calculi**")
+        if "kd_r_calc_count" not in st.session_state:
+            st.session_state["kd_r_calc_count"] = 0
+        if "kd_l_calc_count" not in st.session_state:
+            st.session_state["kd_l_calc_count"] = 0
+
+        # Right renal calculi
+        calc_r_cols = st.columns([3, 1])
+        with calc_r_cols[0]:
+            st.caption(f"Right: {st.session_state['kd_r_calc_count']} calculi")
+        with calc_r_cols[1]:
+            if st.button("+ Add", key="kd_r_add_calc"):
+                st.session_state["kd_r_calc_count"] += 1
+                st.rerun()
+        for i in range(st.session_state["kd_r_calc_count"]):
+            c_a, c_b, c_c = st.columns([1, 2, 1])
+            with c_a:
+                st.text_input(f"Size", key=f"kd_r_calc_size_{i}",
+                              label_visibility="collapsed",
+                              placeholder="mm")
+            with c_b:
+                st.selectbox(f"Pole", ["upper", "upper_mid", "mid",
+                                        "lower_mid", "lower"],
+                             key=f"kd_r_calc_pole_{i}",
+                             label_visibility="collapsed",
+                             format_func=lambda x: _format_pole(x))
+            with c_c:
+                if st.button("✕", key=f"kd_r_calc_del_{i}"):
+                    st.session_state["kd_r_calc_count"] -= 1
+                    st.rerun()
+
+        # Ureteric calculus (right)
+        st.markdown("**Right ureteric calculus**")
+        kd_r_uc_count = st.radio(
+            "Count", ["none", "single", "couple", "few", "multiple"],
+            horizontal=True, key="kd_r_uc_count",
+            format_func=lambda x: x.title())
+        kd_r_uc_sizes = []
+        kd_r_uc_level = "distal_ureter"
+        kd_r_uc_grade = "none"
+        kd_r_uc_not_traced = False
+        if kd_r_uc_count != "none":
+            kd_r_uc_level = st.selectbox(
+                "Level",
+                ["renal_pelvis", "puj", "proximal_ureter",
+                 "mid_ureter", "distal_ureter", "vuj"],
+                key="kd_r_uc_level",
+                format_func=lambda x: {
+                    "renal_pelvis": "Renal pelvis",
+                    "puj": "Pelvi-ureteric junction",
+                    "proximal_ureter": "Proximal ureter",
+                    "mid_ureter": "Mid ureter",
+                    "distal_ureter": "Distal ureter",
+                    "vuj": "Vesico-ureteric junction"}[x])
+            if kd_r_uc_count == "couple":
+                c_a, c_b = st.columns(2)
+                with c_a:
+                    s1 = st.text_input("Size 1 (mm)", key="kd_r_uc_s1")
+                with c_b:
+                    s2 = st.text_input("Size 2 (mm)", key="kd_r_uc_s2")
+                kd_r_uc_sizes = [s1, s2]
+            else:
+                kd_r_uc_sizes = [st.text_input("Size (mm, largest)",
+                                                key="kd_r_uc_size")]
+            kd_r_uc_grade = st.radio(
+                "Grade",
+                ["none", "no_significant", "minimal", "mild", "moderate"],
+                horizontal=True, key="kd_r_uc_grade",
+                format_func=lambda x: {
+                    "none": "No back-pressure",
+                    "no_significant": "No significant",
+                    "minimal": "Minimal",
+                    "mild": "Mild",
+                    "moderate": "Moderate"}[x])
+            kd_r_uc_not_traced = st.checkbox(
+                "Ureter not traced (UB empty)", key="kd_r_uc_not_traced")
+
+        st.markdown("---")
+        st.markdown("### Left Kidney")
+        kd_l_status = st.radio("Left kidney status",
+                                ["normal", "not_visualized"],
+                                horizontal=True, key="kd_l_status")
+
+        # Left renal calculi
+        calc_l_cols = st.columns([3, 1])
+        with calc_l_cols[0]:
+            st.caption(f"Left: {st.session_state['kd_l_calc_count']} calculi")
+        with calc_l_cols[1]:
+            if st.button("+ Add", key="kd_l_add_calc"):
+                st.session_state["kd_l_calc_count"] += 1
+                st.rerun()
+        for i in range(st.session_state["kd_l_calc_count"]):
+            c_a, c_b, c_c = st.columns([1, 2, 1])
+            with c_a:
+                st.text_input(f"Size", key=f"kd_l_calc_size_{i}",
+                              label_visibility="collapsed",
+                              placeholder="mm")
+            with c_b:
+                st.selectbox(f"Pole", ["upper", "upper_mid", "mid",
+                                        "lower_mid", "lower"],
+                             key=f"kd_l_calc_pole_{i}",
+                             label_visibility="collapsed",
+                             format_func=lambda x: _format_pole(x))
+            with c_c:
+                if st.button("✕", key=f"kd_l_calc_del_{i}"):
+                    st.session_state["kd_l_calc_count"] -= 1
+                    st.rerun()
+
+        # Ureteric calculus (left)
+        st.markdown("**Left ureteric calculus**")
+        kd_l_uc_count = st.radio(
+            "Count", ["none", "single", "couple", "few", "multiple"],
+            horizontal=True, key="kd_l_uc_count",
+            format_func=lambda x: x.title())
+        kd_l_uc_sizes = []
+        kd_l_uc_level = "distal_ureter"
+        kd_l_uc_grade = "none"
+        kd_l_uc_not_traced = False
+        if kd_l_uc_count != "none":
+            kd_l_uc_level = st.selectbox(
+                "Level",
+                ["renal_pelvis", "puj", "proximal_ureter",
+                 "mid_ureter", "distal_ureter", "vuj"],
+                key="kd_l_uc_level",
+                format_func=lambda x: {
+                    "renal_pelvis": "Renal pelvis",
+                    "puj": "Pelvi-ureteric junction",
+                    "proximal_ureter": "Proximal ureter",
+                    "mid_ureter": "Mid ureter",
+                    "distal_ureter": "Distal ureter",
+                    "vuj": "Vesico-ureteric junction"}[x])
+            if kd_l_uc_count == "couple":
+                c_a, c_b = st.columns(2)
+                with c_a:
+                    s1 = st.text_input("Size 1 (mm)", key="kd_l_uc_s1")
+                with c_b:
+                    s2 = st.text_input("Size 2 (mm)", key="kd_l_uc_s2")
+                kd_l_uc_sizes = [s1, s2]
+            else:
+                kd_l_uc_sizes = [st.text_input("Size (mm, largest)",
+                                                key="kd_l_uc_size")]
+            kd_l_uc_grade = st.radio(
+                "Grade",
+                ["none", "no_significant", "minimal", "mild", "moderate"],
+                horizontal=True, key="kd_l_uc_grade",
+                format_func=lambda x: {
+                    "none": "No back-pressure",
+                    "no_significant": "No significant",
+                    "minimal": "Minimal",
+                    "mild": "Mild",
+                    "moderate": "Moderate"}[x])
+            kd_l_uc_not_traced = st.checkbox(
+                "Ureter not traced (UB empty)", key="kd_l_uc_not_traced")
+
+        # Bilateral flag
+        bilateral_uc = False
+        if kd_r_uc_count != "none" and kd_l_uc_count != "none":
+            bilateral_uc = st.checkbox(
+                "Show as bilateral ureteric calculi sentence",
+                value=True, key="kd_bilateral_uc")
+
+        st.markdown("---")
+        st.markdown("### Cysts / Hydronephrosis / Other")
+        c_a, c_b = st.columns(2)
+        with c_a:
+            st.markdown("**Right**")
+            kd_r_cyst = st.radio("Cyst type",
+                                  ["none", "cortical", "simple", "complex", "parapelvic"],
+                                  horizontal=True, key="kd_r_cyst",
+                                  format_func=lambda x: x.title())
+            kd_r_cyst_size = ""
+            kd_r_cyst_loc = ""
+            kd_r_bosniak = ""
+            if kd_r_cyst != "none":
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    kd_r_cyst_size = st.text_input("Size (mm)", key="kd_r_cyst_size")
+                with c2:
+                    kd_r_cyst_loc = st.selectbox(
+                        "Location",
+                        ["", "upper", "upper_mid", "mid", "lower_mid", "lower"],
+                        key="kd_r_cyst_loc",
+                        format_func=lambda x: "—" if x == "" else _format_pole(x))
+                with c3:
+                    if kd_r_cyst in ("cortical", "simple"):
+                        st.caption("Bosniak I (auto)")
+                    else:
+                        kd_r_bosniak = st.text_input("Bosniak", key="kd_r_bosniak")
+            kd_r_hydro = st.radio(
+                "Standalone hydronephrosis",
+                ["none", "minimal", "mild", "moderate"],
+                horizontal=True, key="kd_r_hydro",
+                format_func=lambda x: x.title())
+            kd_r_hydro_nocalc = False
+            kd_r_hydro_rpc = False
+            if kd_r_hydro != "none":
+                kd_r_hydro_nocalc = st.checkbox(
+                    "No obstructive calculus upto visualized distal ureter",
+                    key="kd_r_hydro_nocalc")
+                kd_r_hydro_rpc = st.checkbox(
+                    "?Recently passed calculus", key="kd_r_hydro_rpc")
+            kd_r_contra = st.checkbox(
+                "Contralateral (left) normal clause",
+                key="kd_r_contra")
+        with c_b:
+            st.markdown("**Left**")
+            kd_l_cyst = st.radio("Cyst type",
+                                  ["none", "cortical", "simple", "complex", "parapelvic"],
+                                  horizontal=True, key="kd_l_cyst",
+                                  format_func=lambda x: x.title())
+            kd_l_cyst_size = ""
+            kd_l_cyst_loc = ""
+            kd_l_bosniak = ""
+            if kd_l_cyst != "none":
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    kd_l_cyst_size = st.text_input("Size (mm)", key="kd_l_cyst_size")
+                with c2:
+                    kd_l_cyst_loc = st.selectbox(
+                        "Location",
+                        ["", "upper", "upper_mid", "mid", "lower_mid", "lower"],
+                        key="kd_l_cyst_loc",
+                        format_func=lambda x: "—" if x == "" else _format_pole(x))
+                with c3:
+                    if kd_l_cyst in ("cortical", "simple"):
+                        st.caption("Bosniak I (auto)")
+                    else:
+                        kd_l_bosniak = st.text_input("Bosniak", key="kd_l_bosniak")
+            kd_l_hydro = st.radio(
+                "Standalone hydronephrosis",
+                ["none", "minimal", "mild", "moderate"],
+                horizontal=True, key="kd_l_hydro",
+                format_func=lambda x: x.title())
+            kd_l_hydro_nocalc = False
+            kd_l_hydro_rpc = False
+            if kd_l_hydro != "none":
+                kd_l_hydro_nocalc = st.checkbox(
+                    "No obstructive calculus upto visualized distal ureter",
+                    key="kd_l_hydro_nocalc")
+                kd_l_hydro_rpc = st.checkbox(
+                    "?Recently passed calculus", key="kd_l_hydro_rpc")
+            kd_l_contra = st.checkbox(
+                "Contralateral (right) normal clause",
+                key="kd_l_contra")
+
+        st.markdown("---")
+        kd_neg_renal = st.radio(
+            "Negative renal impression line (clinical query, no finding)",
+            ["no", "yes"],
+            horizontal=True, key="kd_neg_renal",
+            help="Emits 'NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS SEEN "
+                 "AT THE TIME OF SCAN.' in the impression.")
 
     # ------- URINARY BLADDER -------
     with st.expander("URINARY BLADDER (click to open findings)", expanded=False):
@@ -2628,23 +3705,6 @@ with col_find:
 # Assemble data
 # ============================================================
 
-def parse_calc(text):
-    if not text.strip():
-        return []
-    out = []
-    for part in text.split(","):
-        part = part.strip()
-        tokens = part.replace("mm", " ").split()
-        size, loc = "", "mid"
-        for t in tokens:
-            if t.replace(".", "").isdigit():
-                size = t
-            elif any(p in t.lower() for p in ["upper", "mid", "lower", "pole"]):
-                loc = t
-        out.append({"size_mm": size, "location": loc, "hydro": "none"})
-    return out
-
-
 data = new_report(p_sex)
 data["patient"] = {"name": p_name, "age": p_age, "sex": p_sex,
                    "date": p_date, "referred_by": p_ref}
@@ -2708,10 +3768,69 @@ data["spleen"].update({
     "accessory_location": sp_acc_loc,
 })
 
-data["kidneys"]["right"].update({"status": kd_r_status,
-                                  "calculi": parse_calc(kd_r_calc)})
-data["kidneys"]["left"].update({"status": kd_l_status,
-                                 "calculi": parse_calc(kd_l_calc)})
+# --- kidneys ---
+kd_r_calcs = []
+for i in range(st.session_state.get("kd_r_calc_count", 0)):
+    sz = st.session_state.get(f"kd_r_calc_size_{i}", "")
+    pole = st.session_state.get(f"kd_r_calc_pole_{i}", "mid")
+    if sz:
+        kd_r_calcs.append({"size_mm": sz, "pole": pole})
+
+kd_l_calcs = []
+for i in range(st.session_state.get("kd_l_calc_count", 0)):
+    sz = st.session_state.get(f"kd_l_calc_size_{i}", "")
+    pole = st.session_state.get(f"kd_l_calc_pole_{i}", "mid")
+    if sz:
+        kd_l_calcs.append({"size_mm": sz, "pole": pole})
+
+data["kidneys"]["right"].update({
+    "status": kd_r_status,
+    "size_text": kd_r_size_text,
+    "calculi": kd_r_calcs,
+    "ureter_calculus": {
+        "count": kd_r_uc_count,
+        "sizes": [s for s in kd_r_uc_sizes if s] if kd_r_uc_count != "none" else [],
+        "level": kd_r_uc_level,
+        "grade": kd_r_uc_grade,
+    },
+    "ureter_not_traced": kd_r_uc_not_traced,
+    "cyst": kd_r_cyst,
+    "cyst_size_mm": kd_r_cyst_size,
+    "cyst_location": kd_r_cyst_loc,
+    "bosniak": kd_r_bosniak,
+    "hydronephrosis": kd_r_hydro,
+    "hydronephrosis_no_obstructive_calculus": kd_r_hydro_nocalc,
+    "recently_passed_calculus_suspected": kd_r_hydro_rpc,
+    "contralateral_normal_clause": kd_r_contra,
+})
+data["kidneys"]["left"].update({
+    "status": kd_l_status,
+    "size_text": kd_l_size_text,
+    "calculi": kd_l_calcs,
+    "ureter_calculus": {
+        "count": kd_l_uc_count,
+        "sizes": [s for s in kd_l_uc_sizes if s] if kd_l_uc_count != "none" else [],
+        "level": kd_l_uc_level,
+        "grade": kd_l_uc_grade,
+    },
+    "ureter_not_traced": kd_l_uc_not_traced,
+    "cyst": kd_l_cyst,
+    "cyst_size_mm": kd_l_cyst_size,
+    "cyst_location": kd_l_cyst_loc,
+    "bosniak": kd_l_bosniak,
+    "hydronephrosis": kd_l_hydro,
+    "hydronephrosis_no_obstructive_calculus": kd_l_hydro_nocalc,
+    "recently_passed_calculus_suspected": kd_l_hydro_rpc,
+    "contralateral_normal_clause": kd_l_contra,
+})
+data["kidneys"]["cortical_echogenicity"] = kd_cort_echo
+data["kidneys"]["cortical_echogenicity_laterality"] = kd_cort_lat
+data["kidneys"]["age_related_echogenicity"] = kd_age_related
+data["kidneys"]["negative_renal_line"] = (kd_neg_renal == "yes")
+data["kidneys"]["bilateral_ureter_calculi"] = (
+    kd_r_uc_count != "none" and kd_l_uc_count != "none" and bilateral_uc
+)
+
 data["urinary_bladder"].update({"status": ub_status, "sedimentation": ub_sed})
 
 if p_sex == "F":
@@ -2739,12 +3858,13 @@ def render_preview_findings(data):
     is_ped = age_years is not None and age_years < 18
     p_status = data["pancreas"].get("status", "normal")
     spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
+    ub_status = data["urinary_bladder"].get("status", "adequately_distended")
     secs = [liver_sentence(data["liver"], sex, age, spleen_enlarged=spleen_enlarged),
             gall_bladder_sentence(data["gall_bladder"]),
             cbd_sentence(data["cbd"]),
             pancreas_sentence(data["pancreas"]),
             spleen_sentence(data["spleen"]),
-            kidneys_sentence(data["kidneys"]),
+            kidneys_sentence(data["kidneys"], ub_status=ub_status),
             urinary_bladder_sentence(data["urinary_bladder"])]
     if sex == "F":
         secs.append(uterus_sentence(data["uterus"], pediatric=is_ped))
