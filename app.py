@@ -2703,4 +2703,189 @@ data["liver"].update({
     "cyst_few_largest_mm": cyst_few_largest_mm, "cyst_few_lobe": cyst_few_lobe,
     "hemangioma_count": hemangioma_count,
     "hemangioma_single_lobe": hemangioma_single_lobe,
-    "hemangioma_single_size_mm": hemangioma_single
+    "hemangioma_single_size_mm": hemangioma_single_size_mm,
+    "hemangioma_few_largest_mm": hemangioma_few_largest_mm,
+    "hemangioma_few_lobe": hemangioma_few_lobe,
+    "abscess_count": abscess_count, "abscess_lesions": abscess_lesions,
+    "ihbr": liver_ihbr, "portal_vein": liver_portal,
+    "portal_vein_mm": liver_portal_mm if liver_portal == "dilated" else "",
+})
+
+data["gall_bladder"].update({
+    "status": gb_status, "wall_thickened": gb_wall_thickened,
+    "wall_mm": gb_wall_mm, "calculi": gb_calculi,
+    "calculi_count": gb_calculi_count, "calculi_size_cat": gb_calculi_size_cat,
+    "calculi_size_mm": gb_calculi_size_mm, "calculi_neck": gb_calculi_neck,
+    "calculi_neck_size_mm": gb_calculi_neck_size_mm, "sludge": gb_sludge,
+    "sludge_ball": gb_sludge_ball, "sludge_ball_count": gb_sludge_ball_count,
+    "sludge_ball_size_mm": gb_sludge_ball_size_mm,
+    "sludge_ball_wall": gb_sludge_ball_wall, "comet_tail": gb_comet_tail,
+    "comet_tail_count": gb_comet_tail_count,
+    "comet_tail_wall": gb_comet_tail_wall,
+    "pericholecystic_fluid": gb_peri_fluid,
+})
+
+data["cbd"].update({
+    "size_mm": cbd_mm, "status": cbd_status, "calculi": cbd_calc,
+    "calculi_count": cbd_calc_count, "calculi_size_mm": cbd_calc_size,
+    "calculi_location": cbd_calc_location, "ihbr": cbd_ihbr,
+})
+
+data["pancreas"].update({
+    "status": pn_status if pn_status else "normal",
+    "ee_size": pn_ee_size, "ee_fat_stranding": pn_ee_fat,
+    "ee_fat_location": pn_ee_fat_loc, "ee_free_fluid": pn_ee_fluid,
+    "ee_fluid_location": pn_ee_fluid_loc,
+    "ac_size": pn_ac_size, "ac_echo": pn_ac_echo,
+    "ac_echo_location": pn_ac_echo_loc, "ac_margins": pn_ac_margins,
+    "wp_type": pn_wp_type, "wp_dims": pn_wp_dims, "wp_vol": pn_wp_vol,
+    "wp_location": pn_wp_location,
+    "ch_foci": pn_ch_foci, "ch_mpd": pn_ch_mpd,
+    "ch_mpd_size": pn_ch_mpd_size, "ch_fat": pn_ch_fat,
+})
+
+data["spleen"].update({
+    "size_mm": sp_size, "size_descriptor": sp_desc,
+    "echotexture": sp_echo,
+    "focal_lesion": sp_focal, "focal_lesion_text": sp_focal_text,
+    "cyst_count": sp_cyst_count, "cyst_size_mm": sp_cyst_size,
+    "cyst_location": sp_cyst_loc,
+    "hemangioma_count": sp_hem_count, "hemangioma_size_mm": sp_hem_size,
+    "infarct_size_mm": sp_infarct_size, "infarct_location": sp_infarct_loc,
+    "portal_vein_mm": sp_portal_mm if spleen_enlarged else "",
+    "accessory_spleen": sp_acc, "accessory_size_mm": sp_acc_size,
+    "accessory_location": sp_acc_loc,
+})
+
+data["kidneys"]["right"].update({"status": kd_r_status,
+                                  "calculi": parse_calc(kd_r_calc)})
+data["kidneys"]["left"].update({"status": kd_l_status,
+                                 "calculi": parse_calc(kd_l_calc)})
+data["urinary_bladder"].update({"status": ub_status, "sedimentation": ub_sed})
+
+if p_sex == "F":
+    data["uterus"].update({"status": ut_status, "size": ut_size,
+                           "endometrial_thickness_mm": ut_et})
+    data["ovaries"].update({"right_status": ov_r, "right_size": ov_r_size,
+                            "left_status": ov_l, "left_size": ov_l_size})
+else:
+    data["prostate"].update({"status": pr_status, "size_cc": pr_cc})
+
+data["bowel"].update({"free_fluid": bw_ff, "mesenteric_ln": bw_ln})
+data["appendix"].update({"status": ap_status, "diameter_mm": ap_d})
+
+auto_impression = generate_impression(data, p_sex, p_age)
+data["impression"]["lines"] = auto_impression
+
+
+def render_preview_findings(data):
+    p = data["patient"]
+    out = []
+    out.append("         ULTRASOUND WHOLE ABDOMEN")
+    out.append("")
+    sex, age = p["sex"], p["age"]
+    age_years = parse_age(age)
+    is_ped = age_years is not None and age_years < 18
+    p_status = data["pancreas"].get("status", "normal")
+    spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
+    secs = [liver_sentence(data["liver"], sex, age, spleen_enlarged=spleen_enlarged),
+            gall_bladder_sentence(data["gall_bladder"]),
+            cbd_sentence(data["cbd"]),
+            pancreas_sentence(data["pancreas"]),
+            spleen_sentence(data["spleen"]),
+            kidneys_sentence(data["kidneys"]),
+            urinary_bladder_sentence(data["urinary_bladder"])]
+    if sex == "F":
+        secs.append(uterus_sentence(data["uterus"], pediatric=is_ped))
+        if not is_ped:
+            secs.append(ovaries_sentence(data["ovaries"]))
+    else:
+        secs.append(prostate_sentence(data["prostate"], pediatric=is_ped))
+    secs.append(bowel_sentence(data["bowel"], sex, pancreas_status=p_status))
+    if data["appendix"]["status"] != "not_assessed":
+        secs.append(appendix_sentence(data["appendix"]))
+    for s in secs:
+        if not s:
+            continue
+        out.append("".join(x[0] for x in s))
+        out.append("")
+    out.append("IMPRESSION:")
+    for line in data["impression"]["lines"]:
+        out.append(f"  - {line}")
+    return "\n".join(out)
+
+
+preview_text = render_preview_findings(data)
+
+
+with col_prev:
+    st.subheader("📄 Live Preview")
+    _safe = html.escape(preview_text).replace("\n", "<br>")
+    st.markdown(
+        f'<div class="preview-box">{_safe}</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.subheader("✏️ Impression (editable)")
+    st.caption("Edit any line. Auto-updates with findings unless you type here.")
+
+    auto_imp_str = "\n".join(auto_impression)
+
+    def _h(s):
+        return hashlib.md5(s.encode("utf-8")).hexdigest()
+
+    if "_auto_imp_hash" not in st.session_state:
+        st.session_state["impression_box"] = auto_imp_str
+        st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
+        st.session_state["_last_set_content"] = auto_imp_str
+
+    new_auto_hash = _h(auto_imp_str)
+    if new_auto_hash != st.session_state["_auto_imp_hash"]:
+        cur_widget = st.session_state.get("impression_box", "")
+        if cur_widget == st.session_state["_last_set_content"]:
+            st.session_state["impression_box"] = auto_imp_str
+            st.session_state["_last_set_content"] = auto_imp_str
+        st.session_state["_auto_imp_hash"] = new_auto_hash
+
+    edited_imp = st.text_area("Impression lines (one per line)",
+                              height=200, label_visibility="collapsed",
+                              key="impression_box")
+
+    if st.button("↺ Reset to auto-generated impression", key="reset_imp_btn"):
+        st.session_state["impression_box"] = auto_imp_str
+        st.session_state["_last_set_content"] = auto_imp_str
+        st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
+        st.rerun()
+
+    st.markdown("---")
+    c_a, c_b = st.columns(2)
+    with c_a:
+        final_data = dict(data)
+        if edited_imp.strip():
+            final_data["impression"] = {
+                "lines": [ln.strip() for ln in edited_imp.splitlines()
+                          if ln.strip()]
+            }
+        docx_bytes = build_docx_bytes(final_data)
+        fname = f"{p_name or 'report'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+        fname = "".join(ch for ch in fname if ch.isalnum() or ch in "._-")
+        st.download_button(
+            "⬇️ Download .docx", docx_bytes, file_name=fname,
+            mime="application/vnd.openxmlformats-officedocument."
+                 "wordprocessingml.document")
+    with c_b:
+        if st.button("💾 Save to Database", key="save_db_btn"):
+            if not p_name.strip():
+                st.warning("Enter patient name first.")
+            else:
+                final_data = dict(data)
+                if edited_imp.strip():
+                    final_data["impression"] = {
+                        "lines": [ln.strip() for ln in edited_imp.splitlines()
+                                  if ln.strip()]
+                    }
+                save_report(final_data)
+                if p_ref.strip():
+                    add_referrer(p_ref)
+                st.success("Saved to local database.")
+  
