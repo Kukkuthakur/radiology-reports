@@ -1346,7 +1346,7 @@ def _kidney_side_block(name, k, side_key):
         if k.get("hydronephrosis_no_obstructive_calculus"):
             b.append(seg(", however no obstructive calculus is seen upto the "
                          "visualized distal ureter", True))
-        b.append(seg(".", True)]
+        b.append(seg(".", True)) 
     if has_nephrocal:
         b += [seg(" "), seg(f"Multiple foci of calcification seen in the "
                              f"{side_key.lower()} renal cortex", True),
