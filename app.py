@@ -1,24 +1,18 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v1.6.2-stable
+v1.7.0-stable
 
 Progress:
 - Liver, Gall Bladder, CBD: complete
 - Pancreas: Normal (default) + Early/evolving + Acute + WON/Pseudocyst + Chronic
 - Spleen: complete (size + hyper/hypoechoic foci + portal-vein swap rule)
-- Kidneys: complete (renal calculi, ureteric calculi unilateral + bilateral,
-  standalone hydronephrosis, cortical cyst w/ Bosniak I/II/IIF, cortical
-  echogenicity w/ ?age-related, size brackets, negative renal line,
-  contralateral-normal clause, ureter-not-traced, absent renal fossa)
-- v1.6.2: kidney block restructured — nested expanders per side, all finding
-  sub-blocks gated behind checkboxes (Strategy 3). Bosniak radio simplified:
-  simple/cortical default to Cat-I, upgrade checkbox reveals Cat-II / Cat-IIF.
-  Parapelvic cyst option removed.
-- Spleen &-merge fix: splenomegaly + portal vein + focal lesion in one line
-- Hepatosplenomegaly combination: same descriptor, no focal lesion either organ
-- Bowel line updated: "...bowel wall thickening or lymphadenitis appreciated."
-- Previous fixes: steato-hepatitis, non-breaking hyphen, combined fat+fluid,
-  acute pancreatitis ascites handling, justify alignment, text wrapping
+- Kidneys: complete (nested side expanders, gated sub-blocks, bosniak default-I
+  w/ upgrade checkbox)
+- v1.7.0: accordion organ navigation (one open at a time); "Additional Body
+  Findings" editable text box appended in bold-italic before IMPRESSION and
+  included in both preview and DOCX.
+- Spleen &-merge fix, hepatosplenomegaly combination, bowel line, steato,
+  non-breaking hyphen, combined fat+fluid, acute pancreatitis ascites handling.
 
 Frozen rules:
 - All impression text in ALL CAPS except "Adv- ... Correlation." fragments
@@ -307,6 +301,26 @@ BOSNIAK_OPTIONS = ["I", "II", "IIF"]
 
 
 # ============================================================
+# ORGAN LIST FOR ACCORDION
+# ============================================================
+
+ORGANS = [
+    "LIVER",
+    "GALL BLADDER",
+    "COMMON BILE DUCT",
+    "PANCREAS",
+    "SPLEEN",
+    "KIDNEYS",
+    "URINARY BLADDER",
+    "UTERUS",
+    "OVARIES",
+    "PROSTATE",
+    "BOWEL / FREE FLUID",
+    "APPENDIX",
+]
+
+
+# ============================================================
 # DATABASE
 # ============================================================
 
@@ -369,16 +383,16 @@ def _new_ureter_calculus():
 
 def _new_kidney_side():
     return {
-        "status": "normal",              # normal | absent_agenesis | absent_ectopic
+        "status": "normal",
         "size_text": "",
         "calculi": [],
         "ureter_calculus": _new_ureter_calculus(),
         "ureter_not_traced": False,
-        "cyst": "none",                  # none | cortical | simple
+        "cyst": "none",
         "cyst_size_mm": "",
         "cyst_location": "",
-        "bosniak": "",                   # I | II | IIF
-        "hydronephrosis": "none",        # none | minimal | mild | moderate
+        "bosniak": "",
+        "hydronephrosis": "none",
         "hydronephrosis_no_obstructive_calculus": False,
         "recently_passed_calculus_suspected": False,
         "nephrocalcinosis": "none",
@@ -470,6 +484,7 @@ def new_report(sex="F"):
                   "ln_location": "bilateral", "ln_largest": "",
                   "ln_character": "discrete", "pleural_effusion": "none"},
         "appendix": {"status": "not_assessed", "diameter_mm": ""},
+        "additional_body_findings": "",
         "impression": {"lines": []},
     }
 
@@ -905,7 +920,7 @@ def pancreas_sentence(d):
                          True))
             s.append(seg(f"{dims_vol} with clear contents {loc_phrase} and mild "
                          f"peripancreatic fat stranding with mild free fluid."))
-        else:  # won_pseudocyst
+        else:
             s.append(seg(" appears "))
             s.append(seg("hypotrophied with irregular margins & a loculated mildly thick "
                          "walled collection", True))
@@ -1052,7 +1067,6 @@ def _both_kidneys_present(k):
 
 
 def _size_bracket(k, presence):
-    """presence: (right_present, left_present)."""
     r_present, l_present = presence
     r = k["right"].get("size_text", "").strip()
     l = k["left"].get("size_text", "").strip()
@@ -1248,7 +1262,6 @@ def _cyst_body(k, side_low):
 
 
 def _standalone_hydro_body(k, side_low, ub_status):
-    """Returns segments for standalone hydronephrosis (no ureteric calculus)."""
     if k["hydronephrosis"] == "none":
         return []
     grade = k["hydronephrosis"]
@@ -1279,7 +1292,6 @@ def kidneys_sentence(d, ub_status="adequately_distended"):
     r_present = _kidney_side_is_present(r)
     l_present = _kidney_side_is_present(l)
 
-    # Case 1: one or both fossae empty
     if not r_present or not l_present:
         for side_key, side in (("right", r), ("left", l)):
             if side["status"] == "absent_agenesis":
@@ -1317,7 +1329,6 @@ def kidneys_sentence(d, ub_status="adequately_distended"):
                 s.extend(_ureter_calculus_body(side, side_key))
         return s
 
-    # Case 2: both present
     s.append(seg("BOTH KIDNEYS", True, True))
     bracket = _size_bracket(d, (True, True))
     if bracket:
@@ -1893,7 +1904,6 @@ def generate_impression(d, sex, age):
     age_years = parse_age(age)
     is_pediatric = age_years is not None and age_years < 18
 
-    # ---- PANCREAS ----
     p = d["pancreas"]
     p_status = p.get("status", "normal")
 
@@ -2038,7 +2048,6 @@ def generate_impression(d, sex, age):
             lines.append("FEATURES SUGGESTIVE OF CHRONIC PANCREATITIS. "
                          "Adv- S.Amylase/Lipase Correlation.")
 
-    # ---- CBD + GB ----
     cbd = d["cbd"]
     cbd_status = cbd.get("status", "normal")
     cbd_size = cbd.get("size_mm", "")
@@ -2137,7 +2146,6 @@ def generate_impression(d, sex, age):
         else:
             lines.append("GALL BLADDER ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
 
-    # ---- LIVER + SPLEEN ----
     liver = d["liver"]
     spleen = d["spleen"]
 
@@ -2150,7 +2158,6 @@ def generate_impression(d, sex, age):
         for ln in _spleen_impression_line(spleen):
             lines.append(ln)
 
-    # ---- KIDNEYS ----
     k = d["kidneys"]
     r = k["right"]
     l = k["left"]
@@ -2342,7 +2349,6 @@ def generate_impression(d, sex, age):
         for c in cyst_clauses:
             lines.append(c + ".")
 
-    # ---- URINARY BLADDER ----
     if d["urinary_bladder"]["sedimentation"] in ("free_floating", "significant",
                                                   "extensive"):
         lines.append("SEDIMENTATION SEEN IN THE UB LUMEN. Adv- Urine R/M Correlation.")
@@ -2520,6 +2526,19 @@ def build_docx_bytes(data):
                          italic=italic)
         para.paragraph_format.space_after = Pt(6)
 
+    # Additional body findings — appended in bold italic before IMPRESSION
+    addendum = (data.get("additional_body_findings") or "").strip()
+    if addendum:
+        para = doc.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        # Preserve user line breaks
+        lines = addendum.split("\n")
+        for i, ln in enumerate(lines):
+            if i > 0:
+                para.add_run().add_break()
+            _add_run(para, ln, bold=True, italic=True)
+        para.paragraph_format.space_after = Pt(6)
+
     doc.add_paragraph()
     imp_head = doc.add_paragraph()
     _add_run(imp_head, "IMPRESSION:", bold=True, underline=True,
@@ -2658,6 +2677,29 @@ st.markdown(
         background-color: #ffffff !important; color: #111111 !important;
         border: 1px solid #cfd6dd !important;
     }
+    /* Organ accordion header buttons */
+    div[class*="st-key-organ_btn_"] button {
+        justify-content: flex-start !important;
+        text-align: left !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        padding: 10px 14px !important;
+        min-height: 44px !important;
+        border-radius: 6px !important;
+        border: 1px solid #cfd6dd !important;
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        letter-spacing: 0.3px !important;
+    }
+    div[class*="st-key-organ_btn_"] button[kind="primary"] {
+        background-color: #eef2f7 !important;
+        border-color: #305496 !important;
+        color: #1F4E79 !important;
+    }
+    div[class*="st-key-organ_btn_"] button p {
+        text-align: left !important; width: 100% !important;
+        font-weight: 600 !important;
+    }
     .preview-box, .stApp .preview-box, .stApp .preview-box * {
         color: #ffffff !important;
     }
@@ -2723,6 +2765,24 @@ st.markdown("---")
 
 col_find, col_prev = st.columns([1, 1])
 
+# --- Accordion state ---
+if "open_organ" not in st.session_state:
+    st.session_state.open_organ = None
+
+
+def organ_button(name, label):
+    """Renders the organ header button and returns True if its content should render."""
+    is_open = (st.session_state.open_organ == name)
+    arrow = "▼" if is_open else "▶"
+    if st.button(f"{arrow}  {label}",
+                 key=f"organ_btn_{name}",
+                 use_container_width=True,
+                 type="primary" if is_open else "secondary"):
+        st.session_state.open_organ = None if is_open else name
+        st.rerun()
+    return is_open
+
+
 with col_find:
     st.subheader("Findings")
 
@@ -2730,8 +2790,7 @@ with col_find:
     col_liver_main, col_liver_sz = st.columns([5, 1],
                                               vertical_alignment="bottom")
     with col_liver_main:
-        liver_expander = st.expander("LIVER findings (click to open)",
-                                     expanded=False)
+        liver_open = organ_button("LIVER", "LIVER")
     with col_liver_sz:
         liver_size_num = st.number_input(
             "Liver size mm", min_value=0, max_value=500, value=None, step=1,
@@ -2747,7 +2806,135 @@ with col_find:
         else:
             st.warning(f"→ Liver: **{LIVER_STATUS_LABELS[liver_status]}**")
 
-    with liver_expander:
+    if liver_open:
+        with st.container(border=True):
+            liver_outline = "normal"
+            liver_echo = "normal"
+            liver_steatosis = None
+            liver_focal = "none"
+            liver_focal_text = ""
+            liver_ihbr = "normal"
+            liver_portal = "normal"
+            liver_portal_mm = ""
+            cyst_count = "single"
+            cyst_single_lobe = "right"
+            cyst_single_size_mm = ""
+            cyst_few_largest_mm = ""
+            cyst_few_lobe = "right"
+            hemangioma_count = "single"
+            hemangioma_single_lobe = "right"
+            hemangioma_single_size_mm = ""
+            hemangioma_few_largest_mm = ""
+            hemangioma_few_lobe = "right"
+            abscess_count = "single"
+            abscess_lesions = []
+
+            liver_outline = st.radio(
+                "Outline", ["normal", "crenated"], horizontal=True,
+                format_func=lambda x: {"normal": "Normal",
+                                       "crenated": "Crenated / nodular"}[x],
+                key="liver_outline")
+            liver_echo = st.radio(
+                "Echotexture", ["normal", "increased", "coarse", "low"],
+                horizontal=True,
+                format_func=lambda x: {"normal": "Normal",
+                                       "increased": "Increased (steatosis)",
+                                       "coarse": "Coarse", "low": "Low"}[x],
+                key="liver_echo")
+            if liver_echo == "increased":
+                grade_opts = ["Mild+", "Mild to Moderate++", "Moderate++",
+                              "Moderate to Severe+++", "Severe+++"]
+                liver_steatosis = st.radio("Steatosis grade (impression only)",
+                                           grade_opts, horizontal=True,
+                                           key="liver_steatosis")
+            st.markdown("**Focal lesion**")
+            liver_focal = st.radio(
+                "Focal lesion type",
+                ["none", "calcified", "cyst", "hemangioma", "abscess", "other"],
+                horizontal=True, label_visibility="collapsed",
+                format_func=lambda x: {"none": "None", "calcified": "Calcified",
+                                       "cyst": "Simple cyst(s)",
+                                       "hemangioma": "Hemangioma(s)",
+                                       "abscess": "Abscess(es)", "other": "Other"}[x],
+                key="liver_focal")
+            if liver_focal == "cyst":
+                cyst_count = st.radio("Number", ["single", "few"], horizontal=True,
+                                      key="cyst_count")
+                if cyst_count == "single":
+                    c_a, c_b = st.columns(2)
+                    with c_a:
+                        cyst_single_lobe = st.radio("Lobe", ["right", "left"],
+                                                    horizontal=True,
+                                                    key="cyst_single_lobe")
+                    with c_b:
+                        cyst_single_size_mm = st.text_input("Size (mm)",
+                                                            key="cyst_single_size")
+                else:
+                    c_a, c_b = st.columns(2)
+                    with c_a:
+                        cyst_few_lobe = st.radio("Lobe", ["right", "left"],
+                                                 horizontal=True, key="cyst_few_lobe")
+                    with c_b:
+                        cyst_few_largest_mm = st.text_input("Largest (mm)",
+                                                            key="cyst_few_largest")
+            elif liver_focal == "hemangioma":
+                hemangioma_count = st.radio("Number", ["single", "few"],
+                                            horizontal=True, key="hemangioma_count")
+                if hemangioma_count == "single":
+                    c_a, c_b = st.columns(2)
+                    with c_a:
+                        hemangioma_single_lobe = st.radio(
+                            "Lobe", ["right", "left"], horizontal=True,
+                            key="hemangioma_single_lobe")
+                    with c_b:
+                        hemangioma_single_size_mm = st.text_input(
+                            "Size (mm)", key="hemangioma_single_size")
+                else:
+                    c_a, c_b = st.columns(2)
+                    with c_a:
+                        hemangioma_few_lobe = st.radio(
+                            "Lobe", ["right", "left"], horizontal=True,
+                            key="hemangioma_few_lobe")
+                    with c_b:
+                        hemangioma_few_largest_mm = st.text_input(
+                            "Largest (mm)", key="hemangioma_few_largest")
+            elif liver_focal == "abscess":
+                abscess_count = st.radio("Number", ["single", "few", "multiple"],
+                                         horizontal=True, key="abscess_count")
+                n_abs = 1 if abscess_count == "single" else int(st.number_input(
+                    "How many lesions?", min_value=1, max_value=5, value=2,
+                    key="abscess_n"))
+                for i in range(n_abs):
+                    st.markdown(f"*Lesion {i+1}*")
+                    c_a, c_b, c_c = st.columns([1, 2, 1])
+                    with c_a:
+                        seg_letter = st.selectbox("Segment",
+                                                  ["I", "II", "III", "IV",
+                                                   "V", "VI", "VII", "VIII"],
+                                                  key=f"abs_seg_{i}")
+                    with c_b:
+                        dim = st.text_input("Dimensions (XxYxZ mm)",
+                                            key=f"abs_dim_{i}")
+                    with c_c:
+                        vol = st.text_input("Volume (cc)", key=f"abs_vol_{i}")
+                    abscess_lesions.append({"segment": seg_letter,
+                                            "dim": dim, "vol": vol})
+            elif liver_focal == "other":
+                liver_focal_text = st.text_input("Description",
+                                                 key="liver_focal_text")
+
+            liver_ihbr = st.radio("IHBR", ["normal", "dilated"], horizontal=True,
+                                  key="liver_ihbr")
+            c_a, c_b = st.columns([2, 1])
+            with c_a:
+                liver_portal = st.radio("Portal vein", ["normal", "dilated"],
+                                        horizontal=True, key="liver_portal")
+            with c_b:
+                if liver_portal == "dilated":
+                    liver_portal_mm = st.text_input("Portal vein size (mm)",
+                                                    key="liver_portal_mm")
+    else:
+        # Defaults so downstream assembly still works when liver is collapsed
         liver_outline = "normal"
         liver_echo = "normal"
         liver_steatosis = None
@@ -2769,126 +2956,111 @@ with col_find:
         abscess_count = "single"
         abscess_lesions = []
 
-        liver_outline = st.radio(
-            "Outline", ["normal", "crenated"], horizontal=True,
-            format_func=lambda x: {"normal": "Normal",
-                                   "crenated": "Crenated / nodular"}[x],
-            key="liver_outline")
-        liver_echo = st.radio(
-            "Echotexture", ["normal", "increased", "coarse", "low"],
-            horizontal=True,
-            format_func=lambda x: {"normal": "Normal",
-                                   "increased": "Increased (steatosis)",
-                                   "coarse": "Coarse", "low": "Low"}[x],
-            key="liver_echo")
-        if liver_echo == "increased":
-            grade_opts = ["Mild+", "Mild to Moderate++", "Moderate++",
-                          "Moderate to Severe+++", "Severe+++"]
-            liver_steatosis = st.radio("Steatosis grade (impression only)",
-                                       grade_opts, horizontal=True,
-                                       key="liver_steatosis")
-        st.markdown("**Focal lesion**")
-        liver_focal = st.radio(
-            "Focal lesion type",
-            ["none", "calcified", "cyst", "hemangioma", "abscess", "other"],
-            horizontal=True, label_visibility="collapsed",
-            format_func=lambda x: {"none": "None", "calcified": "Calcified",
-                                   "cyst": "Simple cyst(s)",
-                                   "hemangioma": "Hemangioma(s)",
-                                   "abscess": "Abscess(es)", "other": "Other"}[x],
-            key="liver_focal")
-        if liver_focal == "cyst":
-            cyst_count = st.radio("Number", ["single", "few"], horizontal=True,
-                                  key="cyst_count")
-            if cyst_count == "single":
-                c_a, c_b = st.columns(2)
-                with c_a:
-                    cyst_single_lobe = st.radio("Lobe", ["right", "left"],
-                                                horizontal=True,
-                                                key="cyst_single_lobe")
-                with c_b:
-                    cyst_single_size_mm = st.text_input("Size (mm)",
-                                                        key="cyst_single_size")
-            else:
-                c_a, c_b = st.columns(2)
-                with c_a:
-                    cyst_few_lobe = st.radio("Lobe", ["right", "left"],
-                                             horizontal=True, key="cyst_few_lobe")
-                with c_b:
-                    cyst_few_largest_mm = st.text_input("Largest (mm)",
-                                                        key="cyst_few_largest")
-        elif liver_focal == "hemangioma":
-            hemangioma_count = st.radio("Number", ["single", "few"],
-                                        horizontal=True, key="hemangioma_count")
-            if hemangioma_count == "single":
-                c_a, c_b = st.columns(2)
-                with c_a:
-                    hemangioma_single_lobe = st.radio(
-                        "Lobe", ["right", "left"], horizontal=True,
-                        key="hemangioma_single_lobe")
-                with c_b:
-                    hemangioma_single_size_mm = st.text_input(
-                        "Size (mm)", key="hemangioma_single_size")
-            else:
-                c_a, c_b = st.columns(2)
-                with c_a:
-                    hemangioma_few_lobe = st.radio(
-                        "Lobe", ["right", "left"], horizontal=True,
-                        key="hemangioma_few_lobe")
-                with c_b:
-                    hemangioma_few_largest_mm = st.text_input(
-                        "Largest (mm)", key="hemangioma_few_largest")
-        elif liver_focal == "abscess":
-            abscess_count = st.radio("Number", ["single", "few", "multiple"],
-                                     horizontal=True, key="abscess_count")
-            n_abs = 1 if abscess_count == "single" else int(st.number_input(
-                "How many lesions?", min_value=1, max_value=5, value=2,
-                key="abscess_n"))
-            for i in range(n_abs):
-                st.markdown(f"*Lesion {i+1}*")
-                c_a, c_b, c_c = st.columns([1, 2, 1])
-                with c_a:
-                    seg_letter = st.selectbox("Segment",
-                                              ["I", "II", "III", "IV",
-                                               "V", "VI", "VII", "VIII"],
-                                              key=f"abs_seg_{i}")
-                with c_b:
-                    dim = st.text_input("Dimensions (XxYxZ mm)",
-                                        key=f"abs_dim_{i}")
-                with c_c:
-                    vol = st.text_input("Volume (cc)", key=f"abs_vol_{i}")
-                abscess_lesions.append({"segment": seg_letter,
-                                        "dim": dim, "vol": vol})
-        elif liver_focal == "other":
-            liver_focal_text = st.text_input("Description",
-                                             key="liver_focal_text")
-
-        liver_ihbr = st.radio("IHBR", ["normal", "dilated"], horizontal=True,
-                              key="liver_ihbr")
-        c_a, c_b = st.columns([2, 1])
-        with c_a:
-            liver_portal = st.radio("Portal vein", ["normal", "dilated"],
-                                    horizontal=True, key="liver_portal")
-        with c_b:
-            if liver_portal == "dilated":
-                liver_portal_mm = st.text_input("Portal vein size (mm)",
-                                                key="liver_portal_mm")
-
     # ------- GALL BLADDER -------
-    with st.expander("GALL BLADDER (click to open findings)", expanded=False):
-        gb_status = st.radio(
-            "Distension",
-            ["adequately_distended", "over", "partially", "contracted",
-             "empty", "operated"],
-            horizontal=True,
-            format_func=lambda x: {"adequately_distended": "Adequate",
-                                   "over": "Over-distended",
-                                   "partially": "Partially contracted",
-                                   "contracted": "Contracted",
-                                   "empty": "Empty",
-                                   "operated": "Operated"}[x],
-            key="gb_status")
+    gb_open = organ_button("GALL BLADDER", "GALL BLADDER")
+    if gb_open:
+        with st.container(border=True):
+            gb_status = st.radio(
+                "Distension",
+                ["adequately_distended", "over", "partially", "contracted",
+                 "empty", "operated"],
+                horizontal=True,
+                format_func=lambda x: {"adequately_distended": "Adequate",
+                                       "over": "Over-distended",
+                                       "partially": "Partially contracted",
+                                       "contracted": "Contracted",
+                                       "empty": "Empty",
+                                       "operated": "Operated"}[x],
+                key="gb_status")
 
+            gb_wall_thickened = False
+            gb_wall_mm = ""
+            gb_calculi = "none"
+            gb_calculi_count = "single"
+            gb_calculi_size_cat = "small"
+            gb_calculi_size_mm = ""
+            gb_calculi_neck = False
+            gb_calculi_neck_size_mm = ""
+            gb_sludge = "none"
+            gb_sludge_ball = False
+            gb_sludge_ball_count = "single"
+            gb_sludge_ball_size_mm = ""
+            gb_sludge_ball_wall = "anterior"
+            gb_comet_tail = False
+            gb_comet_tail_count = "single"
+            gb_comet_tail_wall = "anterior"
+            gb_peri_fluid = False
+
+            if gb_status not in ("contracted", "operated"):
+                gb_wall_thickened = st.checkbox("Wall thickening present",
+                                                key="gb_wall_check")
+                if gb_wall_thickened:
+                    gb_wall_mm = st.text_input("Wall thickness (mm)",
+                                               key="gb_wall_mm")
+
+            gb_calculi = st.radio("Calculi", ["none", "present"], horizontal=True,
+                                  key="gb_calculi")
+            if gb_calculi == "present":
+                c_a, c_b = st.columns(2)
+                with c_a:
+                    gb_calculi_count = st.radio(
+                        "Count", ["single", "few", "multiple", "innumerable"],
+                        horizontal=True, format_func=lambda x: x.title(),
+                        key="gb_calc_count")
+                with c_b:
+                    if gb_calculi_count != "innumerable":
+                        gb_calculi_size_cat = st.radio(
+                            "Size", ["small", "large"], horizontal=True,
+                            format_func=lambda x: x.title(),
+                            key="gb_calc_size_cat")
+                if gb_calculi_count != "innumerable":
+                    gb_calculi_size_mm = st.text_input("Largest size (mm)",
+                                                       key="gb_calc_size")
+                    gb_calculi_neck = st.checkbox("Calculus at GB neck",
+                                                  key="gb_calc_neck")
+                    if gb_calculi_neck:
+                        gb_calculi_neck_size_mm = st.text_input(
+                            "Neck calculus size (mm)", key="gb_neck_size")
+
+            gb_sludge = st.radio(
+                "Sludge", ["none", "trace", "significant", "echogenic", "organized"],
+                horizontal=True, format_func=lambda x: x.title(),
+                key="gb_sludge")
+
+            gb_sludge_ball = st.checkbox("Sludge ball / polyp present",
+                                         key="gb_sludge_ball")
+            if gb_sludge_ball:
+                c_a, c_b = st.columns(2)
+                with c_a:
+                    gb_sludge_ball_count = st.radio(
+                        "Count", ["single", "few", "multiple"],
+                        horizontal=True, key="gb_sb_count")
+                with c_b:
+                    gb_sludge_ball_wall = st.radio(
+                        "Wall", ["anterior", "posterior"], horizontal=True,
+                        format_func=lambda x: x.title(), key="gb_sb_wall")
+                gb_sludge_ball_size_mm = st.text_input("Size (mm)",
+                                                       key="gb_sb_size")
+
+            gb_comet_tail = st.checkbox(
+                "Comet tail artifacts (adenomyomatosis / cholesterolosis)",
+                key="gb_comet_tail")
+            if gb_comet_tail:
+                c_a, c_b = st.columns(2)
+                with c_a:
+                    gb_comet_tail_count = st.radio(
+                        "Count", ["single", "few", "multiple"], horizontal=True,
+                        key="gb_ct_count")
+                with c_b:
+                    gb_comet_tail_wall = st.radio(
+                        "Wall", ["anterior", "posterior"], horizontal=True,
+                        format_func=lambda x: x.title(), key="gb_ct_wall")
+
+            gb_peri_fluid = st.checkbox(
+                "Thin rim of pericholecystic fluid present",
+                key="gb_peri_fluid")
+    else:
+        gb_status = "adequately_distended"
         gb_wall_thickened = False
         gb_wall_mm = ""
         gb_calculi = "none"
@@ -2907,75 +3079,6 @@ with col_find:
         gb_comet_tail_wall = "anterior"
         gb_peri_fluid = False
 
-        if gb_status not in ("contracted", "operated"):
-            gb_wall_thickened = st.checkbox("Wall thickening present",
-                                            key="gb_wall_check")
-            if gb_wall_thickened:
-                gb_wall_mm = st.text_input("Wall thickness (mm)",
-                                           key="gb_wall_mm")
-
-        gb_calculi = st.radio("Calculi", ["none", "present"], horizontal=True,
-                              key="gb_calculi")
-        if gb_calculi == "present":
-            c_a, c_b = st.columns(2)
-            with c_a:
-                gb_calculi_count = st.radio(
-                    "Count", ["single", "few", "multiple", "innumerable"],
-                    horizontal=True, format_func=lambda x: x.title(),
-                    key="gb_calc_count")
-            with c_b:
-                if gb_calculi_count != "innumerable":
-                    gb_calculi_size_cat = st.radio(
-                        "Size", ["small", "large"], horizontal=True,
-                        format_func=lambda x: x.title(),
-                        key="gb_calc_size_cat")
-            if gb_calculi_count != "innumerable":
-                gb_calculi_size_mm = st.text_input("Largest size (mm)",
-                                                   key="gb_calc_size")
-                gb_calculi_neck = st.checkbox("Calculus at GB neck",
-                                              key="gb_calc_neck")
-                if gb_calculi_neck:
-                    gb_calculi_neck_size_mm = st.text_input(
-                        "Neck calculus size (mm)", key="gb_neck_size")
-
-        gb_sludge = st.radio(
-            "Sludge", ["none", "trace", "significant", "echogenic", "organized"],
-            horizontal=True, format_func=lambda x: x.title(),
-            key="gb_sludge")
-
-        gb_sludge_ball = st.checkbox("Sludge ball / polyp present",
-                                     key="gb_sludge_ball")
-        if gb_sludge_ball:
-            c_a, c_b = st.columns(2)
-            with c_a:
-                gb_sludge_ball_count = st.radio(
-                    "Count", ["single", "few", "multiple"],
-                    horizontal=True, key="gb_sb_count")
-            with c_b:
-                gb_sludge_ball_wall = st.radio(
-                    "Wall", ["anterior", "posterior"], horizontal=True,
-                    format_func=lambda x: x.title(), key="gb_sb_wall")
-            gb_sludge_ball_size_mm = st.text_input("Size (mm)",
-                                                   key="gb_sb_size")
-
-        gb_comet_tail = st.checkbox(
-            "Comet tail artifacts (adenomyomatosis / cholesterolosis)",
-            key="gb_comet_tail")
-        if gb_comet_tail:
-            c_a, c_b = st.columns(2)
-            with c_a:
-                gb_comet_tail_count = st.radio(
-                    "Count", ["single", "few", "multiple"], horizontal=True,
-                    key="gb_ct_count")
-            with c_b:
-                gb_comet_tail_wall = st.radio(
-                    "Wall", ["anterior", "posterior"], horizontal=True,
-                    format_func=lambda x: x.title(), key="gb_ct_wall")
-
-        gb_peri_fluid = st.checkbox(
-            "Thin rim of pericholecystic fluid present",
-            key="gb_peri_fluid")
-
     # ------- CBD -------
     col_cbd_main, col_cbd_sz = st.columns([5, 1],
                                           vertical_alignment="bottom")
@@ -2986,23 +3089,21 @@ with col_find:
             key="cbd_mm_num", label_visibility="collapsed",
             placeholder="CBD mm")
     cbd_mm = (f"{cbd_mm_num:g}" if (cbd_mm_num and cbd_mm_num > 0) else "")
-
     with col_cbd_main:
-        with st.expander("COMMON BILE DUCT findings (click to open)",
-                         expanded=False):
+        cbd_open = organ_button("COMMON BILE DUCT", "COMMON BILE DUCT")
+    if cbd_open:
+        with st.container(border=True):
             cbd_status = st.radio(
                 "Status", ["normal", "proximal", "dilated"], horizontal=True,
                 format_func=lambda x: {"normal": "Normal",
                                        "proximal": "Proximally dilated",
                                        "dilated": "Dilated throughout"}[x],
                 key="cbd_status")
-
             cbd_calc = False
             cbd_calc_count = "single"
             cbd_calc_size = ""
             cbd_calc_location = "distal"
             cbd_ihbr = "normal"
-
             cbd_calc = st.checkbox("Calculus in CBD", key="cbd_calc")
             if cbd_calc:
                 c_a, c_b = st.columns(2)
@@ -3020,7 +3121,6 @@ with col_find:
                                            "distal": "Distal",
                                            "mid_distal": "Mid/Distal"}[x],
                     key="cbd_calc_location")
-
             if cbd_status in ("proximal", "dilated") or cbd_calc:
                 cbd_ihbr = st.radio(
                     "IHBR", ["normal", "proximal", "dilated"], horizontal=True,
@@ -3028,21 +3128,144 @@ with col_find:
                                            "proximal": "Proximally dilated",
                                            "dilated": "Dilated"}[x],
                     key="cbd_ihbr")
+    else:
+        cbd_status = "normal"
+        cbd_calc = False
+        cbd_calc_count = "single"
+        cbd_calc_size = ""
+        cbd_calc_location = "distal"
+        cbd_ihbr = "normal"
 
     # ------- PANCREAS -------
-    with st.expander("PANCREAS (click to open findings)", expanded=False):
-        pn_status = st.radio(
-            "Status",
-            ["early_evolving", "acute", "won_pseudocyst", "chronic"],
-            index=None,
-            horizontal=True,
-            format_func=lambda x: {
-                "early_evolving": "Early/evolving pancreatitis",
-                "acute": "Acute pancreatitis",
-                "won_pseudocyst": "WON / Pseudocyst",
-                "chronic": "Chronic pancreatitis"}[x],
-            key="pn_status")
+    pn_open = organ_button("PANCREAS", "PANCREAS")
+    if pn_open:
+        with st.container(border=True):
+            pn_status = st.radio(
+                "Status",
+                ["early_evolving", "acute", "won_pseudocyst", "chronic"],
+                index=None,
+                horizontal=True,
+                format_func=lambda x: {
+                    "early_evolving": "Early/evolving pancreatitis",
+                    "acute": "Acute pancreatitis",
+                    "won_pseudocyst": "WON / Pseudocyst",
+                    "chronic": "Chronic pancreatitis"}[x],
+                key="pn_status")
+            pn_ee_size = "normal"
+            pn_ee_fat = False
+            pn_ee_fat_loc = "none"
+            pn_ee_fluid = False
+            pn_ee_fluid_loc = "none"
+            pn_ac_size = "normal"
+            pn_ac_echo = "normal"
+            pn_ac_echo_loc = "none"
+            pn_ac_margins = "normal"
+            pn_wp_type = "won"
+            pn_wp_dims = ""
+            pn_wp_vol = ""
+            pn_wp_location = "lesser_sac"
+            pn_ch_foci = False
+            pn_ch_mpd = False
+            pn_ch_mpd_size = ""
+            pn_ch_fat = False
 
+            if pn_status == "early_evolving":
+                pn_ee_size = st.radio(
+                    "Pancreas size",
+                    ["normal", "mildly_bulky"],
+                    horizontal=True,
+                    format_func=lambda x: {"normal": "Normal size",
+                                           "mildly_bulky": "Mildly bulky"}[x],
+                    key="pn_ee_size")
+                pn_ee_fat = st.checkbox("Mild peri-pancreatic fat stranding",
+                                        key="pn_ee_fat")
+                if pn_ee_fat:
+                    pn_ee_fat_loc = st.radio(
+                        "Fat stranding location",
+                        ["none", "head_neck", "body", "neck_body", "perisplenic"],
+                        horizontal=True,
+                        format_func=lambda x: {"none": "None",
+                                               "head_neck": "Head & neck",
+                                               "body": "Body",
+                                               "neck_body": "Neck & body",
+                                               "perisplenic": "Peri-splenic"}[x],
+                        key="pn_ee_fat_loc")
+                pn_ee_fluid = st.checkbox("Mild peri-pancreatic free fluid",
+                                          key="pn_ee_fluid")
+                if pn_ee_fluid:
+                    pn_ee_fluid_loc = st.radio(
+                        "Free fluid location",
+                        ["none", "head_neck", "body", "neck_body", "perisplenic"],
+                        horizontal=True,
+                        format_func=lambda x: {"none": "None",
+                                               "head_neck": "Head & neck",
+                                               "body": "Body",
+                                               "neck_body": "Neck & body",
+                                               "perisplenic": "Peri-splenic"}[x],
+                        key="pn_ee_fluid_loc")
+            elif pn_status == "acute":
+                pn_ac_size = st.radio(
+                    "Pancreas size",
+                    ["normal", "bulky"],
+                    horizontal=True,
+                    format_func=lambda x: {"normal": "Normal size",
+                                           "bulky": "Bulky"}[x],
+                    key="pn_ac_size")
+                pn_ac_echo = st.radio(
+                    "Echotexture",
+                    ["normal", "hypoechoic"],
+                    horizontal=True,
+                    format_func=lambda x: {"normal": "Normal",
+                                           "hypoechoic": "Hypoechoic heterogeneous"}[x],
+                    key="pn_ac_echo")
+                if pn_ac_echo == "hypoechoic":
+                    pn_ac_echo_loc = st.radio(
+                        "Echotexture location",
+                        ["none", "head_neck", "body"],
+                        horizontal=True,
+                        format_func=lambda x: {"none": "None (all)",
+                                               "head_neck": "Head & neck",
+                                               "body": "Body"}[x],
+                        key="pn_ac_echo_loc")
+                pn_ac_margins = st.radio(
+                    "Margins",
+                    ["normal", "irregular"],
+                    horizontal=True,
+                    format_func=lambda x: {"normal": "Normal",
+                                           "irregular": "Irregular / fuzzy"}[x],
+                    key="pn_ac_margins")
+                st.caption("Mild to moderate peri-pancreatic fat stranding and "
+                           "mild free fluid are automatically included.")
+            elif pn_status == "won_pseudocyst":
+                pn_wp_type = st.radio(
+                    "Type",
+                    ["won", "pseudocyst", "won_pseudocyst"],
+                    horizontal=True,
+                    format_func=lambda x: {"won": "WON",
+                                           "pseudocyst": "Pseudocyst",
+                                           "won_pseudocyst": "WON + Pseudocyst"}[x],
+                    key="pn_wp_type")
+                c_a, c_b = st.columns(2)
+                with c_a:
+                    pn_wp_dims = st.text_input("Dimensions (e.g. 65x54x36)",
+                                                key="pn_wp_dims")
+                with c_b:
+                    pn_wp_vol = st.text_input("Volume (cc)", key="pn_wp_vol")
+                pn_wp_location = st.radio(
+                    "Location",
+                    ["lesser_sac", "overlying_body"],
+                    horizontal=True,
+                    format_func=lambda x: {"lesser_sac": "In the lesser sac",
+                                           "overlying_body": "Overlying the body of the pancreas"}[x],
+                    key="pn_wp_location")
+            elif pn_status == "chronic":
+                pn_ch_foci = st.checkbox("Foci of calcification", key="pn_ch_foci")
+                pn_ch_mpd = st.checkbox("MPD dilation", key="pn_ch_mpd")
+                if pn_ch_mpd:
+                    pn_ch_mpd_size = st.text_input("MPD size (mm)", key="pn_ch_mpd_size")
+                pn_ch_fat = st.checkbox("Mild fat stranding", key="pn_ch_fat")
+    else:
+        pn_status = None
         pn_ee_size = "normal"
         pn_ee_fat = False
         pn_ee_fat_loc = "none"
@@ -3061,118 +3284,10 @@ with col_find:
         pn_ch_mpd_size = ""
         pn_ch_fat = False
 
-        if pn_status == "early_evolving":
-            pn_ee_size = st.radio(
-                "Pancreas size",
-                ["normal", "mildly_bulky"],
-                horizontal=True,
-                format_func=lambda x: {"normal": "Normal size",
-                                       "mildly_bulky": "Mildly bulky"}[x],
-                key="pn_ee_size")
-
-            pn_ee_fat = st.checkbox("Mild peri-pancreatic fat stranding",
-                                    key="pn_ee_fat")
-            if pn_ee_fat:
-                pn_ee_fat_loc = st.radio(
-                    "Fat stranding location",
-                    ["none", "head_neck", "body", "neck_body", "perisplenic"],
-                    horizontal=True,
-                    format_func=lambda x: {"none": "None",
-                                           "head_neck": "Head & neck",
-                                           "body": "Body",
-                                           "neck_body": "Neck & body",
-                                           "perisplenic": "Peri-splenic"}[x],
-                    key="pn_ee_fat_loc")
-
-            pn_ee_fluid = st.checkbox("Mild peri-pancreatic free fluid",
-                                      key="pn_ee_fluid")
-            if pn_ee_fluid:
-                pn_ee_fluid_loc = st.radio(
-                    "Free fluid location",
-                    ["none", "head_neck", "body", "neck_body", "perisplenic"],
-                    horizontal=True,
-                    format_func=lambda x: {"none": "None",
-                                           "head_neck": "Head & neck",
-                                           "body": "Body",
-                                           "neck_body": "Neck & body",
-                                           "perisplenic": "Peri-splenic"}[x],
-                    key="pn_ee_fluid_loc")
-
-        elif pn_status == "acute":
-            pn_ac_size = st.radio(
-                "Pancreas size",
-                ["normal", "bulky"],
-                horizontal=True,
-                format_func=lambda x: {"normal": "Normal size",
-                                       "bulky": "Bulky"}[x],
-                key="pn_ac_size")
-
-            pn_ac_echo = st.radio(
-                "Echotexture",
-                ["normal", "hypoechoic"],
-                horizontal=True,
-                format_func=lambda x: {"normal": "Normal",
-                                       "hypoechoic": "Hypoechoic heterogeneous"}[x],
-                key="pn_ac_echo")
-            if pn_ac_echo == "hypoechoic":
-                pn_ac_echo_loc = st.radio(
-                    "Echotexture location",
-                    ["none", "head_neck", "body"],
-                    horizontal=True,
-                    format_func=lambda x: {"none": "None (all)",
-                                           "head_neck": "Head & neck",
-                                           "body": "Body"}[x],
-                    key="pn_ac_echo_loc")
-
-            pn_ac_margins = st.radio(
-                "Margins",
-                ["normal", "irregular"],
-                horizontal=True,
-                format_func=lambda x: {"normal": "Normal",
-                                       "irregular": "Irregular / fuzzy"}[x],
-                key="pn_ac_margins")
-
-            st.caption("Mild to moderate peri-pancreatic fat stranding and mild "
-                       "free fluid are automatically included. Bowel free-fluid "
-                       "line suppressed; Mild ascites will appear above impression.")
-
-        elif pn_status == "won_pseudocyst":
-            pn_wp_type = st.radio(
-                "Type",
-                ["won", "pseudocyst", "won_pseudocyst"],
-                horizontal=True,
-                format_func=lambda x: {"won": "WON",
-                                       "pseudocyst": "Pseudocyst",
-                                       "won_pseudocyst": "WON + Pseudocyst"}[x],
-                key="pn_wp_type")
-
-            c_a, c_b = st.columns(2)
-            with c_a:
-                pn_wp_dims = st.text_input("Dimensions (e.g. 65x54x36)",
-                                            key="pn_wp_dims")
-            with c_b:
-                pn_wp_vol = st.text_input("Volume (cc)", key="pn_wp_vol")
-
-            pn_wp_location = st.radio(
-                "Location",
-                ["lesser_sac", "overlying_body"],
-                horizontal=True,
-                format_func=lambda x: {"lesser_sac": "In the lesser sac",
-                                       "overlying_body": "Overlying the body of the pancreas"}[x],
-                key="pn_wp_location")
-
-        elif pn_status == "chronic":
-            pn_ch_foci = st.checkbox("Foci of calcification", key="pn_ch_foci")
-            pn_ch_mpd = st.checkbox("MPD dilation", key="pn_ch_mpd")
-            if pn_ch_mpd:
-                pn_ch_mpd_size = st.text_input("MPD size (mm)", key="pn_ch_mpd_size")
-            pn_ch_fat = st.checkbox("Mild fat stranding", key="pn_ch_fat")
-
     # ------- SPLEEN -------
     col_sp_main, col_sp_sz = st.columns([5, 1], vertical_alignment="bottom")
     with col_sp_main:
-        spleen_expander = st.expander("SPLEEN findings (click to open)",
-                                      expanded=False)
+        spleen_open = organ_button("SPLEEN", "SPLEEN")
     with col_sp_sz:
         sp_size_num = st.number_input(
             "Spleen size mm", min_value=0, max_value=500, value=None, step=1,
@@ -3190,298 +3305,293 @@ with col_find:
         else:
             st.warning(f"→ Spleen: **{SPLEEN_STATUS_LABELS[sp_desc]}**")
 
-    with spleen_expander:
-        st.caption("Size status is derived automatically from the mm value above.")
-        st.markdown("**Focal lesion**")
-        sp_focal = st.radio(
-            "Focal lesion type",
-            ["none", "hyperechoic_foci", "hypoechoic_foci"],
-            horizontal=True, label_visibility="collapsed",
-            format_func=lambda x: {"none": "None",
-                                   "hyperechoic_foci": "Hyperechoic foci",
-                                   "hypoechoic_foci": "Hypoechoic foci"}[x],
-            key="sp_focal")
-
+    if spleen_open:
+        with st.container(border=True):
+            st.caption("Size status derived automatically from mm value above.")
+            st.markdown("**Focal lesion**")
+            sp_focal = st.radio(
+                "Focal lesion type",
+                ["none", "hyperechoic_foci", "hypoechoic_foci"],
+                horizontal=True, label_visibility="collapsed",
+                format_func=lambda x: {"none": "None",
+                                       "hyperechoic_foci": "Hyperechoic foci",
+                                       "hypoechoic_foci": "Hypoechoic foci"}[x],
+                key="sp_focal")
+            sp_focal_count = "few"
+            if sp_focal != "none":
+                sp_focal_count = st.radio(
+                    "Count", ["few", "multiple"], horizontal=True,
+                    format_func=lambda x: x.title(), key="sp_focal_count")
+            sp_portal_mm = ""
+            if spleen_enlarged:
+                sp_portal_mm = st.text_input(
+                    "Portal vein size (mm) — replaces splenic vein line",
+                    key="sp_portal_mm",
+                    help="≤13 normal, >13 & <14 prominent, ≥14 dilated")
+            sp_acc = st.checkbox("Accessory spleen present", key="sp_acc")
+            sp_acc_size, sp_acc_loc = "", "hilum"
+            if sp_acc:
+                c_a, c_b = st.columns(2)
+                with c_a:
+                    sp_acc_size = st.text_input("Accessory spleen size (mm)",
+                                                key="sp_acc_size")
+                with c_b:
+                    sp_acc_loc = st.radio(
+                        "Location", ["hilum", "upper_pole", "lower_pole"],
+                        horizontal=True,
+                        format_func=lambda x: {"hilum": "Hilum",
+                                               "upper_pole": "Upper pole",
+                                               "lower_pole": "Lower pole"}[x],
+                        key="sp_acc_loc")
+    else:
+        sp_focal = "none"
         sp_focal_count = "few"
-        if sp_focal != "none":
-            sp_focal_count = st.radio(
-                "Count", ["few", "multiple"], horizontal=True,
-                format_func=lambda x: x.title(), key="sp_focal_count")
-
         sp_portal_mm = ""
-        if spleen_enlarged:
-            sp_portal_mm = st.text_input(
-                "Portal vein size (mm) — replaces splenic vein line in report",
-                key="sp_portal_mm",
-                help="≤13 normal, >13 & <14 prominent, ≥14 dilated")
-
-        sp_acc = st.checkbox("Accessory spleen present", key="sp_acc")
-        sp_acc_size, sp_acc_loc = "", "hilum"
-        if sp_acc:
-            c_a, c_b = st.columns(2)
-            with c_a:
-                sp_acc_size = st.text_input("Accessory spleen size (mm)",
-                                            key="sp_acc_size")
-            with c_b:
-                sp_acc_loc = st.radio(
-                    "Location", ["hilum", "upper_pole", "lower_pole"],
-                    horizontal=True,
-                    format_func=lambda x: {"hilum": "Hilum",
-                                           "upper_pole": "Upper pole",
-                                           "lower_pole": "Lower pole"}[x],
-                    key="sp_acc_loc")
+        sp_acc = False
+        sp_acc_size = ""
+        sp_acc_loc = "hilum"
 
     # ------- KIDNEYS -------
-    with st.expander("KIDNEYS (click to open findings)", expanded=False):
-        # -------- Shared kidney fields --------
-        c_a, c_b, c_c = st.columns([2, 2, 1])
-        with c_a:
-            kd_cort_echo = st.radio("Cortical echogenicity",
-                                     ["normal", "mildly_raised"],
-                                     horizontal=True,
-                                     format_func=lambda x: {
-                                         "normal": "Normal",
-                                         "mildly_raised": "Mildly raised"}[x],
-                                     key="kd_cort_echo")
-        with c_b:
-            kd_cort_lat = "bilateral"
-            if kd_cort_echo == "mildly_raised":
-                kd_cort_lat = st.radio("Laterality",
-                                        ["bilateral", "right", "left"],
-                                        horizontal=True,
-                                        format_func=lambda x: x.title(),
-                                        key="kd_cort_lat")
-        with c_c:
-            kd_age_related = False
-            if kd_cort_echo == "mildly_raised":
-                kd_age_related = st.checkbox("?Age related",
-                                              key="kd_age_related")
+    kd_open = organ_button("KIDNEYS", "KIDNEYS")
+    if kd_open:
+        with st.container(border=True):
+            c_a, c_b, c_c = st.columns([2, 2, 1])
+            with c_a:
+                kd_cort_echo = st.radio("Cortical echogenicity",
+                                         ["normal", "mildly_raised"],
+                                         horizontal=True,
+                                         format_func=lambda x: {
+                                             "normal": "Normal",
+                                             "mildly_raised": "Mildly raised"}[x],
+                                         key="kd_cort_echo")
+            with c_b:
+                kd_cort_lat = "bilateral"
+                if kd_cort_echo == "mildly_raised":
+                    kd_cort_lat = st.radio("Laterality",
+                                            ["bilateral", "right", "left"],
+                                            horizontal=True,
+                                            format_func=lambda x: x.title(),
+                                            key="kd_cort_lat")
+            with c_c:
+                kd_age_related = False
+                if kd_cort_echo == "mildly_raised":
+                    kd_age_related = st.checkbox("?Age related",
+                                                  key="kd_age_related")
 
-        kd_neg_renal = st.radio(
-            "Negative renal impression line (clinical query, no finding)",
-            ["no", "yes"],
-            horizontal=True, key="kd_neg_renal",
-            help="Emits 'NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS "
-                 "SEEN AT THE TIME OF SCAN.' in the impression.")
+            kd_neg_renal = st.radio(
+                "Negative renal impression line (clinical query, no finding)",
+                ["no", "yes"],
+                horizontal=True, key="kd_neg_renal")
 
-        ub_status_now = st.session_state.get("ub_status",
-                                             "adequately_distended")
+            ub_status_now = st.session_state.get("ub_status",
+                                                 "adequately_distended")
 
-        # -------- One nested expander per side --------
-        for side in ("right", "left"):
-            side_title = f"{side.title()} Kidney"
-            with st.expander(side_title, expanded=False):
+            for side in ("right", "left"):
+                side_title = f"{side.title()} Kidney"
+                with st.expander(side_title, expanded=False):
+                    kd_status = st.radio(
+                        "Status",
+                        ["normal", "absent_agenesis", "absent_ectopic"],
+                        horizontal=True, key=f"kd_{side[0]}_status",
+                        format_func=lambda x: {
+                            "normal": "Present",
+                            "absent_agenesis": "Absent (agenesis/hypoplasia)",
+                            "absent_ectopic": "Absent (ectopic)"}[x])
+                    if kd_status != "normal":
+                        st.caption("Findings skipped for absent side.")
+                        continue
+                    kd_size_text = st.text_input(
+                        f"{side.title()} kidney size (mm) — e.g. 100x52",
+                        key=f"kd_{side[0]}_size_text")
 
-                kd_status = st.radio(
-                    "Status",
-                    ["normal", "absent_agenesis", "absent_ectopic"],
-                    horizontal=True, key=f"kd_{side[0]}_status",
-                    format_func=lambda x: {
-                        "normal": "Present",
-                        "absent_agenesis": "Absent (agenesis/hypoplasia)",
-                        "absent_ectopic": "Absent (ectopic)"}[x])
-
-                if kd_status != "normal":
-                    st.caption("Findings skipped for absent side.")
-                    continue
-
-                kd_size_text = st.text_input(
-                    f"{side.title()} kidney size (mm) — type dimensions "
-                    f"only, e.g. 100x52",
-                    key=f"kd_{side[0]}_size_text")
-
-                # --- Renal calculi (gated) ---
-                kd_has_calc = st.checkbox(
-                    "Renal calculi present",
-                    key=f"kd_{side[0]}_has_calc")
-
-                calc_key = f"kd_{side[0]}_calc_count"
-                if kd_has_calc:
-                    if calc_key not in st.session_state:
-                        st.session_state[calc_key] = 1
-                    calc_r_cols = st.columns([3, 1])
-                    with calc_r_cols[0]:
-                        st.caption(
-                            f"{side.title()}: {st.session_state[calc_key]} "
-                            f"calculi")
-                    with calc_r_cols[1]:
-                        if st.button("+ Add",
-                                     key=f"kd_{side[0]}_add_calc"):
-                            st.session_state[calc_key] += 1
-                            st.rerun()
-                    for i in range(st.session_state[calc_key]):
-                        c_a, c_b, c_c = st.columns([1, 2, 1])
-                        with c_a:
-                            st.text_input(
-                                "Size",
-                                key=f"kd_{side[0]}_calc_size_{i}",
-                                label_visibility="collapsed",
-                                placeholder="mm")
-                        with c_b:
-                            st.selectbox(
-                                "Pole",
-                                ["upper", "upper_mid", "mid",
-                                 "lower_mid", "lower"],
-                                key=f"kd_{side[0]}_calc_pole_{i}",
-                                label_visibility="collapsed",
-                                format_func=lambda x: _format_pole(x))
-                        with c_c:
-                            if st.button(
-                                    "✕",
-                                    key=f"kd_{side[0]}_calc_del_{i}"):
-                                st.session_state[calc_key] -= 1
+                    kd_has_calc = st.checkbox(
+                        "Renal calculi present",
+                        key=f"kd_{side[0]}_has_calc")
+                    calc_key = f"kd_{side[0]}_calc_count"
+                    if kd_has_calc:
+                        if calc_key not in st.session_state:
+                            st.session_state[calc_key] = 1
+                        calc_r_cols = st.columns([3, 1])
+                        with calc_r_cols[0]:
+                            st.caption(
+                                f"{side.title()}: "
+                                f"{st.session_state[calc_key]} calculi")
+                        with calc_r_cols[1]:
+                            if st.button("+ Add",
+                                         key=f"kd_{side[0]}_add_calc"):
+                                st.session_state[calc_key] += 1
                                 st.rerun()
-                else:
-                    st.session_state[calc_key] = 0
-
-                # --- Ureteric calculus (gated) ---
-                kd_has_uc = st.checkbox(
-                    "Ureteric calculus present",
-                    key=f"kd_{side[0]}_has_uc")
-
-                kd_uc_count = "none"
-                kd_uc_sizes = []
-                kd_uc_level = "distal_ureter"
-                kd_uc_grade = "none"
-
-                if kd_has_uc:
-                    kd_uc_count = st.radio(
-                        "Ureteric calculus count",
-                        ["single", "couple", "few", "multiple"],
-                        horizontal=True, key=f"kd_{side[0]}_uc_count",
-                        format_func=lambda x: x.title())
-
-                    kd_uc_level = st.selectbox(
-                        "Level",
-                        ["renal_pelvis", "puj", "proximal_ureter",
-                         "mid_ureter", "distal_ureter", "vuj"],
-                        key=f"kd_{side[0]}_uc_level",
-                        format_func=lambda x: {
-                            "renal_pelvis": "Renal pelvis",
-                            "puj": "Pelvi-ureteric junction",
-                            "proximal_ureter": "Proximal ureter",
-                            "mid_ureter": "Mid ureter",
-                            "distal_ureter": "Distal ureter",
-                            "vuj": "Vesico-ureteric junction"}[x])
-
-                    if kd_uc_count == "couple":
-                        c_a, c_b = st.columns(2)
-                        with c_a:
-                            s1 = st.text_input("Size 1 (mm)",
-                                                key=f"kd_{side[0]}_uc_s1")
-                        with c_b:
-                            s2 = st.text_input("Size 2 (mm)",
-                                                key=f"kd_{side[0]}_uc_s2")
-                        kd_uc_sizes = [s1, s2]
+                        for i in range(st.session_state[calc_key]):
+                            c_a, c_b, c_c = st.columns([1, 2, 1])
+                            with c_a:
+                                st.text_input(
+                                    "Size",
+                                    key=f"kd_{side[0]}_calc_size_{i}",
+                                    label_visibility="collapsed",
+                                    placeholder="mm")
+                            with c_b:
+                                st.selectbox(
+                                    "Pole",
+                                    ["upper", "upper_mid", "mid",
+                                     "lower_mid", "lower"],
+                                    key=f"kd_{side[0]}_calc_pole_{i}",
+                                    label_visibility="collapsed",
+                                    format_func=lambda x: _format_pole(x))
+                            with c_c:
+                                if st.button(
+                                        "✕",
+                                        key=f"kd_{side[0]}_calc_del_{i}"):
+                                    st.session_state[calc_key] -= 1
+                                    st.rerun()
                     else:
-                        kd_uc_sizes = [st.text_input(
-                            "Size (mm, largest)",
-                            key=f"kd_{side[0]}_uc_size")]
+                        st.session_state[calc_key] = 0
 
-                    kd_uc_grade = st.radio(
-                        "Grade of back-pressure",
-                        ["none", "no_significant", "minimal", "mild",
-                         "moderate"],
-                        horizontal=True, key=f"kd_{side[0]}_uc_grade",
-                        format_func=lambda x: {
-                            "none": "No back-pressure",
-                            "no_significant": "No significant",
-                            "minimal": "Minimal",
-                            "mild": "Mild",
-                            "moderate": "Moderate"}[x])
+                    kd_has_uc = st.checkbox(
+                        "Ureteric calculus present",
+                        key=f"kd_{side[0]}_has_uc")
+                    kd_uc_count = "none"
+                    kd_uc_sizes = []
+                    kd_uc_level = "distal_ureter"
+                    kd_uc_grade = "none"
+                    if kd_has_uc:
+                        kd_uc_count = st.radio(
+                            "Ureteric calculus count",
+                            ["single", "couple", "few", "multiple"],
+                            horizontal=True, key=f"kd_{side[0]}_uc_count",
+                            format_func=lambda x: x.title())
+                        kd_uc_level = st.selectbox(
+                            "Level",
+                            ["renal_pelvis", "puj", "proximal_ureter",
+                             "mid_ureter", "distal_ureter", "vuj"],
+                            key=f"kd_{side[0]}_uc_level",
+                            format_func=lambda x: {
+                                "renal_pelvis": "Renal pelvis",
+                                "puj": "Pelvi-ureteric junction",
+                                "proximal_ureter": "Proximal ureter",
+                                "mid_ureter": "Mid ureter",
+                                "distal_ureter": "Distal ureter",
+                                "vuj": "Vesico-ureteric junction"}[x])
+                        if kd_uc_count == "couple":
+                            c_a, c_b = st.columns(2)
+                            with c_a:
+                                s1 = st.text_input(
+                                    "Size 1 (mm)",
+                                    key=f"kd_{side[0]}_uc_s1")
+                            with c_b:
+                                s2 = st.text_input(
+                                    "Size 2 (mm)",
+                                    key=f"kd_{side[0]}_uc_s2")
+                            kd_uc_sizes = [s1, s2]
+                        else:
+                            kd_uc_sizes = [st.text_input(
+                                "Size (mm, largest)",
+                                key=f"kd_{side[0]}_uc_size")]
+                        kd_uc_grade = st.radio(
+                            "Grade of back-pressure",
+                            ["none", "no_significant", "minimal", "mild",
+                             "moderate"],
+                            horizontal=True, key=f"kd_{side[0]}_uc_grade",
+                            format_func=lambda x: {
+                                "none": "No back-pressure",
+                                "no_significant": "No significant",
+                                "minimal": "Minimal",
+                                "mild": "Mild",
+                                "moderate": "Moderate"}[x])
 
-                # --- Cyst (gated) ---
-                kd_has_cyst = st.checkbox(
-                    "Cyst present",
-                    key=f"kd_{side[0]}_has_cyst")
+                    kd_has_cyst = st.checkbox(
+                        "Cyst present",
+                        key=f"kd_{side[0]}_has_cyst")
+                    kd_cyst = "none"
+                    kd_cyst_size = ""
+                    kd_cyst_loc = ""
+                    kd_bosniak = ""
+                    if kd_has_cyst:
+                        kd_cyst = st.radio(
+                            "Cyst type",
+                            ["simple", "cortical"],
+                            horizontal=True, key=f"kd_{side[0]}_cyst",
+                            format_func=lambda x: x.title())
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            kd_cyst_size = st.text_input(
+                                "Size (mm)",
+                                key=f"kd_{side[0]}_cyst_size")
+                        with c2:
+                            kd_cyst_loc = st.selectbox(
+                                "Location",
+                                ["", "upper", "upper_mid", "mid",
+                                 "lower_mid", "lower"],
+                                key=f"kd_{side[0]}_cyst_loc",
+                                format_func=lambda x: (
+                                    "—" if x == "" else _format_pole(x)))
+                        kd_upgrade_bosniak = st.checkbox(
+                            "Upgrade Bosniak category (Cat-II / Cat-IIF)",
+                            key=f"kd_{side[0]}_upgrade_bosniak")
+                        if kd_upgrade_bosniak:
+                            kd_bosniak = st.radio(
+                                "Bosniak category",
+                                ["II", "IIF"],
+                                horizontal=True,
+                                key=f"kd_{side[0]}_bosniak")
+                        else:
+                            kd_bosniak = "I"
 
-                kd_cyst = "none"
-                kd_cyst_size = ""
-                kd_cyst_loc = ""
-                kd_bosniak = ""
+                    kd_has_hydro = st.checkbox(
+                        "Standalone hydronephrosis",
+                        key=f"kd_{side[0]}_has_hydro")
+                    kd_hydro = "none"
+                    kd_hydro_nocalc = False
+                    kd_hydro_rpc = False
+                    kd_uc_not_traced = False
+                    if kd_has_hydro:
+                        kd_hydro = st.radio(
+                            "Grade",
+                            ["minimal", "mild", "moderate"],
+                            horizontal=True, key=f"kd_{side[0]}_hydro",
+                            format_func=lambda x: x.title())
+                        kd_hydro_nocalc = st.checkbox(
+                            "No obstructive calculus upto visualized "
+                            "distal ureter",
+                            key=f"kd_{side[0]}_hydro_nocalc")
+                        kd_hydro_rpc = st.checkbox(
+                            "?Recently passed calculus",
+                            key=f"kd_{side[0]}_hydro_rpc")
+                        if ub_status_now == "empty":
+                            kd_uc_not_traced = st.checkbox(
+                                f"{side.title()} distal ureter could not "
+                                f"be traced (UB is empty)",
+                                key=f"kd_{side[0]}_uc_not_traced")
 
-                if kd_has_cyst:
-                    kd_cyst = st.radio(
-                        "Cyst type",
-                        ["simple", "cortical"],
-                        horizontal=True, key=f"kd_{side[0]}_cyst",
-                        format_func=lambda x: x.title())
-
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        kd_cyst_size = st.text_input(
-                            "Size (mm)", key=f"kd_{side[0]}_cyst_size")
-                    with c2:
-                        kd_cyst_loc = st.selectbox(
-                            "Location",
-                            ["", "upper", "upper_mid", "mid",
-                             "lower_mid", "lower"],
-                            key=f"kd_{side[0]}_cyst_loc",
-                            format_func=lambda x: (
-                                "—" if x == "" else _format_pole(x)))
-
-                    # Simple / cortical default to Bosniak I unless user
-                    # explicitly upgrades to Cat-II or Cat-IIF
-                    kd_upgrade_bosniak = st.checkbox(
-                        "Upgrade Bosniak category (Cat-II / Cat-IIF)",
-                        key=f"kd_{side[0]}_upgrade_bosniak")
-                    if kd_upgrade_bosniak:
-                        kd_bosniak = st.radio(
-                            "Bosniak category",
-                            ["II", "IIF"],
-                            horizontal=True, key=f"kd_{side[0]}_bosniak")
-                    else:
-                        kd_bosniak = "I"
-
-                # --- Standalone hydronephrosis (gated) ---
-                kd_has_hydro = st.checkbox(
-                    "Standalone hydronephrosis",
-                    key=f"kd_{side[0]}_has_hydro",
-                    help="Only when no ureteric calculus above is causing "
-                         "the back-pressure")
-
-                kd_hydro = "none"
-                kd_hydro_nocalc = False
-                kd_hydro_rpc = False
-                kd_uc_not_traced = False
-
-                if kd_has_hydro:
-                    kd_hydro = st.radio(
-                        "Grade",
-                        ["minimal", "mild", "moderate"],
-                        horizontal=True, key=f"kd_{side[0]}_hydro",
-                        format_func=lambda x: x.title())
-                    kd_hydro_nocalc = st.checkbox(
-                        "No obstructive calculus upto visualized distal "
-                        "ureter", key=f"kd_{side[0]}_hydro_nocalc")
-                    kd_hydro_rpc = st.checkbox(
-                        "?Recently passed calculus",
-                        key=f"kd_{side[0]}_hydro_rpc")
-                    if ub_status_now == "empty":
-                        kd_uc_not_traced = st.checkbox(
-                            f"{side.title()} distal ureter could not be "
-                            f"traced (UB is empty)",
-                            key=f"kd_{side[0]}_uc_not_traced")
-
-                # --- Contralateral normal clause ---
-                kd_contra = st.checkbox(
-                    f"Contralateral "
-                    f"({'left' if side == 'right' else 'right'}) "
-                    f"normal clause",
-                    key=f"kd_{side[0]}_contra")
+                    kd_contra = st.checkbox(
+                        f"Contralateral "
+                        f"({'left' if side == 'right' else 'right'}) "
+                        f"normal clause",
+                        key=f"kd_{side[0]}_contra")
+    else:
+        kd_cort_echo = "normal"
+        kd_cort_lat = "bilateral"
+        kd_age_related = False
+        kd_neg_renal = "no"
 
     # ------- URINARY BLADDER -------
-    with st.expander("URINARY BLADDER (click to open findings)", expanded=False):
-        ub_status = st.radio("Status",
-                             ["adequately_distended", "over", "partially", "empty"],
-                             horizontal=True,
-                             format_func=lambda x: x.replace("_", " ").title(),
-                             key="ub_status")
-        ub_sed = st.radio(
-            "Sedimentation",
-            ["none", "trace", "free_floating", "significant", "extensive"],
-            horizontal=True,
-            format_func=lambda x: x.replace("_", " ").title(), key="ub_sed")
+    ub_open = organ_button("URINARY BLADDER", "URINARY BLADDER")
+    if ub_open:
+        with st.container(border=True):
+            ub_status = st.radio(
+                "Status",
+                ["adequately_distended", "over", "partially", "empty"],
+                horizontal=True,
+                format_func=lambda x: x.replace("_", " ").title(),
+                key="ub_status")
+            ub_sed = st.radio(
+                "Sedimentation",
+                ["none", "trace", "free_floating", "significant", "extensive"],
+                horizontal=True,
+                format_func=lambda x: x.replace("_", " ").title(),
+                key="ub_sed")
+    else:
+        ub_status = "adequately_distended"
+        ub_sed = "none"
 
     # ------- UTERUS / OVARIES or PROSTATE -------
     ut_status = "anteverted"
@@ -3498,8 +3608,7 @@ with col_find:
         u_exp_col, u_sz_col, u_et_col = st.columns(
             [4, 1, 1], vertical_alignment="bottom")
         with u_exp_col:
-            uterus_expander = st.expander("UTERUS findings (click to open)",
-                                          expanded=False)
+            uterus_open = organ_button("UTERUS", "UTERUS")
         with u_sz_col:
             ut_size = st.text_input("UTERUS size (mm)", key="ut_size",
                                     placeholder="UTERUS mm",
@@ -3508,17 +3617,17 @@ with col_find:
             ut_et = st.text_input("Endometrium (mm)", key="ut_et",
                                   placeholder="Endometrium",
                                   label_visibility="collapsed")
-        with uterus_expander:
-            ut_status = st.radio("Status",
-                                 ["anteverted", "retroverted", "bulky",
-                                  "operated", "not_visualized"],
-                                 horizontal=True, key="ut_status")
+        if uterus_open:
+            with st.container(border=True):
+                ut_status = st.radio("Status",
+                                     ["anteverted", "retroverted", "bulky",
+                                      "operated", "not_visualized"],
+                                     horizontal=True, key="ut_status")
 
         o_exp_col, o_r_col, o_l_col = st.columns(
             [4, 1, 1], vertical_alignment="bottom")
         with o_exp_col:
-            ovaries_expander = st.expander("OVARIES findings (click to open)",
-                                           expanded=False)
+            ovaries_open = organ_button("OVARIES", "OVARIES")
         with o_r_col:
             ov_r_size = st.text_input("Rt Ovary (mm)", key="ov_r_size",
                                       placeholder="Rt Ovary",
@@ -3527,53 +3636,68 @@ with col_find:
             ov_l_size = st.text_input("LT Ovary (mm)", key="ov_l_size",
                                       placeholder="LT Ovary",
                                       label_visibility="collapsed")
-        with ovaries_expander:
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**Right Ovary**")
-                ov_r = st.radio("Status", ["normal", "cyst", "not_visualized"],
-                                horizontal=True, key="ov_r_status")
-            with c2:
-                st.markdown("**Left Ovary**")
-                ov_l = st.radio("Status", ["normal", "cyst", "not_visualized"],
-                                horizontal=True, key="ov_l_status")
+        if ovaries_open:
+            with st.container(border=True):
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown("**Right Ovary**")
+                    ov_r = st.radio("Status",
+                                    ["normal", "cyst", "not_visualized"],
+                                    horizontal=True, key="ov_r_status")
+                with c2:
+                    st.markdown("**Left Ovary**")
+                    ov_l = st.radio("Status",
+                                    ["normal", "cyst", "not_visualized"],
+                                    horizontal=True, key="ov_l_status")
     else:
         p_exp_col, p_sz_col = st.columns([5, 1], vertical_alignment="bottom")
         with p_exp_col:
-            prostate_expander = st.expander("PROSTATE findings (click to open)",
-                                            expanded=False)
+            prostate_open = organ_button("PROSTATE", "PROSTATE")
         with p_sz_col:
             pr_cc = st.text_input("PROSTATE size (cc)", key="pr_cc",
                                   placeholder="PROSTATE cc",
                                   label_visibility="collapsed")
-        with prostate_expander:
-            pr_status = st.radio("Status",
-                                 ["normal", "borderline", "bulky", "grade1"],
-                                 horizontal=True,
-                                 format_func=lambda x: {"normal": "Normal",
-                                                        "borderline": "Borderline",
-                                                        "bulky": "Bulky",
-                                                        "grade1": "Grade-I BPH"}[x],
-                                 key="pr_status")
+        if prostate_open:
+            with st.container(border=True):
+                pr_status = st.radio("Status",
+                                     ["normal", "borderline", "bulky", "grade1"],
+                                     horizontal=True,
+                                     format_func=lambda x: {
+                                         "normal": "Normal",
+                                         "borderline": "Borderline",
+                                         "bulky": "Bulky",
+                                         "grade1": "Grade-I BPH"}[x],
+                                     key="pr_status")
 
     # ------- BOWEL -------
-    with st.expander("BOWEL / FREE FLUID (click to open findings)", expanded=False):
-        bw_ff = st.radio("Free fluid",
-                         ["none", "minimal", "mild", "moderate"],
-                         horizontal=True, key="bw_ff")
-        bw_ln = st.radio("Mesenteric LN", ["none", "present"],
-                         horizontal=True, key="bw_ln")
+    bowel_open = organ_button("BOWEL / FREE FLUID", "BOWEL / FREE FLUID")
+    if bowel_open:
+        with st.container(border=True):
+            bw_ff = st.radio("Free fluid",
+                             ["none", "minimal", "mild", "moderate"],
+                             horizontal=True, key="bw_ff")
+            bw_ln = st.radio("Mesenteric LN", ["none", "present"],
+                             horizontal=True, key="bw_ln")
+    else:
+        bw_ff = "none"
+        bw_ln = "none"
 
     # ------- APPENDIX -------
-    with st.expander("APPENDIX (optional) (click to open findings)", expanded=False):
-        ap_status = st.radio("Status",
-                             ["not_assessed", "not_visualized", "normal", "dilated"],
-                             horizontal=True,
-                             format_func=lambda x: x.replace("_", " ").title(),
-                             key="ap_status")
+    ap_open = organ_button("APPENDIX", "APPENDIX")
+    if ap_open:
+        with st.container(border=True):
+            ap_status = st.radio(
+                "Status",
+                ["not_assessed", "not_visualized", "normal", "dilated"],
+                horizontal=True,
+                format_func=lambda x: x.replace("_", " ").title(),
+                key="ap_status")
+            ap_d = ""
+            if ap_status in ("normal", "dilated"):
+                ap_d = st.text_input("Diameter (mm)", key="ap_d")
+    else:
+        ap_status = "not_assessed"
         ap_d = ""
-        if ap_status in ("normal", "dilated"):
-            ap_d = st.text_input("Diameter (mm)", key="ap_d")
 
 
 # ============================================================
@@ -3643,10 +3767,8 @@ data["spleen"].update({
     "accessory_location": sp_acc_loc,
 })
 
-# --- kidneys ---
 for side in ("right", "left"):
     sd = side[0]
-
     calcs = []
     if st.session_state.get(f"kd_{sd}_has_calc"):
         for i in range(st.session_state.get(f"kd_{sd}_calc_count", 0)):
@@ -3748,7 +3870,6 @@ data["kidneys"]["cortical_echogenicity_laterality"] = kd_cort_lat
 data["kidneys"]["age_related_echogenicity"] = kd_age_related
 data["kidneys"]["negative_renal_line"] = (kd_neg_renal == "yes")
 
-# bilateral ureter flag
 r_uc = data["kidneys"]["right"]["ureter_calculus"]
 l_uc = data["kidneys"]["left"]["ureter_calculus"]
 data["kidneys"]["bilateral_ureter_calculi"] = (
@@ -3758,7 +3879,6 @@ data["kidneys"]["bilateral_ureter_calculi"] = (
     and l_uc["count"] != "none"
 )
 
-# UB force_empty_suboptimal if any side has ureter_not_traced
 force_ub_empty = (data["kidneys"]["right"]["ureter_not_traced"]
                   or data["kidneys"]["left"]["ureter_not_traced"])
 data["urinary_bladder"].update({
@@ -3778,8 +3898,45 @@ else:
 data["bowel"].update({"free_fluid": bw_ff, "mesenteric_ln": bw_ln})
 data["appendix"].update({"status": ap_status, "diameter_mm": ap_d})
 
-auto_impression = generate_impression(data, p_sex, p_age)
-data["impression"]["lines"] = auto_impression
+
+# ============================================================
+# PREVIEW / IMPRESSION (col_prev)
+# ============================================================
+
+# Additional body findings input lives in col_prev, but we need it BEFORE we
+# build the preview text, because it feeds into it. We'll render the input
+# inside col_prev first, read it, then rebuild the preview.
+#
+# To keep layout correct (preview at top, editable boxes below), we render
+# col_prev in two passes: first a placeholder container is added, then after
+# we read the addendum we re-render. Simpler: read the addendum via a
+# dedicated input rendered at the END of col_prev, then rebuild the preview
+# with it. But Streamlit renders top-to-bottom, so we use a container.
+#
+# Approach: create col_prev, render the addendum input FIRST (but visually
+# below), then the preview, then impression. Since Streamlit renders in call
+# order, we place a placeholder at the top and fill it later.
+
+with col_prev:
+    st.subheader("📄 Live Preview")
+    preview_placeholder = st.empty()
+
+# Additional body findings input (rendered below, but read now)
+with col_prev:
+    st.subheader("✏️ Additional Body Findings (manual)")
+    st.caption("Optional free text. Rendered in bold italic, placed just "
+               "before IMPRESSION in the preview and DOCX.")
+    addendum_text = st.text_area(
+        "Additional body findings",
+        height=120,
+        label_visibility="collapsed",
+        key="additional_body_findings_box",
+        placeholder="e.g. A small umbilical hernia is noted in the anterior "
+                    "abdominal wall.")
+
+
+# Rebuild preview with addendum included.
+data["additional_body_findings"] = addendum_text or ""
 
 
 def render_preview_findings(data):
@@ -3793,7 +3950,8 @@ def render_preview_findings(data):
     p_status = data["pancreas"].get("status", "normal")
     spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
     ub_status = data["urinary_bladder"].get("status", "adequately_distended")
-    secs = [liver_sentence(data["liver"], sex, age, spleen_enlarged=spleen_enlarged),
+    secs = [liver_sentence(data["liver"], sex, age,
+                            spleen_enlarged=spleen_enlarged),
             gall_bladder_sentence(data["gall_bladder"]),
             cbd_sentence(data["cbd"]),
             pancreas_sentence(data["pancreas"]),
@@ -3814,23 +3972,30 @@ def render_preview_findings(data):
             continue
         out.append("".join(x[0] for x in s))
         out.append("")
+    addendum = (data.get("additional_body_findings") or "").strip()
+    if addendum:
+        out.append(addendum)
+        out.append("")
     out.append("IMPRESSION:")
     for line in data["impression"]["lines"]:
         out.append(f"  - {line}")
     return "\n".join(out)
 
 
+auto_impression = generate_impression(data, p_sex, p_age)
+data["impression"]["lines"] = auto_impression
+
 preview_text = render_preview_findings(data)
 
-
-with col_prev:
-    st.subheader("📄 Live Preview")
+with preview_placeholder:
     _safe = html.escape(preview_text).replace("\n", "<br>")
     st.markdown(
         f'<div class="preview-box">{_safe}</div>',
         unsafe_allow_html=True,
     )
 
+
+with col_prev:
     st.subheader("✏️ Impression (editable)")
     st.caption("Edit any line. Auto-updates with findings unless you type here.")
 
@@ -3871,6 +4036,7 @@ with col_prev:
                 "lines": [ln.strip() for ln in edited_imp.splitlines()
                           if ln.strip()]
             }
+        final_data["additional_body_findings"] = addendum_text or ""
         docx_bytes = build_docx_bytes(final_data)
         fname = f"{p_name or 'report'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
         fname = "".join(ch for ch in fname if ch.isalnum() or ch in "._-")
@@ -3889,6 +4055,7 @@ with col_prev:
                         "lines": [ln.strip() for ln in edited_imp.splitlines()
                                   if ln.strip()]
                     }
+                final_data["additional_body_findings"] = addendum_text or ""
                 save_report(final_data)
                 if p_ref.strip():
                     add_referrer(p_ref)
