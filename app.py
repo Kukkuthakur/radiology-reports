@@ -1,6 +1,6 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v1.6.1-stable
+v1.6.2-stable
 
 Progress:
 - Liver, Gall Bladder, CBD: complete
@@ -10,6 +10,10 @@ Progress:
   standalone hydronephrosis, cortical cyst w/ Bosniak I/II/IIF, cortical
   echogenicity w/ ?age-related, size brackets, negative renal line,
   contralateral-normal clause, ureter-not-traced, absent renal fossa)
+- v1.6.2: kidney block restructured — nested expanders per side, all finding
+  sub-blocks gated behind checkboxes (Strategy 3). Bosniak radio simplified:
+  simple/cortical default to Cat-I, upgrade checkbox reveals Cat-II / Cat-IIF.
+  Parapelvic cyst option removed.
 - Spleen &-merge fix: splenomegaly + portal vein + focal lesion in one line
 - Hepatosplenomegaly combination: same descriptor, no focal lesion either organ
 - Bowel line updated: "...bowel wall thickening or lymphadenitis appreciated."
@@ -284,7 +288,6 @@ URETER_GRADES = {
     "moderate": "MODERATE",
 }
 
-# Sentence-case grades for body text
 URETER_GRADES_SENTENCE = {
     "no_significant": "no significant",
     "minimal": "minimal",
@@ -300,7 +303,6 @@ POLE_LABELS = {
     "lower": "lower-pole",
 }
 
-# Bosniak categories supported
 BOSNIAK_OPTIONS = ["I", "II", "IIF"]
 
 
@@ -372,7 +374,7 @@ def _new_kidney_side():
         "calculi": [],
         "ureter_calculus": _new_ureter_calculus(),
         "ureter_not_traced": False,
-        "cyst": "none",                  # none | cortical | simple | parapelvic
+        "cyst": "none",                  # none | cortical | simple
         "cyst_size_mm": "",
         "cyst_location": "",
         "bosniak": "",                   # I | II | IIF
@@ -1250,7 +1252,6 @@ def _standalone_hydro_body(k, side_low, ub_status):
     if k["hydronephrosis"] == "none":
         return []
     grade = k["hydronephrosis"]
-    # Always hydroureteronephrosis in body per rules discussed
     term = "hydroureteronephrosis"
     s = [seg(" ")]
     s.append(seg(f"{side_low.capitalize()} {grade} {term} is present", True))
@@ -1280,7 +1281,6 @@ def kidneys_sentence(d, ub_status="adequately_distended"):
 
     # Case 1: one or both fossae empty
     if not r_present or not l_present:
-        # Missing side block
         for side_key, side in (("right", r), ("left", l)):
             if side["status"] == "absent_agenesis":
                 s.append(seg(f"{side_key.upper()} RENAL FOSSA", True, True))
@@ -1296,7 +1296,6 @@ def kidneys_sentence(d, ub_status="adequately_distended"):
                 s.append(seg(f" seen lying in the {side_key} pelvic region."))
                 s.append(seg("\n"))
 
-        # Present side block (singular)
         for side_key, side in (("right", r), ("left", l)):
             if not _kidney_side_is_present(side):
                 continue
@@ -1314,7 +1313,6 @@ def kidneys_sentence(d, ub_status="adequately_distended"):
             s.extend(_standalone_hydro_body(side, side_key, ub_status))
             s.extend(_nephrocalcinosis_body(side, side_key))
 
-            # ureter calculus if present on this side
             if side["ureter_calculus"]["count"] != "none":
                 s.extend(_ureter_calculus_body(side, side_key))
         return s
@@ -1337,19 +1335,16 @@ def kidneys_sentence(d, ub_status="adequately_distended"):
     else:
         s.append(seg("echogenicity. Corticomedullary differentiation is maintained."))
 
-    # Bilateral ureter calculi combined path
     bilateral_uc = (d.get("bilateral_ureter_calculi", False)
                     and r["ureter_calculus"]["count"] != "none"
                     and l["ureter_calculus"]["count"] != "none")
     if bilateral_uc:
         s.extend(_ureter_calculus_bilateral_body(d))
-        # Still append cysts/nephrocalcinosis if present
         for side_key, side in (("right", r), ("left", l)):
             s.extend(_cyst_body(side, side_key))
             s.extend(_nephrocalcinosis_body(side, side_key))
         return s
 
-    # Standard per-side findings in right-then-left order
     for side_key, side in (("right", r), ("left", l)):
         s.extend(_renal_calculi_body(side, side_key))
         s.extend(_cyst_body(side, side_key))
@@ -2162,7 +2157,6 @@ def generate_impression(d, sex, age):
     r_present = _kidney_side_is_present(r)
     l_present = _kidney_side_is_present(l)
 
-    # Absent fossa impressions first
     for side_key, side in (("right", r), ("left", l)):
         if side["status"] == "absent_agenesis":
             lines.append(f"EMPTY {side_key.upper()} RENAL FOSSA - "
@@ -2171,15 +2165,12 @@ def generate_impression(d, sex, age):
             lines.append(f"EMPTY {side_key.upper()} RENAL FOSSA - ECTOPIC KIDNEY "
                          f"LYING IN {side_key.upper()} PELVIS.")
 
-    # Ureteric calculi + renal calculi + hydro + cysts logic
     r_uc = r["ureter_calculus"]
     l_uc = l["ureter_calculus"]
     bilateral_flag = k.get("bilateral_ureter_calculi", False)
 
-    # collect findings for kidney impression lines
     renal_lines = []
 
-    # focal cyst lines
     cyst_clauses = []
     for side_key, side in (("right", r), ("left", l)):
         if _kidney_side_is_present(side):
@@ -2187,7 +2178,6 @@ def generate_impression(d, sex, age):
             if clause:
                 cyst_clauses.append(clause)
 
-    # calculi / hydro / ureter lines
     if (bilateral_flag
             and r_uc["count"] != "none"
             and l_uc["count"] != "none"):
@@ -2243,7 +2233,6 @@ def generate_impression(d, sex, age):
                 continue
             line = _ureter_calculus_impression_line(side_key, uc)
             if line:
-                # append renal calculi clause for either/both kidneys
                 r_renal = _renal_calculi_clause(r, "right") if _kidney_side_is_present(r) else None
                 l_renal = _renal_calculi_clause(l, "left") if _kidney_side_is_present(l) else None
                 renal_clause = None
@@ -2258,7 +2247,6 @@ def generate_impression(d, sex, age):
                     line = base + " & " + renal_clause + "."
                 renal_lines.append(line)
 
-    # standalone renal calculi impression (only if no ureteric calculus line)
     has_ureter_line = any(
         ("URETERIC CALCULUS" in ln or "URETERIC CALCULI" in ln
          or "URETER CALCULUS" in ln or "RENAL PELVIS CALCULUS" in ln
@@ -2285,7 +2273,6 @@ def generate_impression(d, sex, age):
                       if no_hydro else ".")
             renal_lines.append(f"{phrase}{suffix}")
 
-    # Standalone hydro lines (no ureteric calculus)
     for side_key, side in (("right", r), ("left", l)):
         if not _kidney_side_is_present(side):
             continue
@@ -2308,7 +2295,6 @@ def generate_impression(d, sex, age):
         renal_lines.append(f"{g} {side_up} HYDROURETERONEPHROSIS IS PRESENT"
                            f"{extra}{rpc}.")
 
-    # Cortical echogenicity
     if k["cortical_echogenicity"] == "mildly_raised":
         laterality = k.get("cortical_echogenicity_laterality", "bilateral")
         lat_txt = {"bilateral": "BILATERAL", "right": "RIGHT",
@@ -2318,7 +2304,6 @@ def generate_impression(d, sex, age):
                 else ". Adv- KFT Correlation")
         renal_lines.append(f"MILDLY RAISED {lat_txt} RENAL CORTICAL ECHOGENICITY{tail}")
 
-    # Contralateral normal clause
     for side_key, side in (("right", r), ("left", l)):
         if not _kidney_side_is_present(side):
             continue
@@ -2340,14 +2325,11 @@ def generate_impression(d, sex, age):
                                         f"ON THE {other_up} KIDNEY AT THE TIME OF SCAN.")
                     break
 
-    # Negative renal line
     if k.get("negative_renal_line"):
         renal_lines.append("NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS SEEN AT "
                            "THE TIME OF SCAN.")
 
-    # Merge cyst clauses with renal lines
     if renal_lines and cyst_clauses:
-        # Combine into single bullet: main line(s) + " X is also seen."
         joined_main = " ".join(renal_lines)
         if not joined_main.endswith("."):
             joined_main += "."
@@ -2546,7 +2528,6 @@ def build_docx_bytes(data):
     for line in data["impression"]["lines"]:
         para = doc.add_paragraph(style="List Bullet")
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        # Special handling for (UB is empty) — keep mixed case bold italic
         if "(UB is empty)" in line:
             parts = line.split("(UB is empty)")
             _add_run(para, parts[0], bold=True)
@@ -3252,40 +3233,7 @@ with col_find:
 
     # ------- KIDNEYS -------
     with st.expander("KIDNEYS (click to open findings)", expanded=False):
-        # Status / size per side
-        c_a, c_b = st.columns(2)
-        with c_a:
-            kd_r_status = st.radio(
-                "Right kidney",
-                ["normal", "absent_agenesis", "absent_ectopic"],
-                horizontal=True, key="kd_r_status",
-                format_func=lambda x: {
-                    "normal": "Present",
-                    "absent_agenesis": "Absent (agenesis/hypoplasia)",
-                    "absent_ectopic": "Absent (ectopic)"}[x])
-            if kd_r_status == "normal":
-                kd_r_size_text = st.text_input(
-                    "Right kidney size (mm) — type dimensions only, e.g. 100x52",
-                    key="kd_r_size_text")
-            else:
-                kd_r_size_text = ""
-        with c_b:
-            kd_l_status = st.radio(
-                "Left kidney",
-                ["normal", "absent_agenesis", "absent_ectopic"],
-                horizontal=True, key="kd_l_status",
-                format_func=lambda x: {
-                    "normal": "Present",
-                    "absent_agenesis": "Absent (agenesis/hypoplasia)",
-                    "absent_ectopic": "Absent (ectopic)"}[x])
-            if kd_l_status == "normal":
-                kd_l_size_text = st.text_input(
-                    "Left kidney size (mm) — type dimensions only, e.g. 97x50",
-                    key="kd_l_size_text")
-            else:
-                kd_l_size_text = ""
-
-        # Cortical echogenicity (both kidneys)
+        # -------- Shared kidney fields --------
         c_a, c_b, c_c = st.columns([2, 2, 1])
         with c_a:
             kd_cort_echo = st.radio("Cortical echogenicity",
@@ -3309,258 +3257,218 @@ with col_find:
                 kd_age_related = st.checkbox("?Age related",
                                               key="kd_age_related")
 
-        st.markdown("---")
-
-        # Right kidney findings
-        if kd_r_status == "normal":
-            st.markdown("### Right Kidney Findings")
-            _kd_r_calc_ui = st.markdown("**Renal calculi**")
-            if "kd_r_calc_count" not in st.session_state:
-                st.session_state["kd_r_calc_count"] = 0
-            calc_r_cols = st.columns([3, 1])
-            with calc_r_cols[0]:
-                st.caption(f"Right: {st.session_state['kd_r_calc_count']} calculi")
-            with calc_r_cols[1]:
-                if st.button("+ Add", key="kd_r_add_calc"):
-                    st.session_state["kd_r_calc_count"] += 1
-                    st.rerun()
-            for i in range(st.session_state["kd_r_calc_count"]):
-                c_a, c_b, c_c = st.columns([1, 2, 1])
-                with c_a:
-                    st.text_input("Size", key=f"kd_r_calc_size_{i}",
-                                  label_visibility="collapsed",
-                                  placeholder="mm")
-                with c_b:
-                    st.selectbox("Pole", ["upper", "upper_mid", "mid",
-                                            "lower_mid", "lower"],
-                                 key=f"kd_r_calc_pole_{i}",
-                                 label_visibility="collapsed",
-                                 format_func=lambda x: _format_pole(x))
-                with c_c:
-                    if st.button("✕", key=f"kd_r_calc_del_{i}"):
-                        st.session_state["kd_r_calc_count"] -= 1
-                        st.rerun()
-
-            st.markdown("**Right ureteric calculus**")
-            kd_r_uc_count = st.radio(
-                "Count", ["none", "single", "couple", "few", "multiple"],
-                horizontal=True, key="kd_r_uc_count",
-                format_func=lambda x: x.title())
-            kd_r_uc_sizes = []
-            kd_r_uc_level = "distal_ureter"
-            kd_r_uc_grade = "none"
-            if kd_r_uc_count != "none":
-                kd_r_uc_level = st.selectbox(
-                    "Level",
-                    ["renal_pelvis", "puj", "proximal_ureter",
-                     "mid_ureter", "distal_ureter", "vuj"],
-                    key="kd_r_uc_level",
-                    format_func=lambda x: {
-                        "renal_pelvis": "Renal pelvis",
-                        "puj": "Pelvi-ureteric junction",
-                        "proximal_ureter": "Proximal ureter",
-                        "mid_ureter": "Mid ureter",
-                        "distal_ureter": "Distal ureter",
-                        "vuj": "Vesico-ureteric junction"}[x])
-                if kd_r_uc_count == "couple":
-                    c_a, c_b = st.columns(2)
-                    with c_a:
-                        s1 = st.text_input("Size 1 (mm)", key="kd_r_uc_s1")
-                    with c_b:
-                        s2 = st.text_input("Size 2 (mm)", key="kd_r_uc_s2")
-                    kd_r_uc_sizes = [s1, s2]
-                else:
-                    kd_r_uc_sizes = [st.text_input("Size (mm, largest)",
-                                                    key="kd_r_uc_size")]
-                kd_r_uc_grade = st.radio(
-                    "Grade",
-                    ["none", "no_significant", "minimal", "mild", "moderate"],
-                    horizontal=True, key="kd_r_uc_grade",
-                    format_func=lambda x: {
-                        "none": "No back-pressure",
-                        "no_significant": "No significant",
-                        "minimal": "Minimal",
-                        "mild": "Mild",
-                        "moderate": "Moderate"}[x])
-
-            st.markdown("**Right cyst**")
-            kd_r_cyst = st.radio("Cyst type",
-                                  ["none", "cortical", "simple", "parapelvic"],
-                                  horizontal=True, key="kd_r_cyst",
-                                  format_func=lambda x: x.title())
-            kd_r_cyst_size = ""
-            kd_r_cyst_loc = ""
-            kd_r_bosniak = ""
-            if kd_r_cyst != "none":
-                c1, c2 = st.columns(2)
-                with c1:
-                    kd_r_cyst_size = st.text_input("Size (mm)", key="kd_r_cyst_size")
-                with c2:
-                    kd_r_cyst_loc = st.selectbox(
-                        "Location",
-                        ["", "upper", "upper_mid", "mid", "lower_mid", "lower"],
-                        key="kd_r_cyst_loc",
-                        format_func=lambda x: "—" if x == "" else _format_pole(x))
-                bosniak_default = "I" if kd_r_cyst in ("cortical", "simple") else "I"
-                kd_r_bosniak = st.radio(
-                    "Bosniak category",
-                    BOSNIAK_OPTIONS,
-                    index=BOSNIAK_OPTIONS.index(bosniak_default),
-                    horizontal=True, key="kd_r_bosniak")
-
-            st.markdown("**Right standalone hydronephrosis**")
-            kd_r_hydro = st.radio(
-                "Grade",
-                ["none", "minimal", "mild", "moderate"],
-                horizontal=True, key="kd_r_hydro",
-                format_func=lambda x: x.title())
-            kd_r_hydro_nocalc = False
-            kd_r_hydro_rpc = False
-            kd_r_uc_not_traced = False
-            if kd_r_hydro != "none":
-                kd_r_hydro_nocalc = st.checkbox(
-                    "No obstructive calculus upto visualized distal ureter",
-                    key="kd_r_hydro_nocalc")
-                kd_r_hydro_rpc = st.checkbox(
-                    "?Recently passed calculus", key="kd_r_hydro_rpc")
-                # Ureter-not-traced only when UB is empty
-                if ub_status_pending := (st.session_state.get("ub_status") == "empty"):
-                    kd_r_uc_not_traced = st.checkbox(
-                        "Right distal ureter could not be traced (UB is empty)",
-                        key="kd_r_uc_not_traced")
-            kd_r_contra = st.checkbox(
-                "Contralateral (left) normal clause",
-                key="kd_r_contra")
-
-        st.markdown("---")
-
-        # Left kidney findings
-        if kd_l_status == "normal":
-            st.markdown("### Left Kidney Findings")
-            st.markdown("**Renal calculi**")
-            if "kd_l_calc_count" not in st.session_state:
-                st.session_state["kd_l_calc_count"] = 0
-            calc_l_cols = st.columns([3, 1])
-            with calc_l_cols[0]:
-                st.caption(f"Left: {st.session_state['kd_l_calc_count']} calculi")
-            with calc_l_cols[1]:
-                if st.button("+ Add", key="kd_l_add_calc"):
-                    st.session_state["kd_l_calc_count"] += 1
-                    st.rerun()
-            for i in range(st.session_state["kd_l_calc_count"]):
-                c_a, c_b, c_c = st.columns([1, 2, 1])
-                with c_a:
-                    st.text_input("Size", key=f"kd_l_calc_size_{i}",
-                                  label_visibility="collapsed",
-                                  placeholder="mm")
-                with c_b:
-                    st.selectbox("Pole", ["upper", "upper_mid", "mid",
-                                            "lower_mid", "lower"],
-                                 key=f"kd_l_calc_pole_{i}",
-                                 label_visibility="collapsed",
-                                 format_func=lambda x: _format_pole(x))
-                with c_c:
-                    if st.button("✕", key=f"kd_l_calc_del_{i}"):
-                        st.session_state["kd_l_calc_count"] -= 1
-                        st.rerun()
-
-            st.markdown("**Left ureteric calculus**")
-            kd_l_uc_count = st.radio(
-                "Count", ["none", "single", "couple", "few", "multiple"],
-                horizontal=True, key="kd_l_uc_count",
-                format_func=lambda x: x.title())
-            kd_l_uc_sizes = []
-            kd_l_uc_level = "distal_ureter"
-            kd_l_uc_grade = "none"
-            if kd_l_uc_count != "none":
-                kd_l_uc_level = st.selectbox(
-                    "Level",
-                    ["renal_pelvis", "puj", "proximal_ureter",
-                     "mid_ureter", "distal_ureter", "vuj"],
-                    key="kd_l_uc_level",
-                    format_func=lambda x: {
-                        "renal_pelvis": "Renal pelvis",
-                        "puj": "Pelvi-ureteric junction",
-                        "proximal_ureter": "Proximal ureter",
-                        "mid_ureter": "Mid ureter",
-                        "distal_ureter": "Distal ureter",
-                        "vuj": "Vesico-ureteric junction"}[x])
-                if kd_l_uc_count == "couple":
-                    c_a, c_b = st.columns(2)
-                    with c_a:
-                        s1 = st.text_input("Size 1 (mm)", key="kd_l_uc_s1")
-                    with c_b:
-                        s2 = st.text_input("Size 2 (mm)", key="kd_l_uc_s2")
-                    kd_l_uc_sizes = [s1, s2]
-                else:
-                    kd_l_uc_sizes = [st.text_input("Size (mm, largest)",
-                                                    key="kd_l_uc_size")]
-                kd_l_uc_grade = st.radio(
-                    "Grade",
-                    ["none", "no_significant", "minimal", "mild", "moderate"],
-                    horizontal=True, key="kd_l_uc_grade",
-                    format_func=lambda x: {
-                        "none": "No back-pressure",
-                        "no_significant": "No significant",
-                        "minimal": "Minimal",
-                        "mild": "Mild",
-                        "moderate": "Moderate"}[x])
-
-            st.markdown("**Left cyst**")
-            kd_l_cyst = st.radio("Cyst type",
-                                  ["none", "cortical", "simple", "parapelvic"],
-                                  horizontal=True, key="kd_l_cyst",
-                                  format_func=lambda x: x.title())
-            kd_l_cyst_size = ""
-            kd_l_cyst_loc = ""
-            kd_l_bosniak = ""
-            if kd_l_cyst != "none":
-                c1, c2 = st.columns(2)
-                with c1:
-                    kd_l_cyst_size = st.text_input("Size (mm)", key="kd_l_cyst_size")
-                with c2:
-                    kd_l_cyst_loc = st.selectbox(
-                        "Location",
-                        ["", "upper", "upper_mid", "mid", "lower_mid", "lower"],
-                        key="kd_l_cyst_loc",
-                        format_func=lambda x: "—" if x == "" else _format_pole(x))
-                bosniak_default = "I" if kd_l_cyst in ("cortical", "simple") else "I"
-                kd_l_bosniak = st.radio(
-                    "Bosniak category",
-                    BOSNIAK_OPTIONS,
-                    index=BOSNIAK_OPTIONS.index(bosniak_default),
-                    horizontal=True, key="kd_l_bosniak")
-
-            st.markdown("**Left standalone hydronephrosis**")
-            kd_l_hydro = st.radio(
-                "Grade",
-                ["none", "minimal", "mild", "moderate"],
-                horizontal=True, key="kd_l_hydro",
-                format_func=lambda x: x.title())
-            kd_l_hydro_nocalc = False
-            kd_l_hydro_rpc = False
-            kd_l_uc_not_traced = False
-            if kd_l_hydro != "none":
-                kd_l_hydro_nocalc = st.checkbox(
-                    "No obstructive calculus upto visualized distal ureter",
-                    key="kd_l_hydro_nocalc")
-                kd_l_hydro_rpc = st.checkbox(
-                    "?Recently passed calculus", key="kd_l_hydro_rpc")
-                if st.session_state.get("ub_status") == "empty":
-                    kd_l_uc_not_traced = st.checkbox(
-                        "Left distal ureter could not be traced (UB is empty)",
-                        key="kd_l_uc_not_traced")
-            kd_l_contra = st.checkbox(
-                "Contralateral (right) normal clause",
-                key="kd_l_contra")
-
-        st.markdown("---")
         kd_neg_renal = st.radio(
             "Negative renal impression line (clinical query, no finding)",
             ["no", "yes"],
             horizontal=True, key="kd_neg_renal",
-            help="Emits 'NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS SEEN "
-                 "AT THE TIME OF SCAN.' in the impression.")
+            help="Emits 'NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS "
+                 "SEEN AT THE TIME OF SCAN.' in the impression.")
+
+        ub_status_now = st.session_state.get("ub_status",
+                                             "adequately_distended")
+
+        # -------- One nested expander per side --------
+        for side in ("right", "left"):
+            side_title = f"{side.title()} Kidney"
+            with st.expander(side_title, expanded=False):
+
+                kd_status = st.radio(
+                    "Status",
+                    ["normal", "absent_agenesis", "absent_ectopic"],
+                    horizontal=True, key=f"kd_{side[0]}_status",
+                    format_func=lambda x: {
+                        "normal": "Present",
+                        "absent_agenesis": "Absent (agenesis/hypoplasia)",
+                        "absent_ectopic": "Absent (ectopic)"}[x])
+
+                if kd_status != "normal":
+                    st.caption("Findings skipped for absent side.")
+                    continue
+
+                kd_size_text = st.text_input(
+                    f"{side.title()} kidney size (mm) — type dimensions "
+                    f"only, e.g. 100x52",
+                    key=f"kd_{side[0]}_size_text")
+
+                # --- Renal calculi (gated) ---
+                kd_has_calc = st.checkbox(
+                    "Renal calculi present",
+                    key=f"kd_{side[0]}_has_calc")
+
+                calc_key = f"kd_{side[0]}_calc_count"
+                if kd_has_calc:
+                    if calc_key not in st.session_state:
+                        st.session_state[calc_key] = 1
+                    calc_r_cols = st.columns([3, 1])
+                    with calc_r_cols[0]:
+                        st.caption(
+                            f"{side.title()}: {st.session_state[calc_key]} "
+                            f"calculi")
+                    with calc_r_cols[1]:
+                        if st.button("+ Add",
+                                     key=f"kd_{side[0]}_add_calc"):
+                            st.session_state[calc_key] += 1
+                            st.rerun()
+                    for i in range(st.session_state[calc_key]):
+                        c_a, c_b, c_c = st.columns([1, 2, 1])
+                        with c_a:
+                            st.text_input(
+                                "Size",
+                                key=f"kd_{side[0]}_calc_size_{i}",
+                                label_visibility="collapsed",
+                                placeholder="mm")
+                        with c_b:
+                            st.selectbox(
+                                "Pole",
+                                ["upper", "upper_mid", "mid",
+                                 "lower_mid", "lower"],
+                                key=f"kd_{side[0]}_calc_pole_{i}",
+                                label_visibility="collapsed",
+                                format_func=lambda x: _format_pole(x))
+                        with c_c:
+                            if st.button(
+                                    "✕",
+                                    key=f"kd_{side[0]}_calc_del_{i}"):
+                                st.session_state[calc_key] -= 1
+                                st.rerun()
+                else:
+                    st.session_state[calc_key] = 0
+
+                # --- Ureteric calculus (gated) ---
+                kd_has_uc = st.checkbox(
+                    "Ureteric calculus present",
+                    key=f"kd_{side[0]}_has_uc")
+
+                kd_uc_count = "none"
+                kd_uc_sizes = []
+                kd_uc_level = "distal_ureter"
+                kd_uc_grade = "none"
+
+                if kd_has_uc:
+                    kd_uc_count = st.radio(
+                        "Ureteric calculus count",
+                        ["single", "couple", "few", "multiple"],
+                        horizontal=True, key=f"kd_{side[0]}_uc_count",
+                        format_func=lambda x: x.title())
+
+                    kd_uc_level = st.selectbox(
+                        "Level",
+                        ["renal_pelvis", "puj", "proximal_ureter",
+                         "mid_ureter", "distal_ureter", "vuj"],
+                        key=f"kd_{side[0]}_uc_level",
+                        format_func=lambda x: {
+                            "renal_pelvis": "Renal pelvis",
+                            "puj": "Pelvi-ureteric junction",
+                            "proximal_ureter": "Proximal ureter",
+                            "mid_ureter": "Mid ureter",
+                            "distal_ureter": "Distal ureter",
+                            "vuj": "Vesico-ureteric junction"}[x])
+
+                    if kd_uc_count == "couple":
+                        c_a, c_b = st.columns(2)
+                        with c_a:
+                            s1 = st.text_input("Size 1 (mm)",
+                                                key=f"kd_{side[0]}_uc_s1")
+                        with c_b:
+                            s2 = st.text_input("Size 2 (mm)",
+                                                key=f"kd_{side[0]}_uc_s2")
+                        kd_uc_sizes = [s1, s2]
+                    else:
+                        kd_uc_sizes = [st.text_input(
+                            "Size (mm, largest)",
+                            key=f"kd_{side[0]}_uc_size")]
+
+                    kd_uc_grade = st.radio(
+                        "Grade of back-pressure",
+                        ["none", "no_significant", "minimal", "mild",
+                         "moderate"],
+                        horizontal=True, key=f"kd_{side[0]}_uc_grade",
+                        format_func=lambda x: {
+                            "none": "No back-pressure",
+                            "no_significant": "No significant",
+                            "minimal": "Minimal",
+                            "mild": "Mild",
+                            "moderate": "Moderate"}[x])
+
+                # --- Cyst (gated) ---
+                kd_has_cyst = st.checkbox(
+                    "Cyst present",
+                    key=f"kd_{side[0]}_has_cyst")
+
+                kd_cyst = "none"
+                kd_cyst_size = ""
+                kd_cyst_loc = ""
+                kd_bosniak = ""
+
+                if kd_has_cyst:
+                    kd_cyst = st.radio(
+                        "Cyst type",
+                        ["simple", "cortical"],
+                        horizontal=True, key=f"kd_{side[0]}_cyst",
+                        format_func=lambda x: x.title())
+
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        kd_cyst_size = st.text_input(
+                            "Size (mm)", key=f"kd_{side[0]}_cyst_size")
+                    with c2:
+                        kd_cyst_loc = st.selectbox(
+                            "Location",
+                            ["", "upper", "upper_mid", "mid",
+                             "lower_mid", "lower"],
+                            key=f"kd_{side[0]}_cyst_loc",
+                            format_func=lambda x: (
+                                "—" if x == "" else _format_pole(x)))
+
+                    # Simple / cortical default to Bosniak I unless user
+                    # explicitly upgrades to Cat-II or Cat-IIF
+                    kd_upgrade_bosniak = st.checkbox(
+                        "Upgrade Bosniak category (Cat-II / Cat-IIF)",
+                        key=f"kd_{side[0]}_upgrade_bosniak")
+                    if kd_upgrade_bosniak:
+                        kd_bosniak = st.radio(
+                            "Bosniak category",
+                            ["II", "IIF"],
+                            horizontal=True, key=f"kd_{side[0]}_bosniak")
+                    else:
+                        kd_bosniak = "I"
+
+                # --- Standalone hydronephrosis (gated) ---
+                kd_has_hydro = st.checkbox(
+                    "Standalone hydronephrosis",
+                    key=f"kd_{side[0]}_has_hydro",
+                    help="Only when no ureteric calculus above is causing "
+                         "the back-pressure")
+
+                kd_hydro = "none"
+                kd_hydro_nocalc = False
+                kd_hydro_rpc = False
+                kd_uc_not_traced = False
+
+                if kd_has_hydro:
+                    kd_hydro = st.radio(
+                        "Grade",
+                        ["minimal", "mild", "moderate"],
+                        horizontal=True, key=f"kd_{side[0]}_hydro",
+                        format_func=lambda x: x.title())
+                    kd_hydro_nocalc = st.checkbox(
+                        "No obstructive calculus upto visualized distal "
+                        "ureter", key=f"kd_{side[0]}_hydro_nocalc")
+                    kd_hydro_rpc = st.checkbox(
+                        "?Recently passed calculus",
+                        key=f"kd_{side[0]}_hydro_rpc")
+                    if ub_status_now == "empty":
+                        kd_uc_not_traced = st.checkbox(
+                            f"{side.title()} distal ureter could not be "
+                            f"traced (UB is empty)",
+                            key=f"kd_{side[0]}_uc_not_traced")
+
+                # --- Contralateral normal clause ---
+                kd_contra = st.checkbox(
+                    f"Contralateral "
+                    f"({'left' if side == 'right' else 'right'}) "
+                    f"normal clause",
+                    key=f"kd_{side[0]}_contra")
 
     # ------- URINARY BLADDER -------
     with st.expander("URINARY BLADDER (click to open findings)", expanded=False):
@@ -3736,97 +3644,104 @@ data["spleen"].update({
 })
 
 # --- kidneys ---
-kd_r_calcs = []
-for i in range(st.session_state.get("kd_r_calc_count", 0)):
-    sz = st.session_state.get(f"kd_r_calc_size_{i}", "")
-    pole = st.session_state.get(f"kd_r_calc_pole_{i}", "mid")
-    if sz:
-        kd_r_calcs.append({"size_mm": sz, "pole": pole})
+for side in ("right", "left"):
+    sd = side[0]
 
-kd_l_calcs = []
-for i in range(st.session_state.get("kd_l_calc_count", 0)):
-    sz = st.session_state.get(f"kd_l_calc_size_{i}", "")
-    pole = st.session_state.get(f"kd_l_calc_pole_{i}", "mid")
-    if sz:
-        kd_l_calcs.append({"size_mm": sz, "pole": pole})
+    calcs = []
+    if st.session_state.get(f"kd_{sd}_has_calc"):
+        for i in range(st.session_state.get(f"kd_{sd}_calc_count", 0)):
+            sz = st.session_state.get(f"kd_{sd}_calc_size_{i}", "")
+            pole = st.session_state.get(f"kd_{sd}_calc_pole_{i}", "mid")
+            if sz:
+                calcs.append({"size_mm": sz, "pole": pole})
 
-# right kidney dict
-if kd_r_status == "normal":
-    data["kidneys"]["right"].update({
-        "status": "normal",
-        "size_text": kd_r_size_text,
-        "calculi": kd_r_calcs,
-        "ureter_calculus": {
-            "count": kd_r_uc_count,
-            "sizes": [s for s in kd_r_uc_sizes if s] if kd_r_uc_count != "none" else [],
-            "level": kd_r_uc_level,
-            "grade": kd_r_uc_grade,
-        },
-        "ureter_not_traced": kd_r_uc_not_traced,
-        "cyst": kd_r_cyst,
-        "cyst_size_mm": kd_r_cyst_size,
-        "cyst_location": kd_r_cyst_loc,
-        "bosniak": kd_r_bosniak,
-        "hydronephrosis": kd_r_hydro,
-        "hydronephrosis_no_obstructive_calculus": kd_r_hydro_nocalc,
-        "recently_passed_calculus_suspected": kd_r_hydro_rpc,
-        "contralateral_normal_clause": kd_r_contra,
-    })
-else:
-    data["kidneys"]["right"].update({
-        "status": kd_r_status,
-        "size_text": "",
-        "calculi": [],
-        "ureter_calculus": _new_ureter_calculus(),
-        "ureter_not_traced": False,
-        "cyst": "none",
-        "cyst_size_mm": "",
-        "cyst_location": "",
-        "bosniak": "",
-        "hydronephrosis": "none",
-        "hydronephrosis_no_obstructive_calculus": False,
-        "recently_passed_calculus_suspected": False,
-        "contralateral_normal_clause": False,
-    })
+    status = st.session_state.get(f"kd_{sd}_status", "normal")
 
-# left kidney dict
-if kd_l_status == "normal":
-    data["kidneys"]["left"].update({
-        "status": "normal",
-        "size_text": kd_l_size_text,
-        "calculi": kd_l_calcs,
-        "ureter_calculus": {
-            "count": kd_l_uc_count,
-            "sizes": [s for s in kd_l_uc_sizes if s] if kd_l_uc_count != "none" else [],
-            "level": kd_l_uc_level,
-            "grade": kd_l_uc_grade,
-        },
-        "ureter_not_traced": kd_l_uc_not_traced,
-        "cyst": kd_l_cyst,
-        "cyst_size_mm": kd_l_cyst_size,
-        "cyst_location": kd_l_cyst_loc,
-        "bosniak": kd_l_bosniak,
-        "hydronephrosis": kd_l_hydro,
-        "hydronephrosis_no_obstructive_calculus": kd_l_hydro_nocalc,
-        "recently_passed_calculus_suspected": kd_l_hydro_rpc,
-        "contralateral_normal_clause": kd_l_contra,
-    })
-else:
-    data["kidneys"]["left"].update({
-        "status": kd_l_status,
-        "size_text": "",
-        "calculi": [],
-        "ureter_calculus": _new_ureter_calculus(),
-        "ureter_not_traced": False,
-        "cyst": "none",
-        "cyst_size_mm": "",
-        "cyst_location": "",
-        "bosniak": "",
-        "hydronephrosis": "none",
-        "hydronephrosis_no_obstructive_calculus": False,
-        "recently_passed_calculus_suspected": False,
-        "contralateral_normal_clause": False,
-    })
+    if status == "normal":
+        has_uc = st.session_state.get(f"kd_{sd}_has_uc", False)
+        if has_uc:
+            uc_count = st.session_state.get(f"kd_{sd}_uc_count", "single")
+            if uc_count == "couple":
+                uc_sizes = [
+                    st.session_state.get(f"kd_{sd}_uc_s1", ""),
+                    st.session_state.get(f"kd_{sd}_uc_s2", ""),
+                ]
+            else:
+                uc_sizes = [st.session_state.get(f"kd_{sd}_uc_size", "")]
+            uc_level = st.session_state.get(f"kd_{sd}_uc_level",
+                                            "distal_ureter")
+            uc_grade = st.session_state.get(f"kd_{sd}_uc_grade", "none")
+        else:
+            uc_count = "none"
+            uc_sizes = []
+            uc_level = "distal_ureter"
+            uc_grade = "none"
+
+        if st.session_state.get(f"kd_{sd}_has_cyst", False):
+            cyst = st.session_state.get(f"kd_{sd}_cyst", "simple")
+            cyst_size = st.session_state.get(f"kd_{sd}_cyst_size", "")
+            cyst_loc = st.session_state.get(f"kd_{sd}_cyst_loc", "")
+            if st.session_state.get(f"kd_{sd}_upgrade_bosniak", False):
+                bosniak = st.session_state.get(f"kd_{sd}_bosniak", "II")
+            else:
+                bosniak = "I"
+        else:
+            cyst = "none"
+            cyst_size = ""
+            cyst_loc = ""
+            bosniak = ""
+
+        if st.session_state.get(f"kd_{sd}_has_hydro", False):
+            hydro = st.session_state.get(f"kd_{sd}_hydro", "mild")
+            hydro_nocalc = st.session_state.get(
+                f"kd_{sd}_hydro_nocalc", False)
+            hydro_rpc = st.session_state.get(f"kd_{sd}_hydro_rpc", False)
+            uc_not_traced = st.session_state.get(
+                f"kd_{sd}_uc_not_traced", False)
+        else:
+            hydro = "none"
+            hydro_nocalc = False
+            hydro_rpc = False
+            uc_not_traced = False
+
+        contra = st.session_state.get(f"kd_{sd}_contra", False)
+
+        data["kidneys"][side].update({
+            "status": "normal",
+            "size_text": st.session_state.get(f"kd_{sd}_size_text", ""),
+            "calculi": calcs,
+            "ureter_calculus": {
+                "count": uc_count,
+                "sizes": [s for s in uc_sizes if s],
+                "level": uc_level,
+                "grade": uc_grade,
+            },
+            "ureter_not_traced": uc_not_traced,
+            "cyst": cyst,
+            "cyst_size_mm": cyst_size,
+            "cyst_location": cyst_loc,
+            "bosniak": bosniak,
+            "hydronephrosis": hydro,
+            "hydronephrosis_no_obstructive_calculus": hydro_nocalc,
+            "recently_passed_calculus_suspected": hydro_rpc,
+            "contralateral_normal_clause": contra,
+        })
+    else:
+        data["kidneys"][side].update({
+            "status": status,
+            "size_text": "",
+            "calculi": [],
+            "ureter_calculus": _new_ureter_calculus(),
+            "ureter_not_traced": False,
+            "cyst": "none",
+            "cyst_size_mm": "",
+            "cyst_location": "",
+            "bosniak": "",
+            "hydronephrosis": "none",
+            "hydronephrosis_no_obstructive_calculus": False,
+            "recently_passed_calculus_suspected": False,
+            "contralateral_normal_clause": False,
+        })
 
 data["kidneys"]["cortical_echogenicity"] = kd_cort_echo
 data["kidneys"]["cortical_echogenicity_laterality"] = kd_cort_lat
@@ -3834,12 +3749,14 @@ data["kidneys"]["age_related_echogenicity"] = kd_age_related
 data["kidneys"]["negative_renal_line"] = (kd_neg_renal == "yes")
 
 # bilateral ureter flag
-if (kd_r_status == "normal" and kd_l_status == "normal"
-        and kd_r_uc_count != "none" and kd_l_uc_count != "none"):
-    bilateral_uc = st.session_state.get("kd_bilateral_uc", True)
-else:
-    bilateral_uc = False
-data["kidneys"]["bilateral_ureter_calculi"] = bilateral_uc
+r_uc = data["kidneys"]["right"]["ureter_calculus"]
+l_uc = data["kidneys"]["left"]["ureter_calculus"]
+data["kidneys"]["bilateral_ureter_calculi"] = (
+    data["kidneys"]["right"]["status"] == "normal"
+    and data["kidneys"]["left"]["status"] == "normal"
+    and r_uc["count"] != "none"
+    and l_uc["count"] != "none"
+)
 
 # UB force_empty_suboptimal if any side has ureter_not_traced
 force_ub_empty = (data["kidneys"]["right"]["ureter_not_traced"]
