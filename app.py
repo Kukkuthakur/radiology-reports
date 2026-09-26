@@ -1,13 +1,30 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v1.7.2-stable
+v1.8.0-stable
+
+v1.8.0: Modified kidney module.
+  - Raised cortical echogenicity: 3 grades (mild / moderate / significant)
+    with CMD state (preserved / hazy / lost). Age-related modifier applies
+    to mild grade only.
+  - Cysts: Simple (Bosniak Cat-I) and Complex (Cat-II / Cat-IIF) with
+    septa (thin / thick) and calcification (mural arc-like / mural nodular).
+    Count single / few / multiple. Cat-IIF auto-appends follow-up advice.
+  - Small/contracted kidney rule: largest dimension <= 82 mm (age > 15)
+    triggers "relatively small/contracted" phrasing; overridden by any
+    other finding.
 
 v1.7.2: mirror-pattern fix. Widget keys are mirrored into plain session
   keys (_mirror_*) on every run, so on_change callbacks (e.g. from the
   addendum box) can never wipe collapsed organs' findings.
 
 Frozen rules:
-- Impression text ALL CAPS except "Adv- ... Correlation." and "(UB is empty)".
+- Impression text ALL CAPS except:
+    * "Adv- ... Correlation."              -> bold + italic, mixed case
+    * anything inside parentheses "( ... )" -> bold + italic, mixed case
+    * the token "vs"                       -> bold, lowercase
+    * EXCEPTION to the parenthetical rule: the substring "BOSNIAK CAT-"
+      plus its Roman numeral (I / II / IIF) stays ALL CAPS even inside
+      parentheses.
 - Body findings bold, italic, mixed case.
 """
 
@@ -101,6 +118,26 @@ def capitalize_sentences(text):
             if ch in ".!?\n":
                 capitalize_next = True
     return "".join(out)
+
+
+def parse_kidney_length_mm(size_text):
+    """First number in the free-text box = length, in mm. No cm handling."""
+    if not size_text:
+        return None
+    m = re.search(r"(\d+(?:\.\d+)?)", str(size_text))
+    return float(m.group(1)) if m else None
+
+
+def normalize_kidney_size_text(size_text):
+    """'100 x 52' -> '100x52MM'; '100' -> '100MM'; '' -> ''."""
+    if not size_text:
+        return ""
+    s = str(size_text).strip()
+    if not s:
+        return ""
+    s = re.sub(r"\s*[xX]\s*", "x", s)
+    s = re.sub(r"\s*[mM]{2}\s*$", "", s)
+    return f"{s}MM"
 
 
 # ============================================================
@@ -329,7 +366,29 @@ POLE_LABELS = {
     "lower": "lower-pole",
 }
 
-BOSNIAK_OPTIONS = ["I", "II", "IIF"]
+SMALL_KIDNEY_MM = 82
+SMALL_KIDNEY_MIN_AGE = 15
+
+ECHO_GRADE_WORD = {
+    "mildly_raised": "mildly raised",
+    "moderately_raised": "moderately raised",
+    "significantly_raised": "significantly raised",
+}
+ECHO_GRADE_WORD_UP = {
+    "mildly_raised": "MILDLY RAISED",
+    "moderately_raised": "MODERATELY RAISED",
+    "significantly_raised": "SIGNIFICANTLY RAISED",
+}
+CMD_WORD = {
+    "preserved": "preserved",
+    "hazy": "hazy",
+    "lost": "lost",
+}
+CMD_WORD_UP = {
+    "preserved": "PRESERVED",
+    "hazy": "HAZY",
+    "lost": "LOST",
+}
 
 
 # ============================================================
@@ -400,15 +459,20 @@ def _new_kidney_side():
         "calculi": [],
         "ureter_calculus": _new_ureter_calculus(),
         "ureter_not_traced": False,
-        "cyst": "none",
+        # new cyst model
+        "cyst_type": "none",       # none | simple | complex
+        "cyst_count": "single",    # single | few | multiple
         "cyst_size_mm": "",
         "cyst_location": "",
-        "bosniak": "",
+        "cyst_septa": "none",      # none | thin | thick
+        "cyst_calc": "none",       # none | arc | nodular
+        "cyst_bosniak": "",        # derived: I | II | IIF
         "hydronephrosis": "none",
         "hydronephrosis_no_obstructive_calculus": False,
         "recently_passed_calculus_suspected": False,
         "nephrocalcinosis": "none",
         "contralateral_normal_clause": False,
+        "is_small": False,         # derived from size_text length <= 82
     }
 
 
@@ -473,9 +537,10 @@ def new_report(sex="F"):
         "kidneys": {
             "right": _new_kidney_side(),
             "left": _new_kidney_side(),
-            "cortical_echogenicity": "normal",
+            "cortical_echogenicity": "normal",   # normal | mildly_raised | moderately_raised | significantly_raised
+            "cortical_cmd": "preserved",         # preserved | hazy | lost
             "cortical_echogenicity_laterality": "bilateral",
-            "age_related_echogenicity": False,
+            "age_related_echogenicity": False,   # mild grade only
             "negative_renal_line": False,
             "bilateral_ureter_calculi": False,
         },
@@ -1067,26 +1132,23 @@ def spleen_sentence(d):
     return s
 
 
-# -------- KIDNEYS --------
+# ============================================================
+# KIDNEYS — body sentences
+# ============================================================
 
 def _kidney_side_is_present(k):
     return k["status"] == "normal"
 
 
-def _both_kidneys_present(k):
-    return (_kidney_side_is_present(k["right"])
-            and _kidney_side_is_present(k["left"]))
-
-
 def _size_bracket(k, presence):
     r_present, l_present = presence
-    r = k["right"].get("size_text", "").strip()
-    l = k["left"].get("size_text", "").strip()
+    r = normalize_kidney_size_text(k["right"].get("size_text", ""))
+    l = normalize_kidney_size_text(k["left"].get("size_text", ""))
     parts = []
     if r_present and r:
-        parts.append(f"RK={r}MM")
+        parts.append(f"RK={r}")
     if l_present and l:
-        parts.append(f"LK={l}MM")
+        parts.append(f"LK={l}")
     if not parts:
         return ""
     return "[" + ";".join(parts) + "]"
@@ -1096,12 +1158,13 @@ def _format_pole(pole_key):
     return POLE_LABELS.get(pole_key, pole_key.replace("_", "-"))
 
 
-def _kidney_side_has_finding(k):
+def _kidney_side_has_other_finding(k):
+    """Any finding besides small size that overrides the small-kidney line."""
     if k["calculi"]:
         return True
     if k["ureter_calculus"]["count"] != "none":
         return True
-    if k["cyst"] != "none":
+    if k["cyst_type"] != "none":
         return True
     if k["hydronephrosis"] != "none":
         return True
@@ -1110,17 +1173,19 @@ def _kidney_side_has_finding(k):
     return False
 
 
-def _renal_calculi_body(k, side_low):
+def _renal_calculi_body(k, side_low, unified=False):
     calcs = k["calculi"]
     if not calcs:
         return []
     n = len(calcs)
     out = [seg(" ")]
+    side_phrase = f"{side_low} kidney" if not unified else f"{side_low} kidney"
+
     if n == 1:
         c = calcs[0]
         out.append(seg(
             f"A calculus measuring {c['size_mm']}MM is seen at the "
-            f"{_format_pole(c['pole'])} of {side_low} kidney", True))
+            f"{_format_pole(c['pole'])} of {side_phrase}", True))
         out.append(seg(".", True))
         return out
 
@@ -1157,7 +1222,7 @@ def _renal_calculi_body(k, side_low):
         joined = f"{parts[0]} & {parts[1]}"
     else:
         joined = ", ".join(parts[:-1]) + " & " + parts[-1]
-    out.append(seg(f"{lead} seen in the {side_low} kidney, largest of these "
+    out.append(seg(f"{lead} seen in the {side_phrase}, largest of these "
                    f"measuring {joined}", True))
     out.append(seg(".", True))
     return out
@@ -1172,7 +1237,6 @@ def _ureter_calculus_body(d_side, side_key):
     if uc["count"] == "none":
         return []
     prep, term, imp_adj, body_level, _bi = URETER_LEVELS[uc["level"]]
-    side_up = _ureter_side_label(side_key)
     side_low = side_key
     grade = uc["grade"]
     sizes = uc["sizes"]
@@ -1263,14 +1327,83 @@ def _ureter_calculus_bilateral_body(k):
     return s
 
 
-def _cyst_body(k, side_low):
-    if k["cyst"] == "none":
+# -------- CYST BODY --------
+
+def _cyst_descriptor_phrase(k):
+    """Return e.g. 'thin septa and mural arc-like calcification' or None."""
+    septa = k.get("cyst_septa", "none")
+    calc = k.get("cyst_calc", "none")
+
+    grade_iif = (septa == "thick") or (calc == "nodular")
+    if grade_iif:
+        septa_txt = "thick septa" if septa in ("thin", "thick") else None
+        calc_txt = "mural nodular calcification" if calc in ("arc", "nodular") else None
+    else:
+        septa_txt = "thin septa" if septa == "thin" else None
+        calc_txt = "mural arc-like calcification" if calc == "arc" else None
+
+    if septa_txt and calc_txt:
+        return f"{septa_txt} and {calc_txt}"
+    if septa_txt:
+        return septa_txt
+    if calc_txt:
+        return calc_txt
+    return None
+
+
+def _cyst_count_word(count):
+    return {"single": "", "few": "Few", "multiple": "Multiple"}.get(count, "")
+
+
+def _cyst_impression_count_word(count):
+    return {"single": "A", "few": "FEW", "multiple": "MULTIPLE"}.get(count, "A")
+
+
+def _cyst_bosniak(k):
+    if k["cyst_type"] == "simple":
+        return "I"
+    septa = k.get("cyst_septa", "none")
+    calc = k.get("cyst_calc", "none")
+    if septa == "thick" or calc == "nodular":
+        return "IIF"
+    return "II"
+
+
+def _cyst_body(k, side_low, unified=False):
+    ctype = k.get("cyst_type", "none")
+    if ctype == "none":
         return []
+    count = k.get("cyst_count", "single")
+    size = k.get("cyst_size_mm", "")
     loc = k.get("cyst_location", "")
-    loc_txt = f" at the {_format_pole(loc)}" if loc else ""
-    return [seg(" "), seg(f"A {k['cyst']} cyst measuring {k['cyst_size_mm']}MM "
-                          f"is seen{loc_txt} of {side_low} kidney", True),
-            seg(".", True)]
+    loc_txt = _format_pole(loc) if loc else ""
+    side_phrase = f"{side_low} kidney"
+
+    if ctype == "simple":
+        if count == "single":
+            text = (f"A simple cortical cyst measuring {size}MM is seen at the "
+                    f"{loc_txt} of {side_phrase}.")
+        else:
+            word = _cyst_count_word(count)
+            text = (f"{word} simple cortical cysts seen in the {side_phrase}, "
+                    f"largest of these measuring {size}MM at the {loc_txt}.")
+    else:
+        desc = _cyst_descriptor_phrase(k)
+        if not desc:
+            return []
+        if count == "single":
+            text = (f"A complex cyst with {desc}, seen at the {loc_txt} of "
+                    f"{side_phrase}.")
+        else:
+            word = _cyst_count_word(count)
+            text = (f"{word} complex cortical cysts with {desc} seen in the "
+                    f"{side_phrase}, largest of these measuring {size}MM at the "
+                    f"{loc_txt}.")
+    return [seg(" "), seg(text, True)]
+
+
+def _cyst_is_small_override(k):
+    return False  # placeholder; small-kidney override handled in kidneys_sentence
 
 
 def _standalone_hydro_body(k, side_low, ub_status):
@@ -1298,12 +1431,48 @@ def _nephrocalcinosis_body(k, side_low):
                           f"{side_low} renal cortex", True), seg(".", True)]
 
 
-def kidneys_sentence(d, ub_status="adequately_distended"):
+# -------- ECHOGENICITY BODY --------
+
+def _echo_laterality_word(laterality):
+    return {"bilateral": "bilateral", "right": "right", "left": "left"}.get(
+        laterality, "bilateral")
+
+
+def _echo_body_segments(laterality):
+    """Return (bold_segment, cmd_segment) for raised echogenicity body line."""
+    return None, None  # placeholder — filled in kidneys_sentence
+
+
+# -------- KIDNEY SENTENCE ORCHESTRATOR --------
+
+def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
     s = []
     r, l = d["right"], d["left"]
     r_present = _kidney_side_is_present(r)
     l_present = _kidney_side_is_present(l)
 
+    age_years = parse_age(age_text) if age_text is not None else None
+    age_ok = (age_years is not None and age_years > SMALL_KIDNEY_MIN_AGE)
+
+    # Recompute smallness from size_text
+    def is_small(side):
+        if not age_ok:
+            return False
+        length = parse_kidney_length_mm(side.get("size_text", ""))
+        return length is not None and length <= SMALL_KIDNEY_MM
+
+    r_small = is_small(r) if r_present else False
+    l_small = is_small(l) if l_present else False
+    r["is_small"] = r_small
+    l["is_small"] = l_small
+
+    echo_grade = d.get("cortical_echogenicity", "normal")
+    echo_raised = echo_grade in ("mildly_raised", "moderately_raised",
+                                  "significantly_raised")
+    echo_lat = d.get("cortical_echogenicity_laterality", "bilateral")
+    cmd = d.get("cortical_cmd", "preserved")
+
+    # ---------------- one kidney absent path ----------------
     if not r_present or not l_present:
         for side_key, side in (("right", r), ("left", l)):
             if side["status"] == "absent_agenesis":
@@ -1326,35 +1495,152 @@ def kidneys_sentence(d, ub_status="adequately_distended"):
             heading = f"{side_key.upper()} KIDNEY"
             s.append(seg(heading, True, True))
             bracket = _size_bracket(d, (side_key == "right", side_key == "left"))
-            if bracket:
-                s.append(seg(f" is normal in size{bracket}, outline and echogenicity. "
-                             f"Corticomedullary differentiation is maintained."))
+            if side.get("is_small"):
+                s.append(seg(f" appears "))
+                s.append(seg("relatively small/contracted in size", True))
+                if bracket:
+                    s.append(seg(f" {bracket}"))
+                # echo overrides small if raised on this side
+                if echo_raised and echo_lat in (side_key, "bilateral"):
+                    grade_word = ECHO_GRADE_WORD[echo_grade]
+                    side_word = "" if echo_lat == "bilateral" else f"{side_key} "
+                    s.append(seg(f", with {grade_word} {side_word}renal cortical "
+                                 f"echogenicity & {CMD_WORD[cmd]} corticomedullary "
+                                 f"differentiation.", True))
+                elif not _kidney_side_has_other_finding(side):
+                    s.append(seg(", however with normal outline and echogenicity. "
+                                 "Corticomedullary differentiation is maintained."))
+                else:
+                    s.append(seg(", however with normal outline and echogenicity. "
+                                 "Corticomedullary differentiation is maintained."))
             else:
-                s.append(seg(" is normal in size, outline and echogenicity. "
-                             "Corticomedullary differentiation is maintained."))
+                if bracket:
+                    s.append(seg(f" is normal in size{bracket}, outline and "))
+                else:
+                    s.append(seg(" is normal in size, outline and "))
+                if echo_raised and echo_lat in (side_key, "bilateral"):
+                    grade_word = ECHO_GRADE_WORD[echo_grade]
+                    side_word = "" if echo_lat == "bilateral" else f"{side_key} "
+                    s += [seg(f"{grade_word} {side_word}renal cortical echogenicity",
+                              True),
+                          seg(f" & {CMD_WORD[cmd]} corticomedullary differentiation.")]
+                else:
+                    s.append(seg("echogenicity. Corticomedullary differentiation "
+                                 "is maintained."))
             s.extend(_renal_calculi_body(side, side_key))
             s.extend(_cyst_body(side, side_key))
             s.extend(_standalone_hydro_body(side, side_key, ub_status))
             s.extend(_nephrocalcinosis_body(side, side_key))
-
             if side["ureter_calculus"]["count"] != "none":
                 s.extend(_ureter_calculus_body(side, side_key))
         return s
 
+    # ---------------- both kidneys present ----------------
+
+    # Unified both-small, no other finding
+    both_small = r_small and l_small
+    only_r_small = r_small and not l_small
+    only_l_small = l_small and not r_small
+    r_has_other = _kidney_side_has_other_finding(r)
+    l_has_other = _kidney_side_has_other_finding(l)
+
+    # If echo is raised, or there is another finding, we may need a split.
+    # Rules:
+    #  - both small, no echo, no other finding -> unified small line
+    #  - one small, no echo, no other finding -> per-side lines (small + normal)
+    #  - small + raised echo (either side) -> small-kidney line with echo fold-in
+    #  - small + calculus/cyst/hydro -> per-side line with small qualifier then
+    #    the finding
+    #  - neither small -> normal unified line (with optional echo block)
+
+    unified_small_possible = (both_small
+                              and not echo_raised
+                              and not r_has_other and not l_has_other)
+
+    if unified_small_possible:
+        s.append(seg("Both kidneys appear ", ))
+        s[-1] = seg("Both kidneys appear ")
+        s.append(seg("relatively small/contracted in size", True))
+        bracket = _size_bracket(d, (True, True))
+        if bracket:
+            s.append(seg(f" {bracket}"))
+        s.append(seg(", however with normal outline and echogenicity. "
+                     "Corticomedullary differentiation is maintained."))
+        return s
+
+    # Per-side rendering required when:
+    #   - only one side is small
+    #   - both small but echo raised on one/both sides
+    #   - both small but a finding exists on one side
+    needs_split = (only_r_small or only_l_small
+                   or (both_small and (echo_raised or r_has_other or l_has_other)))
+
+    if needs_split:
+        # small side first, then the other
+        order = ["right", "left"]
+        if only_l_small:
+            order = ["left", "right"]
+        elif both_small:
+            order = ["right", "left"]
+
+        for side_key in order:
+            side = r if side_key == "right" else l
+            heading = f"{side_key.upper()} KIDNEY"
+            s.append(seg(heading, True, True))
+            bracket = _size_bracket(d, (side_key == "right", side_key == "left"))
+            echo_on_this = echo_raised and echo_lat in (side_key, "bilateral")
+            small = (r_small if side_key == "right" else l_small)
+
+            if small:
+                s.append(seg(" appears "))
+                s.append(seg("relatively small/contracted in size", True))
+                if bracket:
+                    s.append(seg(f" {bracket}"))
+                if echo_on_this:
+                    grade_word = ECHO_GRADE_WORD[echo_grade]
+                    side_word = "" if echo_lat == "bilateral" else f"{side_key} "
+                    s.append(seg(f", with {grade_word} {side_word}renal cortical "
+                                 f"echogenicity & {CMD_WORD[cmd]} corticomedullary "
+                                 f"differentiation.", True))
+                else:
+                    s.append(seg(", however with normal outline and echogenicity. "
+                                 "Corticomedullary differentiation is maintained."))
+            else:
+                if bracket:
+                    s.append(seg(f" is normal in size{bracket}, outline and "))
+                else:
+                    s.append(seg(" is normal in size, outline and "))
+                if echo_on_this:
+                    grade_word = ECHO_GRADE_WORD[echo_grade]
+                    side_word = "" if echo_lat == "bilateral" else f"{side_key} "
+                    s += [seg(f"{grade_word} {side_word}renal cortical echogenicity",
+                              True),
+                          seg(f" & {CMD_WORD[cmd]} corticomedullary differentiation.")]
+                else:
+                    s.append(seg("echogenicity. Corticomedullary differentiation "
+                                 "is maintained."))
+
+            s.extend(_renal_calculi_body(side, side_key))
+            s.extend(_cyst_body(side, side_key))
+            s.extend(_standalone_hydro_body(side, side_key, ub_status))
+            s.extend(_nephrocalcinosis_body(side, side_key))
+            if side["ureter_calculus"]["count"] != "none":
+                s.extend(_ureter_calculus_body(side, side_key))
+        return s
+
+    # ---------------- unified both-normal line (with optional echo) ----------------
     s.append(seg("BOTH KIDNEYS", True, True))
     bracket = _size_bracket(d, (True, True))
     if bracket:
         s.append(seg(f" are normal in size{bracket}, outline and "))
     else:
         s.append(seg(" are normal in size, outline and "))
-    if d["cortical_echogenicity"] == "mildly_raised":
-        laterality = d.get("cortical_echogenicity_laterality", "bilateral")
-        if laterality == "bilateral":
-            s += [seg("mildly raised bilateral renal cortical echogenicity", True),
-                  seg(". Corticomedullary differentiation is maintained.")]
-        else:
-            s += [seg(f"mildly raised {laterality} renal cortical echogenicity", True),
-                  seg(". Corticomedullary differentiation is maintained.")]
+
+    if echo_raised:
+        grade_word = ECHO_GRADE_WORD[echo_grade]
+        side_word = "" if echo_lat == "bilateral" else f"{echo_lat} "
+        s += [seg(f"{grade_word} {side_word}renal cortical echogenicity", True),
+              seg(f" & {CMD_WORD[cmd]} corticomedullary differentiation.")]
     else:
         s.append(seg("echogenicity. Corticomedullary differentiation is maintained."))
 
@@ -1364,13 +1650,13 @@ def kidneys_sentence(d, ub_status="adequately_distended"):
     if bilateral_uc:
         s.extend(_ureter_calculus_bilateral_body(d))
         for side_key, side in (("right", r), ("left", l)):
-            s.extend(_cyst_body(side, side_key))
+            s.extend(_cyst_body(side, side_key, unified=True))
             s.extend(_nephrocalcinosis_body(side, side_key))
         return s
 
     for side_key, side in (("right", r), ("left", l)):
-        s.extend(_renal_calculi_body(side, side_key))
-        s.extend(_cyst_body(side, side_key))
+        s.extend(_renal_calculi_body(side, side_key, unified=True))
+        s.extend(_cyst_body(side, side_key, unified=True))
         s.extend(_standalone_hydro_body(side, side_key, ub_status))
         s.extend(_nephrocalcinosis_body(side, side_key))
         if side["ureter_calculus"]["count"] != "none":
@@ -1699,15 +1985,34 @@ def _renal_calculi_standalone(k, side_key):
     return f"FEW {side_up} RENAL CALCULI"
 
 
-def _cyst_impression_clause(k, side_key):
-    if k["cyst"] == "none":
+def _cyst_impression_clause(k, side_key, small_prefix=False):
+    ctype = k.get("cyst_type", "none")
+    if ctype == "none":
         return None
     side_up = _ureter_side_label(side_key)
-    bosniak = k.get("bosniak", "")
-    if not bosniak and k["cyst"] in ("cortical", "simple"):
-        bosniak = "I"
-    bosniak_txt = f" (BOSNIAK CAT-{bosniak})" if bosniak else ""
-    return f"A {side_up} RENAL {k['cyst'].upper()} CYST{bosniak_txt}"
+    count = k.get("cyst_count", "single")
+    lead = _cyst_impression_count_word(count)
+    bosniak = _cyst_bosniak(k)
+
+    if ctype == "simple":
+        core = f"{lead} SIMPLE {side_up} RENAL CORTICAL CYST" if count == "single" \
+            else f"{lead} SIMPLE {side_up} RENAL CORTICAL CYSTS"
+    else:
+        core = f"{lead} COMPLEX {side_up} RENAL CORTICAL CYST" if count == "single" \
+            else f"{lead} COMPLEX {side_up} RENAL CORTICAL CYSTS"
+
+    bosniak_txt = f" (BOSNIAK CAT-{bosniak})"
+
+    if small_prefix:
+        small_word = f"RELATIVELY SMALL {side_up} KIDNEY WITH "
+        # strip the leading article from core to avoid "A ..." after "WITH"
+        core_no_article = core
+        for art in ("A ", "FEW ", "MULTIPLE "):
+            if core_no_article.startswith(art):
+                core_no_article = core_no_article[len(art):]
+                break
+        return small_word + core_no_article + bosniak_txt
+    return core + bosniak_txt
 
 
 def _spleen_impression_line(spleen):
@@ -1911,10 +2216,49 @@ def _try_hepatosplenomegaly(liver, spleen):
     return combined
 
 
+def _echogenicity_impression_lines(k, age_years):
+    grade = k.get("cortical_echogenicity", "normal")
+    if grade == "normal":
+        return []
+    lat = k.get("cortical_echogenicity_laterality", "bilateral")
+    lat_up = {"bilateral": "BILATERAL", "right": "RIGHT", "left": "LEFT"}.get(
+        lat, "BILATERAL")
+    cmd = k.get("cortical_cmd", "preserved")
+    cmd_up = CMD_WORD_UP.get(cmd, "PRESERVED")
+    grade_up = ECHO_GRADE_WORD_UP[grade]
+    age_related = bool(k.get("age_related_echogenicity"))
+
+    if grade == "mildly_raised":
+        if age_related:
+            return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY - ?AGE RELATED. "
+                    f"Adv- KFT Correlation."]
+        return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY WITH "
+                f"PRESERVED CORTICOMEDULLARY DIFFERENTIATION. Adv- KFT Correlation."]
+
+    if grade == "moderately_raised":
+        if cmd == "preserved":
+            return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY, THE "
+                    f"CORTICOMEDULLARY DIFFERENTIATION IS HOWEVER PRESERVED - "
+                    f"?MEDICAL RENAL DISEASE GRADE-II vs AKI. Adv- KFT Correlation."]
+        return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY WITH HAZY "
+                f"CORTICOMEDULLARY DIFFERENTIATION - ?MEDICAL RENAL DISEASE "
+                f"GRADE-II/III vs AKI. Adv- KFT Correlation."]
+
+    # significantly_raised
+    if cmd == "hazy":
+        return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY WITH HAZY "
+                f"CORTICOMEDULLARY DIFFERENTIATION - ?MEDICAL RENAL DISEASE "
+                f"GRADE-II/III vs AKI. Adv- KFT Correlation."]
+    return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY WITH LOST "
+            f"CORTICOMEDULLARY DIFFERENTIATION - ?MEDICAL RENAL DISEASE "
+            f"GRADE-III/IV vs AKI. Adv- KFT Correlation."]
+
+
 def generate_impression(d, sex, age):
     lines = []
     age_years = parse_age(age)
     is_pediatric = age_years is not None and age_years < 18
+    small_rule_active = age_years is not None and age_years > SMALL_KIDNEY_MIN_AGE
 
     p = d["pancreas"]
     p_status = p.get("status", "normal")
@@ -2190,12 +2534,43 @@ def generate_impression(d, sex, age):
 
     renal_lines = []
 
+    # cysts — with small-kidney prefix where applicable
     cyst_clauses = []
     for side_key, side in (("right", r), ("left", l)):
         if _kidney_side_is_present(side):
-            clause = _cyst_impression_clause(side, side_key)
+            small = (small_rule_active
+                     and parse_kidney_length_mm(side.get("size_text", "")) is not None
+                     and parse_kidney_length_mm(side.get("size_text", "")) <= SMALL_KIDNEY_MM)
+            clause = _cyst_impression_clause(side, side_key, small_prefix=small
+                                              and side.get("cyst_type", "none") != "none")
             if clause:
                 cyst_clauses.append(clause)
+
+    # small kidney standalone lines (when no other finding on that side)
+    if small_rule_active:
+        r_len = parse_kidney_length_mm(r.get("size_text", "")) if r_present else None
+        l_len = parse_kidney_length_mm(l.get("size_text", "")) if l_present else None
+        r_small = r_len is not None and r_len <= SMALL_KIDNEY_MM
+        l_small = l_len is not None and l_len <= SMALL_KIDNEY_MM
+        r_other = _kidney_side_has_other_finding(r) or k.get("cortical_echogenicity", "normal") != "normal"
+        l_other = _kidney_side_has_other_finding(l) or k.get("cortical_echogenicity", "normal") != "normal"
+
+        if r_present and l_present and r_small and l_small and not r_other and not l_other:
+            renal_lines.append("BILATERALLY SMALL/CONTRACTED KIDNEYS - "
+                               "?MEDICAL RENAL DISEASE. Adv- KFT Correlation.")
+        elif r_present and l_present and r_small and not l_small and not r_other:
+            renal_lines.append("SMALL/CONTRACTED RIGHT KIDNEY - ?SIGNIFICANCE. "
+                               "Adv- KFT Correlation.")
+        elif r_present and l_present and l_small and not r_small and not l_other:
+            renal_lines.append("SMALL/CONTRACTED LEFT KIDNEY - ?SIGNIFICANCE. "
+                               "Adv- KFT Correlation.")
+        # single-kidney-present + small + no other
+        elif not r_present and l_present and l_small and not l_other:
+            renal_lines.append("SMALL/CONTRACTED LEFT KIDNEY - ?SIGNIFICANCE. "
+                               "Adv- KFT Correlation.")
+        elif r_present and not l_present and r_small and not r_other:
+            renal_lines.append("SMALL/CONTRACTED RIGHT KIDNEY - ?SIGNIFICANCE. "
+                               "Adv- KFT Correlation.")
 
     if (bilateral_flag
             and r_uc["count"] != "none"
@@ -2314,14 +2689,23 @@ def generate_impression(d, sex, age):
         renal_lines.append(f"{g} {side_up} HYDROURETERONEPHROSIS IS PRESENT"
                            f"{extra}{rpc}.")
 
-    if k["cortical_echogenicity"] == "mildly_raised":
-        laterality = k.get("cortical_echogenicity_laterality", "bilateral")
-        lat_txt = {"bilateral": "BILATERAL", "right": "RIGHT",
-                   "left": "LEFT"}.get(laterality, "BILATERAL")
-        tail = ("- ?AGE RELATED. Adv- KFT Correlation"
-                if k.get("age_related_echogenicity")
-                else ". Adv- KFT Correlation")
-        renal_lines.append(f"MILDLY RAISED {lat_txt} RENAL CORTICAL ECHOGENICITY{tail}")
+    # raised echogenicity impression lines (with small prefix fold-in)
+    echo_lines = _echogenicity_impression_lines(k, age_years)
+    for ln in echo_lines:
+        # small prefix if applicable
+        if small_rule_active:
+            r_len = parse_kidney_length_mm(r.get("size_text", "")) if r_present else None
+            l_len = parse_kidney_length_mm(l.get("size_text", "")) if l_present else None
+            r_small = r_len is not None and r_len <= SMALL_KIDNEY_MM
+            l_small = l_len is not None and l_len <= SMALL_KIDNEY_MM
+            lat = k.get("cortical_echogenicity_laterality", "bilateral")
+            if lat == "bilateral" and r_small and l_small:
+                ln = "RELATIVELY SMALL BOTH KIDNEYS WITH " + ln
+            elif lat == "right" and r_small:
+                ln = "RELATIVELY SMALL RIGHT KIDNEY WITH " + ln
+            elif lat == "left" and l_small:
+                ln = "RELATIVELY SMALL LEFT KIDNEY WITH " + ln
+        renal_lines.append(ln)
 
     for side_key, side in (("right", r), ("left", l)):
         if not _kidney_side_is_present(side):
@@ -2352,7 +2736,7 @@ def generate_impression(d, sex, age):
         joined_main = " ".join(renal_lines)
         if not joined_main.endswith("."):
             joined_main += "."
-        cyst_phrase = " ".join(c + " IS ALSO SEEN." for c in cyst_clauses)
+        cyst_phrase = " ".join(c + "." for c in cyst_clauses)
         lines.append(joined_main + " " + cyst_phrase)
     elif renal_lines:
         for rl in renal_lines:
@@ -2449,11 +2833,91 @@ def _add_run(paragraph, text, bold=False, underline=False, font=FONT_BODY,
     return run
 
 
+# --- impression line tokenizer (frozen rule enforcement) ---
+
+_BOSNIAK_RE = re.compile(r"BOSNIAK\s+CAT-[IVX]+", re.IGNORECASE)
+_VS_RE = re.compile(r"\bvs\b", re.IGNORECASE)
+
+
 def _split_adv(text):
     idx = text.find("Adv-")
     if idx == -1:
         return text, ""
     return text[:idx].rstrip(), text[idx:]
+
+
+def _tokenize_parentheticals(text):
+    """Yield (substring, in_parens) tuples."""
+    out = []
+    buf = []
+    depth = 0
+    for ch in text:
+        if ch == "(":
+            if depth == 0 and buf:
+                out.append(("".join(buf), False))
+                buf = []
+            depth += 1
+            buf.append(ch)
+        elif ch == ")":
+            buf.append(ch)
+            depth -= 1
+            if depth == 0:
+                out.append(("".join(buf), True))
+                buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        out.append(("".join(buf), depth > 0))
+    return out
+
+
+def _split_vs(text):
+    """Split 'vs' occurrences so they can be rendered lowercase."""
+    parts = []
+    last = 0
+    for m in _VS_RE.finditer(text):
+        if m.start() > last:
+            parts.append((text[last:m.start()], False))
+        parts.append(("vs", True))
+        last = m.end()
+    if last < len(text):
+        parts.append((text[last:], False))
+    return parts
+
+
+def _split_bosniak(text):
+    """Split out BOSNIAK CAT-X spans so they can stay uppercase inside parens."""
+    parts = []
+    last = 0
+    for m in _BOSNIAK_RE.finditer(text):
+        if m.start() > last:
+            parts.append((text[last:m.start()], False))
+        parts.append((m.group(0).upper(), True))
+        last = m.end()
+    if last < len(text):
+        parts.append((text[last:], False))
+    return parts
+
+
+def _add_impression_line_runs(para, line):
+    main, adv = _split_adv(line)
+    # main text: uppercase except parentheses (mixed) and vs (lowercase)
+    for chunk, in_parens in _tokenize_parentheticals(main):
+        if in_parens:
+            # inside parens: mixed case; but BOSNIAK CAT-X is uppercase
+            for sub, is_bosniak in _split_bosniak(chunk):
+                if is_bosniak:
+                    _add_run(para, sub, bold=True, italic=True)
+                else:
+                    _add_run(para, sub, bold=True, italic=True)
+        else:
+            for sub, is_vs in _split_vs(chunk):
+                if is_vs:
+                    _add_run(para, "vs", bold=True, italic=False)
+                else:
+                    _add_run(para, sub.upper(), bold=True, italic=False)
+    if adv:
+        _add_run(para, " " + adv, bold=True, italic=True)
 
 
 def build_docx_bytes(data):
@@ -2506,7 +2970,7 @@ def build_docx_bytes(data):
         cbd_sentence(data["cbd"]),
         pancreas_sentence(data["pancreas"]),
         spleen_sentence(data["spleen"]),
-        kidneys_sentence(data["kidneys"], ub_status=ub_status),
+        kidneys_sentence(data["kidneys"], ub_status=ub_status, age_text=age),
         urinary_bladder_sentence(data["urinary_bladder"]),
     ]
     if sex == "F":
@@ -2557,17 +3021,7 @@ def build_docx_bytes(data):
     for line in data["impression"]["lines"]:
         para = doc.add_paragraph(style="List Bullet")
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        if "(UB is empty)" in line:
-            parts = line.split("(UB is empty)")
-            _add_run(para, parts[0], bold=True)
-            _add_run(para, "(UB is empty)", bold=True, italic=True)
-            if len(parts) > 1:
-                _add_run(para, parts[1], bold=True)
-        else:
-            main, adv = _split_adv(line)
-            _add_run(para, main, bold=True)
-            if adv:
-                _add_run(para, " " + adv, bold=True, italic=True)
+        _add_impression_line_runs(para, line)
 
     doc.add_paragraph()
     disc_table = doc.add_table(rows=1, cols=1)
@@ -3195,25 +3649,43 @@ with col_find:
     kd_open = organ_button("KIDNEYS", "KIDNEYS")
     if kd_open:
         with st.container(border=True):
-            c_a, c_b, c_c = st.columns([2, 2, 1])
-            with c_a:
-                st.radio("Cortical echogenicity",
-                         ["normal", "mildly_raised"],
-                         horizontal=True,
-                         format_func=lambda x: {
-                             "normal": "Normal",
-                             "mildly_raised": "Mildly raised"}[x],
-                         key="kd_cort_echo")
-            with c_b:
-                if ss("kd_cort_echo", "normal") == "mildly_raised":
+            # cortical echogenicity: 3 grades + CMD
+            st.radio(
+                "Cortical echogenicity",
+                ["normal", "mildly_raised", "moderately_raised",
+                 "significantly_raised"],
+                horizontal=True,
+                format_func=lambda x: {
+                    "normal": "Normal",
+                    "mildly_raised": "Mildly raised",
+                    "moderately_raised": "Moderately raised",
+                    "significantly_raised": "Significantly raised"}[x],
+                key="kd_cort_echo")
+            _echo = ss("kd_cort_echo", "normal")
+            if _echo in ("mildly_raised", "moderately_raised",
+                         "significantly_raised"):
+                c_a, c_b, c_c = st.columns([2, 2, 1])
+                with c_a:
                     st.radio("Laterality",
                              ["bilateral", "right", "left"],
                              horizontal=True,
                              format_func=lambda x: x.title(),
                              key="kd_cort_lat")
-            with c_c:
-                if ss("kd_cort_echo", "normal") == "mildly_raised":
-                    st.checkbox("?Age related", key="kd_age_related")
+                with c_b:
+                    if _echo == "mildly_raised":
+                        cmd_opts = ["preserved"]
+                    elif _echo == "moderately_raised":
+                        cmd_opts = ["preserved", "hazy"]
+                    else:
+                        cmd_opts = ["hazy", "lost"]
+                    st.radio(
+                        "Corticomedullary differentiation",
+                        cmd_opts, horizontal=True,
+                        format_func=lambda x: x.title(),
+                        key="kd_cort_cmd")
+                with c_c:
+                    if _echo == "mildly_raised":
+                        st.checkbox("?Age related", key="kd_age_related")
             st.radio(
                 "Negative renal impression line (clinical query, no finding)",
                 ["no", "yes"],
@@ -3238,6 +3710,20 @@ with col_find:
                     st.text_input(
                         f"{side.title()} kidney size (mm) — e.g. 100x52",
                         key=f"kd_{side[0]}_size_text")
+
+                    # small-kidney indicator
+                    _sz_txt = ss(f"kd_{side[0]}_size_text", "")
+                    _len = parse_kidney_length_mm(_sz_txt)
+                    _age_yr = parse_age(p_age)
+                    if (_len is not None and _age_yr is not None
+                            and _age_yr > SMALL_KIDNEY_MIN_AGE):
+                        if _len <= SMALL_KIDNEY_MM:
+                            st.warning(
+                                f"→ Relatively small/contracted "
+                                f"({_len}MM ≤ {SMALL_KIDNEY_MM}MM)")
+                        else:
+                            st.success(f"✓ Normal length ({_len}MM)")
+
                     st.checkbox("Renal calculi present",
                                 key=f"kd_{side[0]}_has_calc")
                     calc_key = f"kd_{side[0]}_calc_count"
@@ -3322,17 +3808,20 @@ with col_find:
                                 "mild": "Mild",
                                 "moderate": "Moderate"}[x])
 
-                    st.checkbox("Cyst present",
-                                key=f"kd_{side[0]}_has_cyst")
+                    # ---- CYST (new model) ----
+                    st.checkbox("Cyst present", key=f"kd_{side[0]}_has_cyst")
                     if ss(f"kd_{side[0]}_has_cyst", False):
                         st.radio(
                             "Cyst type",
-                            ["simple", "cortical"],
-                            horizontal=True, key=f"kd_{side[0]}_cyst",
-                            format_func=lambda x: x.title())
+                            ["simple", "complex"],
+                            horizontal=True, key=f"kd_{side[0]}_cyst_type",
+                            format_func=lambda x: {
+                                "simple": "Simple cyst",
+                                "complex": "Complex cyst"}[x])
+                        _ctype = ss(f"kd_{side[0]}_cyst_type", "simple")
                         c1, c2 = st.columns(2)
                         with c1:
-                            st.text_input("Size (mm)",
+                            st.text_input("Size (mm; largest if >1)",
                                           key=f"kd_{side[0]}_cyst_size")
                         with c2:
                             st.selectbox(
@@ -3342,15 +3831,28 @@ with col_find:
                                 key=f"kd_{side[0]}_cyst_loc",
                                 format_func=lambda x: (
                                     "—" if x == "" else _format_pole(x)))
-                        st.checkbox(
-                            "Upgrade Bosniak category (Cat-II / Cat-IIF)",
-                            key=f"kd_{side[0]}_upgrade_bosniak")
-                        if ss(f"kd_{side[0]}_upgrade_bosniak", False):
+                        st.radio(
+                            "Count",
+                            ["single", "few", "multiple"],
+                            horizontal=True,
+                            key=f"kd_{side[0]}_cyst_count",
+                            format_func=lambda x: x.title())
+                        if _ctype == "complex":
                             st.radio(
-                                "Bosniak category",
-                                ["II", "IIF"],
+                                "Septa",
+                                ["none", "thin", "thick"],
                                 horizontal=True,
-                                key=f"kd_{side[0]}_bosniak")
+                                format_func=lambda x: x.title(),
+                                key=f"kd_{side[0]}_cyst_septa")
+                            st.radio(
+                                "Calcification",
+                                ["none", "arc", "nodular"],
+                                horizontal=True,
+                                format_func=lambda x: {
+                                    "none": "None",
+                                    "arc": "Mural arc-like",
+                                    "nodular": "Mural nodular"}[x],
+                                key=f"kd_{side[0]}_cyst_calc")
 
                     st.checkbox("Standalone hydronephrosis",
                                 key=f"kd_{side[0]}_has_hydro")
@@ -3626,19 +4128,25 @@ for side in ("right", "left"):
             uc_level = "distal_ureter"
             uc_grade = "none"
 
+        # ---- cyst ----
         if ss(f"kd_{sd}_has_cyst", False):
-            cyst = ss(f"kd_{sd}_cyst", "simple")
+            cyst_type = ss(f"kd_{sd}_cyst_type", "simple")
+            cyst_count = ss(f"kd_{sd}_cyst_count", "single")
             cyst_size = ss(f"kd_{sd}_cyst_size", "")
             cyst_loc = ss(f"kd_{sd}_cyst_loc", "")
-            if ss(f"kd_{sd}_upgrade_bosniak", False):
-                bosniak = ss(f"kd_{sd}_bosniak", "II")
+            if cyst_type == "complex":
+                cyst_septa = ss(f"kd_{sd}_cyst_septa", "none")
+                cyst_calc = ss(f"kd_{sd}_cyst_calc", "none")
             else:
-                bosniak = "I"
+                cyst_septa = "none"
+                cyst_calc = "none"
         else:
-            cyst = "none"
+            cyst_type = "none"
+            cyst_count = "single"
             cyst_size = ""
             cyst_loc = ""
-            bosniak = ""
+            cyst_septa = "none"
+            cyst_calc = "none"
 
         if ss(f"kd_{sd}_has_hydro", False):
             hydro = ss(f"kd_{sd}_hydro", "mild")
@@ -3664,10 +4172,17 @@ for side in ("right", "left"):
                 "grade": uc_grade,
             },
             "ureter_not_traced": uc_not_traced,
-            "cyst": cyst,
+            "cyst_type": cyst_type,
+            "cyst_count": cyst_count,
             "cyst_size_mm": cyst_size,
             "cyst_location": cyst_loc,
-            "bosniak": bosniak,
+            "cyst_septa": cyst_septa,
+            "cyst_calc": cyst_calc,
+            "cyst_bosniak": _cyst_bosniak({
+                "cyst_type": cyst_type,
+                "cyst_septa": cyst_septa,
+                "cyst_calc": cyst_calc,
+            }) if cyst_type != "none" else "",
             "hydronephrosis": hydro,
             "hydronephrosis_no_obstructive_calculus": hydro_nocalc,
             "recently_passed_calculus_suspected": hydro_rpc,
@@ -3680,10 +4195,13 @@ for side in ("right", "left"):
             "calculi": [],
             "ureter_calculus": _new_ureter_calculus(),
             "ureter_not_traced": False,
-            "cyst": "none",
+            "cyst_type": "none",
+            "cyst_count": "single",
             "cyst_size_mm": "",
             "cyst_location": "",
-            "bosniak": "",
+            "cyst_septa": "none",
+            "cyst_calc": "none",
+            "cyst_bosniak": "",
             "hydronephrosis": "none",
             "hydronephrosis_no_obstructive_calculus": False,
             "recently_passed_calculus_suspected": False,
@@ -3692,6 +4210,15 @@ for side in ("right", "left"):
 
 data["kidneys"]["cortical_echogenicity"] = ss("kd_cort_echo", "normal")
 data["kidneys"]["cortical_echogenicity_laterality"] = ss("kd_cort_lat", "bilateral")
+_echo_val = ss("kd_cort_echo", "normal")
+if _echo_val == "mildly_raised":
+    data["kidneys"]["cortical_cmd"] = "preserved"
+elif _echo_val == "moderately_raised":
+    data["kidneys"]["cortical_cmd"] = ss("kd_cort_cmd", "preserved")
+elif _echo_val == "significantly_raised":
+    data["kidneys"]["cortical_cmd"] = ss("kd_cort_cmd", "hazy")
+else:
+    data["kidneys"]["cortical_cmd"] = "preserved"
 data["kidneys"]["age_related_echogenicity"] = bool(ss("kd_age_related", False))
 data["kidneys"]["negative_renal_line"] = (ss("kd_neg_renal", "no") == "yes")
 
@@ -3787,7 +4314,7 @@ def render_preview_findings(data):
             cbd_sentence(data["cbd"]),
             pancreas_sentence(data["pancreas"]),
             spleen_sentence(data["spleen"]),
-            kidneys_sentence(data["kidneys"], ub_status=ub_status),
+            kidneys_sentence(data["kidneys"], ub_status=ub_status, age_text=age),
             urinary_bladder_sentence(data["urinary_bladder"])]
     if sex == "F":
         secs.append(uterus_sentence(data["uterus"], pediatric=is_ped))
