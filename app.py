@@ -1,16 +1,22 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v1.9.0-stable
+v2.0.0-stable
 
-v1.9.0: Modified kidney module + new Urinary Bladder & Prostate modules.
-  - Raised cortical echogenicity: 3 grades (mild / moderate / significant)
-    with CMD state (preserved / hazy / lost). Age-related applies to mild.
-  - Cysts: Simple (Cat-I) and Complex (Cat-II / Cat-IIF).
-  - Small/contracted kidney: largest dim <= 82 mm, age > 15.
-  - Urinary Bladder: distension states, catheterized, sedimentation,
-    irregular wall thickening, pre/post void volumes.
-  - Prostate: volume-graded prostatomegaly, median lobe hypertrophy,
-    prostatic cyst, hemi-prostate checkboxes.
+v2.0.0:
+  - Mobile radio tap fix (bigger targets, wrap on narrow viewports).
+  - seg() extended with explicit italic override.
+  - (suboptimal pelvic assessment) rendered italic-only, not bold.
+    Applied whenever UB is empty / partially empty, with or without
+    catheterized, and on the forced-empty path.
+  - UB wall thickening body text now mixed-case bold italic.
+  - UB wall thickening impression: IRREGULAR only when irregular is
+    actually ticked; BOO tail follows irregular.
+  - ?UTI placement: before period, then Adv- Urine R/M Correlation.
+  - ?UTI preserved in combined PVR + prostate line when ticked.
+  - Prostate: no manual status radio; auto-banded from volume.
+    Empty (CC) suppressed.
+  - Prostate median lobe: "impinging upon bladder outlet" checkbox
+    moved under median lobe (removed from cyst).
 
 Frozen rules:
 - Impression text ALL CAPS except:
@@ -19,7 +25,8 @@ Frozen rules:
     * the token "vs"                         -> bold, lowercase
     * EXCEPTION: "BOSNIAK CAT-" + Roman numeral stays ALL CAPS even
       inside parentheses.
-- Body findings bold, italic, mixed case.
+- Body findings bold, italic, mixed case, unless an explicit override is
+  given in the segment tuple.
 """
 
 import io
@@ -375,17 +382,13 @@ CMD_WORD_UP = {"preserved": "PRESERVED", "hazy": "HAZY", "lost": "LOST"}
 # PROSTATE CONSTANTS
 # ============================================================
 
-# Bands: [lo, hi) -> (body descriptor, impression label, status key)
+# Bands: [lo, hi) -> (body descriptor, impression label)
 PROSTATE_GRADE_BANDS = [
-    (30, 36, "borderline", "borderline bulky",
-     "BORDERLINE PROSTATOMEGALY"),
-    (36, 46, "grade1", "mildly bulky",
-     "GRADE-I PROSTATOMEGALY"),
-    (46, 51, "grade1_2", "mild to moderately bulky",
-     "GRADE-I/II PROSTATOMEGALY"),
-    (51, 71, "grade2", "moderately bulky",
-     "GRADE-II PROSTATOMEGALY"),
-    (71, float("inf"), "grade3_4", "moderate to grossly bulky",
+    (30, 36, "borderline bulky", "BORDERLINE PROSTATOMEGALY"),
+    (36, 46, "mildly bulky", "GRADE-I PROSTATOMEGALY"),
+    (46, 51, "mild to moderately bulky", "GRADE-I/II PROSTATOMEGALY"),
+    (51, 71, "moderately bulky", "GRADE-II PROSTATOMEGALY"),
+    (71, float("inf"), "moderate to grossly bulky",
      "GRADE-III/IV PROSTATOMEGALY"),
 ]
 
@@ -395,9 +398,11 @@ def prostate_band_from_volume(cc):
         v = float(cc)
     except (ValueError, TypeError):
         return None
-    for lo, hi, status, body_desc, imp_label in PROSTATE_GRADE_BANDS:
+    if v < 30:
+        return None
+    for lo, hi, body_desc, imp_label in PROSTATE_GRADE_BANDS:
         if lo <= v < hi:
-            return status, body_desc, imp_label
+            return body_desc, imp_label
     return None
 
 
@@ -482,7 +487,7 @@ def _new_kidney_side():
 
 def _new_urinary_bladder():
     return {
-        "status": None,                # None | "partially_empty" | "empty" | "over"
+        "status": None,
         "catheterized": False,
         "pre_void_cc": "",
         "post_void_cc": "",
@@ -498,15 +503,15 @@ def _new_urinary_bladder():
 
 def _new_prostate():
     return {
-        "status": "normal",             # normal | not_visualized | borderline | grade1 | grade1_2 | grade2 | grade3_4
         "size_cc": "",
         "median_lobe": False,
         "median_lobe_size_mm": "",
+        "median_lobe_boo": False,
         "cyst": False,
         "cyst_size": "",
         "cyst_left_hemi": False,
         "cyst_right_hemi": False,
-        "impinging_boo": False,
+        "not_visualized": False,
     }
 
 
@@ -588,14 +593,19 @@ def new_report(sex="F"):
 
 
 # ============================================================
-# SENTENCE GENERATORS
+# SEGMENTS
 # ============================================================
+# Each segment is (text, bold, underline, italic_override).
+# italic_override=None -> derive from `bold and not underline`.
+# italic_override=True/False -> honor explicitly.
 
-def seg(text, bold=False, underline=False):
-    return (text, bold, underline)
+def seg(text, bold=False, underline=False, italic=None):
+    return (text, bold, underline, italic)
 
 
-# -------- LIVER --------
+# ============================================================
+# LIVER
+# ============================================================
 
 def liver_focal_sentence(d):
     fl = d["focal_lesion"]
@@ -723,7 +733,9 @@ def liver_sentence(d, sex, age, spleen_enlarged=False):
     return s
 
 
-# -------- GALL BLADDER --------
+# ============================================================
+# GALL BLADDER
+# ============================================================
 
 def gall_bladder_sentence(d):
     s = [seg("GALL BLADDER", True, True)]
@@ -815,7 +827,9 @@ def gall_bladder_sentence(d):
     return s
 
 
-# -------- CBD --------
+# ============================================================
+# CBD
+# ============================================================
 
 def cbd_location_word(loc):
     return {
@@ -876,7 +890,9 @@ def cbd_sentence(d):
     return s
 
 
-# -------- PANCREAS --------
+# ============================================================
+# PANCREAS
+# ============================================================
 
 def pancreas_sentence(d):
     s = [seg("PANCREAS", True, True)]
@@ -1052,7 +1068,9 @@ def pancreas_sentence(d):
     return s
 
 
-# -------- SPLEEN --------
+# ============================================================
+# SPLEEN
+# ============================================================
 
 def spleen_sentence(d):
     s = [seg("SPLEEN", True, True)]
@@ -1129,7 +1147,7 @@ def spleen_sentence(d):
 
 
 # ============================================================
-# KIDNEYS — body sentences
+# KIDNEYS
 # ============================================================
 
 def _kidney_side_is_present(k):
@@ -1308,8 +1326,6 @@ def _ureter_calculus_bilateral_body(k):
     return s
 
 
-# -------- CYST BODY --------
-
 def _cyst_descriptor_phrase(k):
     septa = k.get("cyst_septa", "none")
     calc = k.get("cyst_calc", "none")
@@ -1401,8 +1417,6 @@ def _nephrocalcinosis_body(k, side_low):
     return [seg(" "), seg(f"Multiple foci of calcification seen in the "
                           f"{side_low} renal cortex", True), seg(".", True)]
 
-
-# -------- KIDNEY ORCHESTRATOR --------
 
 def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
     s = []
@@ -1584,24 +1598,13 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
 
 
 # ============================================================
-# URINARY BLADDER — body & impression
+# URINARY BLADDER
 # ============================================================
 
-def _ub_status_body(status):
-    """Return (text, bold_flags) fragment or ('adequately distended', False)."""
-    if status == "partially_empty":
-        return "partially empty"
-    if status == "empty":
-        return "empty"
-    if status == "over":
-        return "over-distended"
-    return None
-
-
-def _ub_is_normal_line(d):
-    status = d.get("status")
-    cath = d.get("catheterized", False)
-    return (status is None and not cath)
+def _ub_suboptimal_tail():
+    """(suboptimal pelvic assessment) — italic only, not bold."""
+    return [seg(" "),
+            seg("(suboptimal pelvic assessment)", bold=False, italic=True)]
 
 
 def urinary_bladder_sentence(d):
@@ -1612,7 +1615,9 @@ def urinary_bladder_sentence(d):
     pre = str(d.get("pre_void_cc", "") or "").strip()
 
     if forced:
-        s += [seg(" is empty "), seg("(suboptimal pelvic assessment)", True), seg(".")]
+        s.append(seg(" is empty"))
+        s.extend(_ub_suboptimal_tail())
+        s.append(seg("."))
         if not d.get("mass_calculus"):
             s.append(seg(" No mass or calculus seen."))
         return s
@@ -1629,28 +1634,36 @@ def urinary_bladder_sentence(d):
         if cath:
             s.append(seg(" and catheterized", True))
         s.append(seg("."))
-    else:
-        word = _ub_status_body(status)
-        s.append(seg(f" is {word}"))
+    elif status == "empty":
+        s.append(seg(" is empty"))
         if cath:
             s.append(seg(" & catheterized"))
+        s.extend(_ub_suboptimal_tail())
         s.append(seg("."))
+    elif status == "partially_empty":
+        s.append(seg(" is partially empty"))
+        if cath:
+            s.append(seg(" & catheterized"))
+        s.extend(_ub_suboptimal_tail())
+        s.append(seg("."))
+    else:
+        s.append(seg(" is adequately distended."))
 
     if not d.get("mass_calculus"):
         s.append(seg(" No mass or calculus seen."))
 
-    # wall thickening
+    # wall thickening — mixed case bold italic
     if d.get("wall_thickening") and d.get("wall_mm"):
         try:
             w = float(d["wall_mm"])
         except (ValueError, TypeError):
             w = 0
-        desc = "MILD" if w <= 8 else "SIGNIFICANT"
+        prefix = "Mild" if w <= 8 else "Significant"
         irregular = d.get("wall_irregular", False)
-        frag = f"{desc} "
+        frag = f"{prefix} "
         if irregular:
-            frag += "IRREGULAR "
-        frag += f"UB WALL THICKENING UPTO {d['wall_mm']}MM SEEN."
+            frag += "irregular "
+        frag += f"urinary bladder wall thickening upto {d['wall_mm']}mm is seen."
         s += [seg(" "), seg(frag, True)]
 
     # sedimentation
@@ -1686,8 +1699,16 @@ def _pvr_note(d):
     return ""
 
 
-def _ub_impression_lines(d):
-    lines = []
+def _pvr_pct(d):
+    pre = _parse_mm_value(d.get("pre_void_cc", ""))
+    post = _parse_mm_value(d.get("post_void_cc", ""))
+    if pre and post and pre > 0:
+        return post / pre * 100.0
+    return None
+
+
+def _ub_impression_line(d):
+    """Standalone sedimentation impression line, or None."""
     sed = d.get("sedimentation", "none")
     sed_word = {
         "trace": "TRACE SEDIMENTATION",
@@ -1695,36 +1716,31 @@ def _ub_impression_lines(d):
         "significant_free_floating": "SIGNIFICANT FREE FLOATING SEDIMENTATION",
         "extensive": "EXTENSIVE SEDIMENTATION",
     }.get(sed)
+    if not sed_word:
+        return None
     uti = d.get("uti_suspected", False)
-    if sed_word:
-        adv = "Adv- ?UTI Urine R/M Correlation." if uti else "Adv- Urine R/M Correlation."
-        lines.append(f"{sed_word} SEEN IN THE UB LUMEN. {adv}")
-    return lines
+    if uti:
+        return (f"{sed_word} SEEN IN THE UB LUMEN - ?UTI. "
+                f"Adv- Urine R/M Correlation.")
+    return f"{sed_word} SEEN IN THE UB LUMEN. Adv- Urine R/M Correlation."
+
+
+def _ub_wall_impression_fragment(d):
+    """Fragment without trailing period, or None."""
+    if not (d.get("wall_thickening") and d.get("wall_mm")):
+        return None
+    irregular = d.get("wall_irregular", False)
+    prefix = "IRREGULAR " if irregular else ""
+    return f"{prefix}URINARY BLADDER WALL THICKENING UPTO {d['wall_mm']}MM IS PRESENT"
 
 
 # ============================================================
-# PROSTATE — body & impression
+# PROSTATE
 # ============================================================
 
-def _prostate_size_band(d):
-    if d.get("status") in ("borderline", "grade1", "grade1_2", "grade2", "grade3_4"):
-        cc = d.get("size_cc", "")
-        band = prostate_band_from_volume(cc)
-        if band:
-            return band
-        # fallback if cc missing or out of bands
-        fallback = {
-            "borderline": ("borderline", "borderline bulky",
-                            "BORDERLINE PROSTATOMEGALY"),
-            "grade1": ("grade1", "mildly bulky", "GRADE-I PROSTATOMEGALY"),
-            "grade1_2": ("grade1_2", "mild to moderately bulky",
-                          "GRADE-I/II PROSTATOMEGALY"),
-            "grade2": ("grade2", "moderately bulky", "GRADE-II PROSTATOMEGALY"),
-            "grade3_4": ("grade3_4", "moderate to grossly bulky",
-                          "GRADE-III/IV PROSTATOMEGALY"),
-        }
-        return fallback.get(d["status"])
-    return None
+def _prostate_band(d):
+    """Return (body_desc, imp_label) or None."""
+    return prostate_band_from_volume(d.get("size_cc", ""))
 
 
 def _prostate_cyst_body(d):
@@ -1736,53 +1752,54 @@ def _prostate_cyst_body(d):
         side = "left hemi-prostate "
     elif d.get("cyst_right_hemi") and not d.get("cyst_left_hemi"):
         side = "right hemi-prostate "
-    impinge = (" impinging upon bladder outlet"
-               if d.get("impinging_boo") else "")
-    frag = (f"A simple cystic SOL measuring {size}MM seen in the {side}"
-            f"prostate{impinge}.")
-    return frag
+    return f"A simple cystic SOL measuring {size}MM seen in the {side}prostate."
+
+
+def _prostate_median_lobe_body_frag(d):
+    median = d.get("median_lobe", False)
+    if not median:
+        return None
+    size = d.get("median_lobe_size_mm", "")
+    boo = d.get("median_lobe_boo", False)
+    size_txt = f"({size}mm)" if size else ""
+    boo_txt = ", impinging upon the bladder outlet" if boo else ""
+    return f"median lobe hypertrophy{size_txt}{boo_txt}"
 
 
 def prostate_sentence(d, pediatric=False):
     s = [seg("PROSTATE", True, True)]
-    status = d.get("status", "normal")
-    if pediatric and status == "normal":
-        s.append(seg(" is age-appropriate."))
-        return s
-    if status == "not_visualized":
+    if d.get("not_visualized"):
         s.append(seg(" is not visualized."))
         return s
 
-    band = _prostate_size_band(d)
-    median = d.get("median_lobe", False)
-    median_size = d.get("median_lobe_size_mm", "")
+    if pediatric and not _prostate_band(d):
+        s.append(seg(" is age-appropriate."))
+        return s
+
+    band = _prostate_band(d)
+    median_frag = _prostate_median_lobe_body_frag(d)
     cyst_frag = _prostate_cyst_body(d)
+    cc = d.get("size_cc", "")
 
     if band is None:
-        # normal prostate
-        if median:
-            s += [seg(" is normal in size"),
-                  seg(" with median lobe hypertrophy", True),
-                  seg(f"({median_size}mm)") if median_size else seg(""),
+        if median_frag:
+            s.append(seg(" is normal in size"))
+            s += [seg(" with "), seg(median_frag, True),
                   seg(", however the attenuation and margins are normal.")]
         else:
-            s.append(seg(" is normal in size and attenuation. No diffuse or focal "
-                         "lesion seen."))
+            s.append(seg(" is normal in size and attenuation. No diffuse or "
+                         "focal lesion seen."))
         if cyst_frag:
             s += [seg(" "), seg(cyst_frag, True)]
         return s
 
-    _, body_desc, _ = band
-    cc = d.get("size_cc", "")
-    # core line
-    s += [seg(" is "), seg(f"{body_desc} in size", True),
-          seg(f"({cc}CC)")]
-    if median:
-        s.append(seg(" with "))
-        s.append(seg("median lobe hypertrophy", True))
-        if median_size:
-            s.append(seg(f"({median_size}mm)"))
-        s.append(seg(", however the attenuation and margins are normal."))
+    body_desc, _ = band
+    s += [seg(" is "), seg(f"{body_desc} in size", True)]
+    if cc:
+        s.append(seg(f"({cc}CC)"))
+    if median_frag:
+        s += [seg(" with "), seg(median_frag, True),
+              seg(", however the attenuation and margins are normal.")]
     else:
         s.append(seg(", with normal attenuation and margins."))
     if cyst_frag:
@@ -1791,20 +1808,26 @@ def prostate_sentence(d, pediatric=False):
 
 
 def _prostate_impression_line(d):
-    status = d.get("status", "normal")
-    if status in ("normal", "not_visualized"):
-        base = None
-    else:
-        band = _prostate_size_band(d)
-        if band is None:
-            base = None
-        else:
-            _, _, imp_label = band
-            cc = d.get("size_cc", "")
-            base = f"{imp_label}({cc}CC)" if cc else imp_label
+    if d.get("not_visualized"):
+        return None
+    band = _prostate_band(d)
+    cc = d.get("size_cc", "")
+    base = None
+    if band:
+        _, imp_label = band
+        base = f"{imp_label}({cc}CC)" if cc else imp_label
 
     median = d.get("median_lobe", False)
     median_size = d.get("median_lobe_size_mm", "")
+    boo = d.get("median_lobe_boo", False)
+    if base and median:
+        ml = " WITH MEDIAN LOBE HYPERTROPHY"
+        if median_size:
+            ml += f"({median_size}mm)"
+        if boo:
+            ml += " IMPINGING UPON BLADDER OUTLET"
+        base = base + ml
+
     cyst_frag = None
     if d.get("cyst"):
         size = d.get("cyst_size", "")
@@ -1818,16 +1841,9 @@ def _prostate_impression_line(d):
             side_txt = side_bits[0] + " "
         elif len(side_bits) == 2:
             side_txt = "BILATERAL HEMI-PROSTATE "
-        impinge = (" IMPINGING UPON BLADDER OUTLET"
-                   if d.get("impinging_boo") else "")
         cyst_frag = (f"A SIMPLE CYSTIC SOL MEASURING {size}MM IN THE {side_txt}"
-                     f"PROSTATE{impinge}")
+                     f"PROSTATE")
 
-    if base and median:
-        ml = f" WITH MEDIAN LOBE HYPERTROPHY"
-        if median_size:
-            ml += f"({median_size}mm)"
-        base = base + ml
     if base and cyst_frag:
         return base + " WITH " + cyst_frag + "."
     if base:
@@ -2000,15 +2016,11 @@ def appendix_sentence(d):
 
 
 # ============================================================
-# IMPRESSION — helpers
+# IMPRESSION HELPERS
 # ============================================================
 
 def _ureter_impression_term(level):
     return URETER_LEVELS[level][1]
-
-
-def _ureter_impression_adjective(level):
-    return URETER_LEVELS[level][2]
 
 
 def _ureter_impression_consequence(uc, side_up):
@@ -2297,7 +2309,7 @@ def _try_hepatosplenomegaly(liver, spleen):
     return base + "".join(parts) + ". Adv- LFT Correlation."
 
 
-def _echogenicity_impression_lines(k, age_years):
+def _echogenicity_impression_lines(k):
     grade = k.get("cortical_echogenicity", "normal")
     if grade == "normal":
         return []
@@ -2305,7 +2317,6 @@ def _echogenicity_impression_lines(k, age_years):
     lat_up = {"bilateral": "BILATERAL", "right": "RIGHT",
               "left": "LEFT"}.get(lat, "BILATERAL")
     cmd = k.get("cortical_cmd", "preserved")
-    cmd_up = CMD_WORD_UP.get(cmd, "PRESERVED")
     grade_up = ECHO_GRADE_WORD_UP[grade]
     age_related = bool(k.get("age_related_echogenicity"))
     if grade == "mildly_raised":
@@ -2742,7 +2753,7 @@ def generate_impression(d, sex, age):
         renal_lines.append(f"{g} {side_up} HYDROURETERONEPHROSIS IS PRESENT"
                            f"{extra}{rpc}.")
 
-    echo_lines = _echogenicity_impression_lines(k, age_years)
+    echo_lines = _echogenicity_impression_lines(k)
     for ln in echo_lines:
         if small_rule_active:
             r_len = parse_kidney_length_mm(r.get("size_text", "")) if r_present else None
@@ -2793,60 +2804,54 @@ def generate_impression(d, sex, age):
         for c in cyst_clauses:
             lines.append(c + ".")
 
-    # --- Urinary Bladder + Prostate combined ---
+    # --- Urinary Bladder + Prostate ---
     ub = d["urinary_bladder"]
     pr = d["prostate"]
 
     pvr_note = _pvr_note(ub)
     pvr_significant = bool(pvr_note)
-    ub_sed_line = _ub_impression_lines(ub)  # may be empty
-    ub_wall_impression = None
-    if ub.get("wall_thickening") and ub.get("wall_mm"):
-        irregular = ub.get("wall_irregular", False)
-        wall_txt = f"IRREGULAR UB WALL THICKENING UPTO {ub['wall_mm']}MM"
-        ub_wall_impression = (f"{wall_txt} - ?CHRONIC CYSTITIS WITH POSSIBLE "
-                              f"BLADDER OUTLET OBSTRUCTION(BOO)")
-
+    ub_sed_line = _ub_impression_line(ub)
+    ub_wall_frag = _ub_wall_impression_fragment(ub)
     prostate_line = _prostate_impression_line(pr)
 
     combined_ub_pr_done = False
     if pvr_significant and prostate_line:
         pvr_txt = "SIGNIFICANT POST VOID RESIDUE"
-        if _pvr_pct(ub) is not None and _pvr_pct(ub) >= 80.0:
+        pct = _pvr_pct(ub)
+        if pct is not None and pct >= 80.0:
             pvr_txt += "(>80%)"
-        if ub.get("sedimentation", "none") != "none":
+        sed = ub.get("sedimentation", "none")
+        uti = ub.get("uti_suspected", False)
+        if sed != "none":
             sed_phrase = {
                 "trace": "TRACE SEDIMENTATION",
                 "free_floating": "FREE FLOATING SEDIMENTATION",
                 "significant_free_floating": "SIGNIFICANT FREE FLOATING "
                                               "SEDIMENTATION",
                 "extensive": "EXTENSIVE SEDIMENTATION",
-            }.get(ub["sedimentation"])
-            lines.append(f"{pvr_txt} WITH {sed_phrase} IN THE UB LUMEN & "
-                         f"{prostate_line.rstrip('.')}.")
+            }.get(sed)
+            sed_tail = " - ?UTI" if uti else ""
+            combined = (f"{pvr_txt} WITH {sed_phrase} IN THE UB LUMEN"
+                        f"{sed_tail} & {prostate_line.rstrip('.')}.")
+            if uti:
+                combined += " Adv- Urine R/M Correlation."
+            lines.append(combined)
         else:
             lines.append(f"{pvr_txt} WITH {prostate_line.rstrip('.')}.")
         combined_ub_pr_done = True
 
     if not combined_ub_pr_done:
-        # prostate + UB wall thickening
-        if prostate_line and ub_wall_impression:
-            lines.append(f"{prostate_line.rstrip('.')} WITH {ub_wall_impression}.")
+        if prostate_line and ub_wall_frag:
+            lines.append(f"{prostate_line.rstrip('.')} WITH {ub_wall_frag}.")
             if ub_sed_line:
-                for ln in ub_sed_line:
-                    lines.append(ln)
+                lines.append(ub_sed_line)
         else:
             if prostate_line:
                 lines.append(prostate_line)
             if ub_sed_line:
-                for ln in ub_sed_line:
-                    lines.append(ln)
-            if ub_wall_impression:
-                lines.append(ub_wall_impression + ".")
-
-    if ub.get("sedimentation") in ("free_floating", "significant_free_floating",
-                                    "extensive") and ub.get("uti_suspected"):
-        pass  # already appended in ub_sed_line
+                lines.append(ub_sed_line)
+            if ub_wall_frag:
+                lines.append(ub_wall_frag + ".")
 
     # --- Uterus / Ovaries (F) ---
     if sex == "F" and not is_pediatric:
@@ -2876,14 +2881,6 @@ def generate_impression(d, sex, age):
 
     lines.append(IMPRESSION_REST_UNREMARKABLE)
     return lines
-
-
-def _pvr_pct(ub):
-    pre = _parse_mm_value(ub.get("pre_void_cc", ""))
-    post = _parse_mm_value(ub.get("post_void_cc", ""))
-    if pre and post and pre > 0:
-        return post / pre * 100.0
-    return None
 
 
 # ============================================================
@@ -3007,6 +3004,26 @@ def _add_impression_line_runs(para, line):
         _add_run(para, " " + adv, bold=True, italic=True)
 
 
+def _render_segments(para, segs, italic_derive=True):
+    """Render list of seg tuples. Handles \\n as line break."""
+    for tup in segs:
+        text, bold, underline = tup[0], tup[1], tup[2]
+        italic_override = tup[3] if len(tup) > 3 else None
+        if italic_override is None:
+            italic = bold and not underline
+        else:
+            italic = italic_override
+        if "\n" in text:
+            parts = text.split("\n")
+            for i, part in enumerate(parts):
+                if i > 0:
+                    para.add_run().add_break()
+                _add_run(para, part, bold=bold, underline=underline,
+                         italic=italic)
+        else:
+            _add_run(para, text, bold=bold, underline=underline, italic=italic)
+
+
 def build_docx_bytes(data):
     doc = Document()
     section = doc.sections[0]
@@ -3074,18 +3091,7 @@ def build_docx_bytes(data):
             continue
         para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        for text, bold, underline in segs:
-            italic = bold and not underline
-            if "\n" in text:
-                parts = text.split("\n")
-                for i, part in enumerate(parts):
-                    if i > 0:
-                        para.add_run().add_break()
-                    _add_run(para, part, bold=bold, underline=underline,
-                             italic=italic)
-            else:
-                _add_run(para, text, bold=bold, underline=underline,
-                         italic=italic)
+        _render_segments(para, segs)
         para.paragraph_format.space_after = Pt(6)
 
     addendum = (data.get("additional_body_findings") or "").strip()
@@ -3153,17 +3159,52 @@ st.markdown(
         text-align: center; margin: 0 0 1.0rem 0; padding: 0;
         color: #555 !important; font-style: italic; font-size: 1.05rem;
     }
+    /* Desktop column alignment */
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+        display: flex !important; flex-direction: column !important;
+        justify-content: flex-end !important;
+    }
+    /* MOBILE: bigger radio tap targets */
     @media (max-width: 900px) {
         div[data-testid="stHorizontalBlock"] {
-            flex-wrap: nowrap !important; gap: 0.4rem !important;
+            flex-wrap: wrap !important;
         }
         div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
             min-width: 0 !important;
         }
+        div[data-testid="stRadio"] > div[role="radiogroup"] {
+            flex-wrap: wrap !important;
+            gap: 0.4rem 1rem !important;
+        }
+        div[data-testid="stRadio"] label {
+            min-height: 44px !important;
+            padding: 6px 10px !important;
+            display: flex !important;
+            align-items: center !important;
+            cursor: pointer !important;
+            user-select: none !important;
+        }
+        div[data-testid="stRadio"] label > div:first-child {
+            width: 22px !important;
+            height: 22px !important;
+            min-width: 22px !important;
+            margin-right: 8px !important;
+        }
+        div[data-testid="stRadio"] label > div:first-child > div {
+            width: 22px !important;
+            height: 22px !important;
+        }
+        div[data-testid="stCheckbox"] label {
+            min-height: 44px !important;
+            padding: 6px 6px !important;
+            cursor: pointer !important;
+            user-select: none !important;
+        }
     }
-    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-        display: flex !important; flex-direction: column !important;
-        justify-content: flex-end !important;
+    /* Desktop radio pointer too */
+    div[data-testid="stRadio"] label,
+    div[data-testid="stCheckbox"] label {
+        cursor: pointer !important;
     }
     div[data-testid="stExpander"] {
         background-color: #ffffff !important;
@@ -3918,7 +3959,6 @@ with col_find:
     ub_open = organ_button("URINARY BLADDER", "URINARY BLADDER")
     if ub_open:
         with st.container(border=True):
-            # status radios — each individually toggleable
             c1, c2, c3 = st.columns(3)
             with c1:
                 st.checkbox("Partially empty", key="ub_partially_empty")
@@ -3961,40 +4001,32 @@ with col_find:
         pr_open = organ_button("PROSTATE", "PROSTATE")
         if pr_open:
             with st.container(border=True):
-                st.radio("Status",
-                         ["normal", "not_visualized", "borderline",
-                          "grade1", "grade1_2", "grade2", "grade3_4"],
-                         horizontal=True, index=0,
-                         format_func=lambda x: {
-                             "normal": "Normal",
-                             "not_visualized": "Not visualized",
-                             "borderline": "Borderline (30–35cc)",
-                             "grade1": "Grade-I (36–45cc)",
-                             "grade1_2": "Grade-I/II (46–50cc)",
-                             "grade2": "Grade-II (51–70cc)",
-                             "grade3_4": "Grade-III/IV (≥71cc)"}[x],
-                         key="pr_status")
-                _prs = ss("pr_status", "normal")
-                if _prs not in ("normal", "not_visualized"):
-                    st.text_input("Prostate volume (cc)", key="pr_cc")
-                st.checkbox("Median lobe hypertrophy", key="pr_median_lobe")
-                if ss("pr_median_lobe", False):
-                    st.text_input("Median lobe size (mm)",
-                                  key="pr_median_lobe_size")
-                st.checkbox("Prostatic cyst", key="pr_cyst")
-                if ss("pr_cyst", False):
-                    c_a, c_b, c_c = st.columns(3)
-                    with c_a:
-                        st.text_input("Cyst size (mm)", key="pr_cyst_size")
-                    with c_b:
-                        st.checkbox("Left hemi-prostate",
-                                    key="pr_cyst_left_hemi")
-                    with c_c:
-                        st.checkbox("Right hemi-prostate",
-                                    key="pr_cyst_right_hemi")
+                st.checkbox("Not visualized", key="pr_not_visualized")
+                if not ss("pr_not_visualized", False):
+                    st.text_input("Prostate volume (cc)  —  auto-graded",
+                                  key="pr_cc")
+                    _cc_val = ss("pr_cc", "")
+                    if _cc_val:
+                        _band = prostate_band_from_volume(_cc_val)
+                        if _band:
+                            st.info(f"→ Auto-grade: **{_band[1]}**")
+                    st.checkbox("Median lobe hypertrophy", key="pr_median_lobe")
                     if ss("pr_median_lobe", False):
+                        st.text_input("Median lobe size (mm)",
+                                      key="pr_median_lobe_size")
                         st.checkbox("Impinging upon bladder outlet",
-                                    key="pr_impinging_boo")
+                                    key="pr_median_lobe_boo")
+                    st.checkbox("Prostatic cyst", key="pr_cyst")
+                    if ss("pr_cyst", False):
+                        c_a, c_b, c_c = st.columns(3)
+                        with c_a:
+                            st.text_input("Cyst size (mm)", key="pr_cyst_size")
+                        with c_b:
+                            st.checkbox("Left hemi-prostate",
+                                        key="pr_cyst_left_hemi")
+                        with c_c:
+                            st.checkbox("Right hemi-prostate",
+                                        key="pr_cyst_right_hemi")
     else:
         u_exp_col, u_sz_col, u_et_col = st.columns(
             [4, 1, 1], vertical_alignment="bottom")
@@ -4326,15 +4358,15 @@ data["urinary_bladder"].update({
 # ---- PROSTATE or UTERUS/OVARIES ----
 if p_sex == "M":
     data["prostate"].update({
-        "status": ss("pr_status", "normal"),
         "size_cc": ss("pr_cc", ""),
         "median_lobe": bool(ss("pr_median_lobe", False)),
         "median_lobe_size_mm": ss("pr_median_lobe_size", ""),
+        "median_lobe_boo": bool(ss("pr_median_lobe_boo", False)),
         "cyst": bool(ss("pr_cyst", False)),
         "cyst_size": ss("pr_cyst_size", ""),
         "cyst_left_hemi": bool(ss("pr_cyst_left_hemi", False)),
         "cyst_right_hemi": bool(ss("pr_cyst_right_hemi", False)),
-        "impinging_boo": bool(ss("pr_impinging_boo", False)),
+        "not_visualized": bool(ss("pr_not_visualized", False)),
     })
 else:
     data["uterus"].update({
