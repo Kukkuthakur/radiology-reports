@@ -1,22 +1,23 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v2.0.0-stable
+v2.1.0-stable
 
-v2.0.0:
-  - Mobile radio tap fix (bigger targets, wrap on narrow viewports).
-  - seg() extended with explicit italic override.
-  - (suboptimal pelvic assessment) rendered italic-only, not bold.
-    Applied whenever UB is empty / partially empty, with or without
-    catheterized, and on the forced-empty path.
-  - UB wall thickening body text now mixed-case bold italic.
-  - UB wall thickening impression: IRREGULAR only when irregular is
-    actually ticked; BOO tail follows irregular.
-  - ?UTI placement: before period, then Adv- Urine R/M Correlation.
-  - ?UTI preserved in combined PVR + prostate line when ticked.
-  - Prostate: no manual status radio; auto-banded from volume.
-    Empty (CC) suppressed.
-  - Prostate median lobe: "impinging upon bladder outlet" checkbox
-    moved under median lobe (removed from cyst).
+v2.1.0:
+  - Uterus module: size auto-band (bulky/moderately/grossly),
+    myometrium, endometrium with auto-descriptors and collection
+    logic, RPOC with size-based descriptor, cervix findings,
+    fibroid (5 types with per-lesion location+size, manual FIGO
+    for multi-type), adenomyosis (5 features, likely/early
+    confidence), adenomyomas (count/echo/location/avascular),
+    low-lying prolapse, gravid, operated, retroflexed,
+    not visualized, paediatric.
+  - Auto-fill: operated uterus -> ovaries not visualized;
+    age >= 48 -> likely atrophic (unless operated);
+    UB empty/partially empty -> prostate status.
+  - Prostatic cyst parenthetical fix; median lobe + cyst
+    combined impression.
+  - Page formatting: paragraph space_after = 0; visual gaps via
+    explicit blank paragraphs only.
 
 Frozen rules:
 - Impression text ALL CAPS except:
@@ -25,8 +26,8 @@ Frozen rules:
     * the token "vs"                         -> bold, lowercase
     * EXCEPTION: "BOSNIAK CAT-" + Roman numeral stays ALL CAPS even
       inside parentheses.
-- Body findings bold, italic, mixed case, unless an explicit override is
-  given in the segment tuple.
+- Body findings bold, italic, mixed case, unless an explicit override
+  is given in the segment tuple.
 """
 
 import io
@@ -133,6 +134,16 @@ def normalize_kidney_size_text(size_text):
     s = re.sub(r"\s*[xX]\s*", "x", s)
     s = re.sub(r"\s*[mM]{2}\s*$", "", s)
     return f"{s}MM"
+
+
+def _first_number(text):
+    m = re.search(r"(\d+(?:\.\d+)?)", str(text or ""))
+    if not m:
+        return None
+    try:
+        return float(m.group(1))
+    except (ValueError, TypeError):
+        return None
 
 
 # ============================================================
@@ -382,7 +393,6 @@ CMD_WORD_UP = {"preserved": "PRESERVED", "hazy": "HAZY", "lost": "LOST"}
 # PROSTATE CONSTANTS
 # ============================================================
 
-# Bands: [lo, hi) -> (body descriptor, impression label)
 PROSTATE_GRADE_BANDS = [
     (30, 36, "borderline bulky", "BORDERLINE PROSTATOMEGALY"),
     (36, 46, "mildly bulky", "GRADE-I PROSTATOMEGALY"),
@@ -404,6 +414,110 @@ def prostate_band_from_volume(cc):
         if lo <= v < hi:
             return body_desc, imp_label
     return None
+
+
+# ============================================================
+# UTERUS CONSTANTS
+# ============================================================
+
+FIBROID_TYPE_LABELS = {
+    "intramural": ("an intramural fibroid", "FIGO-4"),
+    "intramural_subserosal": ("an intramural>subserosal fibroid", "FIGO-4/5"),
+    "intramural_submucosal": ("an intramural>submucosal fibroid", "FIGO-4/3"),
+    "submucosal_intramural": ("a submucosal>intramural fibroid", "FIGO-2/3"),
+    "subserosal_intramural":
+        ("a partially extrusive subserosal>intramural fibroid", "FIGO-5/4"),
+}
+FIBROID_TYPE_LABELS_UP = {
+    "intramural": ("AN INTRAMURAL FIBROID", "FIGO-4"),
+    "intramural_subserosal": ("AN INTRAMURAL>SUBSEROSAL FIBROID", "FIGO-4/5"),
+    "intramural_submucosal": ("AN INTRAMURAL>SUBMUCOSAL FIBROID", "FIGO-4/3"),
+    "submucosal_intramural": ("A SUBMUCOSAL>INTRAMURAL FIBROID", "FIGO-2/3"),
+    "subserosal_intramural":
+        ("A PARTIALLY EXTRUSIVE SUBSEROSAL>INTRAMURAL FIBROID", "FIGO-5/4"),
+}
+# Which fibroid type uses the "partially extrusive" body prefix
+PARTIALLY_EXTRUSIVE_TYPES = {"intramural_subserosal", "subserosal_intramural"}
+
+UTERUS_BULKY_THRESHOLDS = {
+    "bulky": (90, 100),          # 90 <= x <= 100
+    "moderately_bulky": (100.0001, 119.9999),
+    "grossly_bulky": (120, float("inf")),
+}
+# Simpler: helper below
+def classify_uterus_size(length_mm):
+    if length_mm is None:
+        return "normal"
+    if length_mm < 90:
+        return "normal"
+    if length_mm <= 100:
+        return "bulky"
+    if length_mm < 120:
+        return "moderately_bulky"
+    return "grossly_bulky"
+
+
+UTERUS_SIZE_BODY = {
+    "normal": "normal in size",
+    "bulky": "bulky in size",
+    "moderately_bulky": "moderately bulky in size",
+    "grossly_bulky": "grossly bulky in size",
+}
+UTERUS_SIZE_IMPRESSION = {
+    "normal": "",
+    "bulky": "BULKY UTERUS",
+    "moderately_bulky": "MODERATELY BULKY UTERUS",
+    "grossly_bulky": "GROSSLY BULKY UTERUS",
+}
+UTERUS_SIZE_IMPRESSION_ADJ = {
+    "normal": "",
+    "bulky": "BULKY",
+    "moderately_bulky": "MODERATELY BULKY",
+    "grossly_bulky": "GROSSLY BULKY",
+}
+
+ENDOMETRIAL_COLLECTION_LABELS = {
+    "none": "No collection seen in the endometrial cavity.",
+    "mild": "Mild collection seen in the endometrial cavity.",
+    "moderate": "Moderate collection seen in the endometrial cavity.",
+}
+ENDOMETRIAL_COLLECTION_HET = {
+    "mild": "Mild heterogenous collection seen in the endometrial cavity.",
+    "moderate": "Moderate heterogenous collection seen in the endometrial cavity.",
+}
+ENDOMETRIAL_COLLECTION_IMPRESSION = {
+    "none": None,
+    "mild": "MILD COLLECTION IN THE ENDOMETRIAL CANAL.",
+    "moderate": "MODERATE COLLECTION IN THE ENDOMETRIAL CANAL.",
+}
+ENDOMETRIAL_COLLECTION_HET_IMPRESSION = {
+    "mild": "MILD HETEROGENOUS COLLECTION IN THE ENDOMETRIAL CANAL.",
+    "moderate": "MODERATE HETEROGENOUS COLLECTION IN THE ENDOMETRIAL CANAL.",
+}
+
+
+def classify_endometrium(mm):
+    if mm is None:
+        return None
+    if mm < 2:
+        return "thinned_out"
+    if mm <= 15:
+        return None
+    if mm < 20:
+        return "thickened"
+    return "significantly_thickened"
+
+
+# Adenomyosis feature labels for body & impression, in canonical order
+ADENOMYOSIS_FEATURES = [
+    "globular_shape",
+    "asymmetric_posterior",
+    "venetian_blind_sign",
+    "interface_indistinct",
+    "interface_barely_perceptible_fundus",
+    "interface_lost",
+    "subendometrial_cysts",
+]
 
 
 # ============================================================
@@ -464,54 +578,98 @@ def _new_ureter_calculus():
 
 def _new_kidney_side():
     return {
-        "status": "normal",
-        "size_text": "",
-        "calculi": [],
-        "ureter_calculus": _new_ureter_calculus(),
-        "ureter_not_traced": False,
-        "cyst_type": "none",
-        "cyst_count": "single",
-        "cyst_size_mm": "",
-        "cyst_location": "",
-        "cyst_septa": "none",
-        "cyst_calc": "none",
-        "cyst_bosniak": "",
-        "hydronephrosis": "none",
+        "status": "normal", "size_text": "", "calculi": [],
+        "ureter_calculus": _new_ureter_calculus(), "ureter_not_traced": False,
+        "cyst_type": "none", "cyst_count": "single", "cyst_size_mm": "",
+        "cyst_location": "", "cyst_septa": "none", "cyst_calc": "none",
+        "cyst_bosniak": "", "hydronephrosis": "none",
         "hydronephrosis_no_obstructive_calculus": False,
         "recently_passed_calculus_suspected": False,
-        "nephrocalcinosis": "none",
-        "contralateral_normal_clause": False,
+        "nephrocalcinosis": "none", "contralateral_normal_clause": False,
         "is_small": False,
     }
 
 
 def _new_urinary_bladder():
     return {
-        "status": None,
-        "catheterized": False,
-        "pre_void_cc": "",
-        "post_void_cc": "",
-        "mass_calculus": False,
-        "sedimentation": "none",
-        "uti_suspected": False,
-        "wall_thickening": False,
-        "wall_irregular": False,
-        "wall_mm": "",
-        "force_empty_suboptimal": False,
+        "status": None, "catheterized": False, "pre_void_cc": "",
+        "post_void_cc": "", "mass_calculus": False, "sedimentation": "none",
+        "uti_suspected": False, "wall_thickening": False,
+        "wall_irregular": False, "wall_mm": "", "force_empty_suboptimal": False,
     }
 
 
 def _new_prostate():
     return {
-        "size_cc": "",
-        "median_lobe": False,
-        "median_lobe_size_mm": "",
-        "median_lobe_boo": False,
-        "cyst": False,
-        "cyst_size": "",
-        "cyst_left_hemi": False,
-        "cyst_right_hemi": False,
-        "not_visualized": False,
+        "size_cc": "", "median_lobe": False, "median_lobe_size_mm": "",
+        "median_lobe_boo": False, "cyst": False, "cyst_size": "",
+        "cyst_left_hemi": False, "cyst_right_hemi": False, "not_visualized": False,
+        "partial_visualization": False,
+    }
+
+
+def _new_fibroid_lesion():
+    return {"location": "fundal", "size": ""}
+
+
+def _new_uterus():
+    return {
+        "status": "anteverted",       # anteverted | bulky | partially_visualized | operated | not_visualized
+        "size": "",                    # XXxXX free text
+        "retroflexed": False,
+        "gravid": False,
+        "gravid_type": "CRL",          # CRL | GS
+        "gravid_length": "",
+        "gravid_weeks": "",
+        "gravid_days": "",
+        "low_lying": False,
+        "cervix_visualized": "partially",   # partially | not_visualized
+        "myometrium": "homogenous",    # homogenous | mildly_heterogeneous | heterogeneous
+        "prominent_vascular_channels": False,
+        # Endometrium
+        "endometrial_thickness_mm": "",
+        "endometrial_collection": "none",  # none | mild | moderate
+        "endometrial_collection_het": False,
+        # RPOC
+        "rpoc": False,
+        "rpoc_size": "",
+        "rpoc_echo": "hypo",           # hypo | hyper
+        # Cervix findings
+        "cervix_elongated": False,
+        "cervix_bulky": False,
+        "cervix_bulky_size_mm": "",
+        "nabothian": "none",           # none | one | few | multiple
+        "cervix_collection": "none",   # none | mild | moderate
+        # Fibroid
+        "fibroid": False,
+        "fibroid_count": "single",     # single | few | multiple
+        "fibroid_types": [],           # subset of FIBROID_TYPE_LABELS keys
+        "fibroid_lesions": [],         # list of {location, size}
+        "fibroid_figo_manual": "",     # for multi-type, free text
+        # Adenomyosis
+        "adenomyosis": False,
+        "adenomyosis_features": [],    # subset of ADENOMYOSIS_FEATURES
+        "adenomyosis_confidence": "auto",  # auto | likely | early
+        # Adenomyomas
+        "adenomyomas": False,
+        "adenomyomas_count": "couple",  # single | couple | few | multiple
+        "adenomyomas_echo": "hyperechoic",  # hyperechoic | hypoechoic | hypo-isoechoic
+        "adenomyomas_location": "posterior",  # anterior | posterior | fundal
+        "adenomyomas_size": "",
+        "adenomyomas_avascular": True,
+        # Negative lines
+        "neg_rpoc": False,
+        "neg_sol": False,
+    }
+
+
+def _new_ovaries():
+    return {
+        "right_status": "normal", "right_size": "",
+        "right_cyst_type": "simple", "right_cyst_size": "",
+        "left_status": "normal", "left_size": "",
+        "left_cyst_type": "simple", "left_cyst_size": "",
+        "afc": "normal",
     }
 
 
@@ -536,8 +694,7 @@ def new_report(sex="F"):
             "calculi": "none", "calculi_count": "single",
             "calculi_size_cat": "small", "calculi_size_mm": "",
             "calculi_neck": False, "calculi_neck_size_mm": "",
-            "sludge": "none",
-            "sludge_ball": False, "sludge_ball_count": "single",
+            "sludge": "none", "sludge_ball": False, "sludge_ball_count": "single",
             "sludge_ball_size_mm": "", "sludge_ball_wall": "anterior",
             "comet_tail": False, "comet_tail_count": "single",
             "comet_tail_wall": "anterior", "pericholecystic_fluid": False,
@@ -563,24 +720,15 @@ def new_report(sex="F"):
             "accessory_location": "hilum",
         },
         "kidneys": {
-            "right": _new_kidney_side(),
-            "left": _new_kidney_side(),
-            "cortical_echogenicity": "normal",
-            "cortical_cmd": "preserved",
+            "right": _new_kidney_side(), "left": _new_kidney_side(),
+            "cortical_echogenicity": "normal", "cortical_cmd": "preserved",
             "cortical_echogenicity_laterality": "bilateral",
-            "age_related_echogenicity": False,
-            "negative_renal_line": False,
+            "age_related_echogenicity": False, "negative_renal_line": False,
             "bilateral_ureter_calculi": False,
         },
         "urinary_bladder": _new_urinary_bladder(),
-        "uterus": {"status": "anteverted", "size": "", "myometrium": "homogenous",
-                   "fibroid_text": "", "endometrial_thickness_mm": "",
-                   "endometrial_collection": False},
-        "ovaries": {"right_status": "normal", "right_size": "",
-                    "right_cyst_type": "simple", "right_cyst_size": "",
-                    "left_status": "normal", "left_size": "",
-                    "left_cyst_type": "simple", "left_cyst_size": "",
-                    "afc": "normal"},
+        "uterus": _new_uterus(),
+        "ovaries": _new_ovaries(),
         "prostate": _new_prostate(),
         "bowel": {"wall_thickening": False, "free_fluid": "none",
                   "mesenteric_ln": "none", "ln_size_category": "sad_lt_7",
@@ -595,9 +743,6 @@ def new_report(sex="F"):
 # ============================================================
 # SEGMENTS
 # ============================================================
-# Each segment is (text, bold, underline, italic_override).
-# italic_override=None -> derive from `bold and not underline`.
-# italic_override=True/False -> honor explicitly.
 
 def seg(text, bold=False, underline=False, italic=None):
     return (text, bold, underline, italic)
@@ -882,11 +1027,10 @@ def cbd_sentence(d):
                 s.append(seg(" However no significant dilatation of IHBR appreciated "
                              "at the time of scan."))
         elif ihbr == "proximal":
-            s.append(seg(" "))
-            s.append(seg("Intra hepatic biliary radicals are proximally dilated.", True))
+            s += [seg(" "), seg("Intra hepatic biliary radicals are proximally "
+                                 "dilated.", True)]
         elif ihbr == "dilated":
-            s.append(seg(" "))
-            s.append(seg("Intra hepatic biliary radicals are dilated.", True))
+            s += [seg(" "), seg("Intra hepatic biliary radicals are dilated.", True)]
     return s
 
 
@@ -1064,7 +1208,6 @@ def pancreas_sentence(d):
         else:
             s.append(seg("."))
         return s
-
     return s
 
 
@@ -1602,9 +1745,7 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
 # ============================================================
 
 def _ub_suboptimal_tail():
-    """(suboptimal pelvic assessment) — italic only, not bold."""
-    return [seg(" "),
-            seg("(suboptimal pelvic assessment)", bold=False, italic=True)]
+    return [seg(" "), seg("(suboptimal pelvic assessment)", bold=False, italic=True)]
 
 
 def urinary_bladder_sentence(d):
@@ -1627,8 +1768,7 @@ def urinary_bladder_sentence(d):
     elif status is None and cath:
         s.append(seg(" is adequately distended and catheterized."))
     elif status == "over":
-        s.append(seg(" is "))
-        s.append(seg("over-distended", True))
+        s += [seg(" is "), seg("over-distended", True)]
         if pre:
             s.append(seg(f"({pre}CC)", True))
         if cath:
@@ -1652,7 +1792,6 @@ def urinary_bladder_sentence(d):
     if not d.get("mass_calculus"):
         s.append(seg(" No mass or calculus seen."))
 
-    # wall thickening — mixed case bold italic
     if d.get("wall_thickening") and d.get("wall_mm"):
         try:
             w = float(d["wall_mm"])
@@ -1666,7 +1805,6 @@ def urinary_bladder_sentence(d):
         frag += f"urinary bladder wall thickening upto {d['wall_mm']}mm is seen."
         s += [seg(" "), seg(frag, True)]
 
-    # sedimentation
     sed = d.get("sedimentation", "none")
     if sed == "trace":
         s += [seg(" "), seg("Trace sedimentation seen in the UB lumen.", True)]
@@ -1678,7 +1816,6 @@ def urinary_bladder_sentence(d):
     elif sed == "extensive":
         s += [seg(" "), seg("Extensive sedimentation seen in the UB lumen.", True)]
 
-    # pre/post void block
     post = str(d.get("post_void_cc", "") or "").strip()
     if pre and post:
         s.append(seg("\n"))
@@ -1708,7 +1845,6 @@ def _pvr_pct(d):
 
 
 def _ub_impression_line(d):
-    """Standalone sedimentation impression line, or None."""
     sed = d.get("sedimentation", "none")
     sed_word = {
         "trace": "TRACE SEDIMENTATION",
@@ -1726,7 +1862,6 @@ def _ub_impression_line(d):
 
 
 def _ub_wall_impression_fragment(d):
-    """Fragment without trailing period, or None."""
     if not (d.get("wall_thickening") and d.get("wall_mm")):
         return None
     irregular = d.get("wall_irregular", False)
@@ -1739,7 +1874,6 @@ def _ub_wall_impression_fragment(d):
 # ============================================================
 
 def _prostate_band(d):
-    """Return (body_desc, imp_label) or None."""
     return prostate_band_from_volume(d.get("size_cc", ""))
 
 
@@ -1752,7 +1886,8 @@ def _prostate_cyst_body(d):
         side = "left hemi-prostate "
     elif d.get("cyst_right_hemi") and not d.get("cyst_left_hemi"):
         side = "right hemi-prostate "
-    return f"A simple cystic SOL measuring {size}MM seen in the {side}prostate."
+    size_txt = f"({size}mm)" if size else ""
+    return f"A simple cystic SOL{size_txt} seen in the {side}prostate."
 
 
 def _prostate_median_lobe_body_frag(d):
@@ -1766,10 +1901,13 @@ def _prostate_median_lobe_body_frag(d):
     return f"median lobe hypertrophy{size_txt}{boo_txt}"
 
 
-def prostate_sentence(d, pediatric=False):
+def prostate_sentence(d, pediatric=False, ub_status=None):
     s = [seg("PROSTATE", True, True)]
     if d.get("not_visualized"):
         s.append(seg(" is not visualized."))
+        return s
+    if d.get("partial_visualization"):
+        s.append(seg(" is partially visualized."))
         return s
 
     if pediatric and not _prostate_band(d):
@@ -1810,6 +1948,8 @@ def prostate_sentence(d, pediatric=False):
 def _prostate_impression_line(d):
     if d.get("not_visualized"):
         return None
+    if d.get("partial_visualization"):
+        return None
     band = _prostate_band(d)
     cc = d.get("size_cc", "")
     base = None
@@ -1820,13 +1960,14 @@ def _prostate_impression_line(d):
     median = d.get("median_lobe", False)
     median_size = d.get("median_lobe_size_mm", "")
     boo = d.get("median_lobe_boo", False)
-    if base and median:
-        ml = " WITH MEDIAN LOBE HYPERTROPHY"
+    median_frag = None
+    if median:
+        frag = "MEDIAN LOBE HYPERTROPHY"
         if median_size:
-            ml += f"({median_size}mm)"
+            frag += f"({median_size}mm)"
         if boo:
-            ml += " IMPINGING UPON BLADDER OUTLET"
-        base = base + ml
+            frag += " IMPINGING UPON BLADDER OUTLET"
+        median_frag = frag
 
     cyst_frag = None
     if d.get("cyst"):
@@ -1841,8 +1982,13 @@ def _prostate_impression_line(d):
             side_txt = side_bits[0] + " "
         elif len(side_bits) == 2:
             side_txt = "BILATERAL HEMI-PROSTATE "
-        cyst_frag = (f"A SIMPLE CYSTIC SOL MEASURING {size}MM IN THE {side_txt}"
-                     f"PROSTATE")
+        size_txt = f"({size}MM)" if size else ""
+        cyst_frag = (f"A SIMPLE CYSTIC SOL{size_txt} IN THE {side_txt}PROSTATE")
+
+    if base and median_frag:
+        base = base + " WITH " + median_frag
+    elif not base and median_frag:
+        base = median_frag
 
     if base and cyst_frag:
         return base + " WITH " + cyst_frag + "."
@@ -1854,61 +2000,592 @@ def _prostate_impression_line(d):
 
 
 # ============================================================
-# UTERUS / OVARIES / BOWEL / APPENDIX
+# UTERUS — body & impression
 # ============================================================
 
-def uterus_sentence(d, pediatric=False):
-    if pediatric:
-        s = [seg("UTERUS & BOTH OVARIES", True, True)]
-        if d["status"] == "not_visualized":
-            s.append(seg(" are not visualized."))
+def _uterus_size_body_prefix(d):
+    length = _first_number(d.get("size", ""))
+    cls = classify_uterus_size(length)
+    return cls, UTERUS_SIZE_BODY.get(cls, "normal in size")
+
+
+def _uterus_myometrium_clause(d):
+    """Return (text, bold, italic) tuple for myometrium clause (body)."""
+    m = d.get("myometrium", "homogenous")
+    if m == "homogenous":
+        return ("Myometrium appears homogenous and no focal lesion is seen.", False, False)
+    if m == "mildly_heterogeneous":
+        return ("Myometrium appears mildly heterogenous and no focal lesion is seen.", False, False)
+    if m == "heterogeneous":
+        return ("Myometrium appears heterogenous and no focal lesion is seen.", False, False)
+    return ("", False, False)
+
+
+# ---- Fibroid body & impression ----
+
+def _fibroid_lesion_sort_key(lesion):
+    return -(_first_number(lesion.get("size", "")) or 0)
+
+
+def _fibroid_body_fragment(d):
+    """Return a seg-tuple list for the fibroid body clause, or None."""
+    if not d.get("fibroid"):
+        return None
+    count = d.get("fibroid_count", "single")
+    types = d.get("fibroid_types", []) or ["intramural"]
+    lesions = sorted(d.get("fibroid_lesions", []), key=_fibroid_lesion_sort_key)
+    # If user didn't enter enough lesions, pad with defaults
+    while len(lesions) < len(types):
+        lesions.append(_new_fibroid_lesion())
+    lesions = lesions[:len(types)]
+
+    # Build fragments per type
+    body_parts = []
+    for i, t in enumerate(types):
+        lesion = lesions[i]
+        loc = lesion.get("location", "fundal")
+        size = lesion.get("size", "")
+        is_partial_ext = t in PARTIALLY_EXTRUSIVE_TYPES
+        # singular type fragment
+        if t == "submucosal_intramural":
+            body_parts.append(
+                f"a hypoechoic heterogenous SOL measuring {size}mm in the "
+                f"{loc} myometrium, impinging upon the endometrium")
+        elif is_partial_ext:
+            body_parts.append(
+                f"a partially extrusive hypoechoic heterogenous SOL measuring "
+                f"{size}mm in the {loc} myometrium")
+        else:  # intramural
+            body_parts.append(
+                f"a hypoechoic heterogenous SOL in the {loc} myometrium "
+                f"measuring {size}mm")
+
+    # Join
+    if len(body_parts) == 1:
+        joined = body_parts[0]
+    elif len(body_parts) == 2:
+        joined = f"{body_parts[0]} and {body_parts[1]}"
+    else:
+        joined = ", ".join(body_parts[:-1]) + " and " + body_parts[-1]
+
+    if count == "single":
+        return [seg(" with "), seg(joined, True)]
+    else:
+        # For few/multiple, describe count and per-lesion sizes
+        count_word = {"few": "few", "multiple": "multiple"}.get(count, "few")
+        # Use location+size descriptors, sorted descending
+        desc_list = []
+        for i, t in enumerate(types):
+            lesion = lesions[i]
+            size = lesion.get("size", "")
+            loc = lesion.get("location", "fundal")
+            suffix = ""
+            if t == "submucosal_intramural":
+                suffix = ", impinging upon the endometrium"
+            desc_list.append(f"{size}mm in {loc} myometrium{suffix}")
+        if len(desc_list) == 1:
+            joined_desc = desc_list[0]
+        elif len(desc_list) == 2:
+            joined_desc = f"{desc_list[0]} and {desc_list[1]}"
         else:
-            s.append(seg(" are normal for age."))
+            joined_desc = ", ".join(desc_list[:-1]) + " and " + desc_list[-1]
+        return [seg(" with "), seg(f"{count_word} hypoechoic heterogenous SOLs "
+                                    f"in the myometrium, largest of these "
+                                    f"measuring {joined_desc}", True)]
+
+
+def _fibroid_impression_fragment(d):
+    """Return the fibroid impression fragment (WITHOUT bulky/hetero prefix),
+    or None if no fibroid."""
+    if not d.get("fibroid"):
+        return None
+    count = d.get("fibroid_count", "single")
+    types = d.get("fibroid_types", []) or ["intramural"]
+    lesions = sorted(d.get("fibroid_lesions", []), key=_fibroid_lesion_sort_key)
+    while len(lesions) < len(types):
+        lesions.append(_new_fibroid_lesion())
+    lesions = lesions[:len(types)]
+
+    # Multi-type: use manual FIGO range and generic wording
+    if len(types) > 1:
+        figo_manual = d.get("figo_manual") or d.get("fibroid_figo_manual", "")
+        if count == "single":
+            size0 = lesions[0].get("size", "") if lesions else ""
+            loc0 = lesions[0].get("location", "fundal") if lesions else "fundal"
+            figo_part = f"(FIGO- {figo_manual})" if figo_manual else "(FIGO- 4-5)"
+            return (f"SUGGESTION OF A FIBROID({size0}MM) IN THE {loc0.upper()} "
+                    f"MYOMETRIUM {figo_part}")
+        else:
+            figo_part = f"(FIGO - {figo_manual})" if figo_manual else "(FIGO - 4-5)"
+            count_word = "FEW" if count == "few" else "MULTIPLE"
+            return (f"SUGGESTION OF {count_word} FIBROIDS {figo_part} AS "
+                    f"DESCRIBED ABOVE")
+
+    # Single type
+    t = types[0]
+    label, figo = FIBROID_TYPE_LABELS_UP.get(t, FIBROID_TYPE_LABELS_UP["intramural"])
+    if count == "single":
+        size = lesions[0].get("size", "") if lesions else ""
+        loc = lesions[0].get("location", "fundal") if lesions else "fundal"
+        return (f"SUGGESTION OF {label}({size}MM) IN THE {loc.upper()} "
+                f"MYOMETRIUM({figo})")
+    else:
+        count_word = "FEW" if count == "few" else "MULTIPLE"
+        # Collect locations
+        locs = [lesion.get("location", "fundal").upper() for lesion in lesions]
+        # De-dup preserving order
+        seen = set()
+        locs_u = []
+        for loc in locs:
+            if loc not in seen:
+                locs_u.append(loc)
+                seen.add(loc)
+        if len(locs_u) == 1:
+            locs_txt = f"THE {locs_u[0]} MYOMETRIUM"
+        elif len(locs_u) == 2:
+            locs_txt = f"THE {locs_u[0]} & {locs_u[1]} MYOMETRIUM"
+        else:
+            locs_txt = "THE " + ", ".join(locs_u[:-1]) + " & " + locs_u[-1] + " MYOMETRIUM"
+        return (f"SUGGESTION OF {count_word} FIBROIDS IN {locs_txt} AS DESCRIBED "
+                f"ABOVE({figo})")
+
+
+# ---- Adenomyosis body & impression ----
+
+def _adenomyosis_features_body(d):
+    """Return list of body fragments for adenomyosis features."""
+    feats = d.get("adenomyosis_features", []) or []
+    frags = []
+    for f in ADENOMYOSIS_FEATURES:
+        if f not in feats:
+            continue
+        if f == "globular_shape":
+            frags.append("with globular shape")
+        elif f == "asymmetric_posterior":
+            frags.append("with asymmetrically bulky posterior myometrium")
+        elif f == "venetian_blind_sign":
+            frags.append("diffusely heterogeneous echo pattern(venetian blind sign "
+                         "is positive) of myometrium")
+        elif f == "interface_indistinct":
+            frags.append("with indistinct endo-myometrial interface")
+        elif f == "interface_barely_perceptible_fundus":
+            frags.append("endo-myometrial interface is indistinct and barely "
+                         "perceptible at fundus level")
+        elif f == "interface_lost":
+            frags.append("loss of endo-myometrial interface")
+        elif f == "subendometrial_cysts":
+            frags.append("with few subendometrial cysts abutting the endometrium")
+    return frags
+
+
+def _adenomyosis_confidence(d):
+    conf = d.get("adenomyosis_confidence", "auto")
+    if conf in ("likely", "early"):
+        return conf
+    feats = d.get("adenomyosis_features", []) or []
+    return "likely" if len(feats) >= 2 else "early"
+
+
+def _adenomyosis_body_segments(d):
+    """Return list of seg for adenomyosis (body)."""
+    if not d.get("adenomyosis"):
+        return []
+    frags = _adenomyosis_features_body(d)
+    conf = _adenomyosis_confidence(d)
+    qualifier = "likely adenomyosis" if conf == "likely" else "? early adenomyosis"
+    body = " ".join(frags)
+    if not body:
+        body = ""
+    out = []
+    if body:
+        out += [seg(" "), seg(body, True)]
+    out += [seg(f" -- {qualifier}.", True)]
+    return out
+
+
+def _adenomyosis_impression_fragment(d):
+    if not d.get("adenomyosis"):
+        return None
+    frags = _adenomyosis_features_body(d)
+    frags = [f.upper() for f in frags]
+    conf = _adenomyosis_confidence(d)
+    qualifier = "LIKELY UTERINE ADENOMYOSIS" if conf == "likely" else "? EARLY UTERINE ADENOMYOSIS"
+    if not frags:
+        return qualifier
+    # Replace "endo-myometrial interface" phrasing to match impression style
+    # (keep as-is; user confirmed earlier the fragment phrases are all-caps)
+    body = " & ".join(frags)
+    body = body.replace("WITH INDISTINCT ENDO-MYOMETRIAL INTERFACE",
+                        "WITH INDISTINCT ENDO-MYOMETRIAL INTERFACE")
+    return f"{body} ---- {qualifier}"
+
+
+# ---- Adenomyomas body & impression ----
+
+def _adenomyomas_body_fragment(d):
+    if not d.get("adenomyomas"):
+        return None
+    count = d.get("adenomyomas_count", "couple")
+    echo = d.get("adenomyomas_echo", "hyperechoic")
+    loc = d.get("adenomyomas_location", "posterior")
+    avasc = "avascular " if d.get("adenomyomas_avascular") else ""
+    count_word = {
+        "single": "A",
+        "couple": "A couple of",
+        "few": "Few",
+        "multiple": "Multiple",
+    }.get(count, "A couple of")
+    plural = "SOL" if count == "single" else "SOLs"
+    size_txt = ""
+    if count == "single":
+        size = d.get("adenomyomas_size", "")
+        if size:
+            size_txt = f"({size}mm) "
+    text = (f"{count_word} {avasc}{echo} small {plural} {size_txt}seen abutting "
+            f"the {loc} endometrium -- likely adenomyoma")
+    if count != "single":
+        text += "s"
+    text += "."
+    # Capitalize first letter if needed
+    return text
+
+
+def _adenomyomas_impression_fragment(d):
+    if not d.get("adenomyomas"):
+        return None
+    count = d.get("adenomyomas_count", "couple")
+    echo = d.get("adenomyomas_echo", "hyperechoic").upper()
+    loc = d.get("adenomyomas_location", "posterior").upper()
+    avasc = "AVASCULAR " if d.get("adenomyomas_avascular") else ""
+    count_word = {
+        "single": "A",
+        "couple": "A COUPLE OF",
+        "few": "FEW",
+        "multiple": "MULTIPLE",
+    }.get(count, "A COUPLE OF")
+    plural = "SOL" if count == "single" else "SOLS"
+    size_txt = ""
+    if count == "single":
+        size = d.get("adenomyomas_size", "")
+        if size:
+            size_txt = f"({size}MM) "
+    frag = (f"{count_word} {avasc}{echo} SMALL {plural} {size_txt}SEEN ABUTTING "
+            f"THE {loc} UTERINE ENDOMETRIUM -- LIKELY ADENOMYOMA")
+    if count != "single":
+        frag += "S"
+    return frag
+
+
+# ---- Uterus body sentence ----
+
+def uterus_sentence(d, pediatric=False, age_years=None):
+    status = d.get("status", "anteverted")
+
+    if pediatric:
+        s = [seg("UTERUS & BOTH OVARIES", True, True),
+             seg(" are age-appropriate.")]
         return s
-    s = [seg("UTERUS", True, True)]
-    status = d["status"]
-    if status == "operated":
-        s.append(seg(" is operated."))
-        return s
+
     if status == "not_visualized":
-        s.append(seg(" is not visualized."))
+        s = [seg("UTERUS & BOTH OVARIES", True, True),
+             seg(" are not visualized.")]
         return s
-    if status == "anteverted":
-        s.append(seg(" is anteverted"))
-        if d["size"]:
-            s.append(seg(f" and normal in size({d['size']}MM)"))
+
+    if status == "operated":
+        s = [seg("UTERUS", True, True), seg(" is operated.")]
+        return s
+
+    s = [seg("UTERUS", True, True)]
+
+    # Orientation / size
+    size = d.get("size", "")
+    length = _first_number(size)
+    cls = classify_uterus_size(length)
+    size_body = UTERUS_SIZE_BODY.get(cls, "normal in size")
+    descriptor = ""
+    if cls == "bulky":
+        descriptor = "bulky in size"
+    elif cls == "moderately_bulky":
+        descriptor = "moderately bulky in size"
+    elif cls == "grossly_bulky":
+        descriptor = "grossly bulky in size"
+
+    retroflexed = d.get("retroflexed", False)
+    gravid = d.get("gravid", False)
+    low_lying = d.get("low_lying", False)
+
+    if gravid:
+        gravid_type = d.get("gravid_type", "CRL")
+        length_v = d.get("gravid_length", "")
+        wk = d.get("gravid_weeks", "")
+        dy = d.get("gravid_days", "")
+        s.append(seg(f" is gravid(Single & alive: {gravid_type}={length_v} mm; "
+                     f"GA={wk} weeks {dy} days)."))
+    else:
+        orientation = "retro-flexed" if retroflexed else "anteverted"
+        if status == "partially_visualized":
+            s += [seg(" is partially visualized and appears "),
+                  seg(orientation, True)]
+        else:
+            s += [seg(" is "), seg(orientation, True)]
+
+        # Size
+        if descriptor and size:
+            s += [seg(" and "), seg(descriptor, True), seg(f"({size}MM)")]
+        elif size:
+            s.append(seg(f" and normal in size({size}MM)"))
+        else:
+            s.append(seg(" and normal in size"))
+
+        # Low-lying
+        if low_lying:
+            cervix_state = d.get("cervix_visualized", "partially")
+            cervix_word = ("partially visualized" if cervix_state == "partially"
+                           else "not visualized")
+            grade_word = "GRADE-II" if cervix_state == "partially" else "GRADE-II/III"
+            s += [seg(" and "),
+                  seg("low-lying with positive transverse uterus sign, cervix is "
+                      f"{cervix_word} in the retro-vesical space on TAS - likely "
+                      f"{grade_word.lower()} uterine prolapse", True)]
         s.append(seg(" with normal shape and echopattern."))
-    elif status in ("retroverted", "retroflexed"):
-        s.append(seg(f" is {status}", True))
-        if d["size"]:
-            s.append(seg(f" and normal in size({d['size']}MM)"))
-        s.append(seg(" with normal shape and echopattern."))
-    elif status == "bulky":
-        s += [seg(" is "), seg("bulky in size", True)]
-        if d["size"]:
-            s.append(seg(f"({d['size']}MM)"))
-        s.append(seg(" with normal shape and echopattern."))
-    elif status == "partially":
-        s.append(seg(" is partially visualized and appears anteverted"))
-        if d["size"]:
-            s.append(seg(f", normal in size({d['size']}MM)"))
-        s.append(seg(" with normal shape and echopattern."))
-    if d["myometrium"] == "homogenous":
-        s.append(seg(" Myometrium appears homogenous and no focal lesion is seen."))
-    elif d["myometrium"] == "fibroid" and d["fibroid_text"]:
-        s += [seg(" "), seg(d["fibroid_text"].capitalize(), True), seg(".", True)]
-    if d["endometrial_thickness_mm"]:
+
+    # Myometrium
+    myo_text, myo_b, myo_i = _uterus_myometrium_clause(d)
+    if myo_text:
+        s.append(seg(" " + myo_text, myo_b, italic=myo_i if myo_b else None))
+
+    # Adenomyosis
+    aden_segs = _adenomyosis_body_segments(d)
+    if aden_segs:
+        s.extend(aden_segs)
+
+    # Prominent vascular channels
+    if d.get("prominent_vascular_channels"):
+        s += [seg(" "), seg("Prominent vascular channels are seen along the "
+                             "peripheral uterine myometrium.", True)]
+
+    # Fibroid
+    fib_segs = _fibroid_body_fragment(d)
+    if fib_segs:
+        # Insert " . " after myometrium clause if present
+        if myo_text and not myo_text.endswith("."):
+            s.append(seg("."))
+        s.extend(fib_segs)
+        s.append(seg("."))
+
+    # Adenomyomas
+    adenoma_text = _adenomyomas_body_fragment(d)
+    if adenoma_text:
+        s += [seg(" "), seg(adenoma_text, True)]
+
+    # Endometrium
+    endo_mm = d.get("endometrial_thickness_mm", "")
+    endo_cls = classify_endometrium(_first_number(endo_mm))
+    if endo_mm:
+        endo_descriptor = ""
+        if endo_cls == "thinned_out":
+            endo_descriptor = " (thinned out endometrium)"
+        elif endo_cls == "thickened":
+            endo_descriptor = " (thickened endometrium)"
+        elif endo_cls == "significantly_thickened":
+            endo_descriptor = " (significantly thickened endometrium)"
         s.append(seg(f" Endometrial echo is central and regular in "
-                     f"thickness({d['endometrial_thickness_mm']}MM)."))
-        if not d["endometrial_collection"]:
-            s.append(seg(" No collection seen in the endometrial canal."))
+                     f"thickness({endo_mm}MM){endo_descriptor}."))
+    # Collection
+    coll = d.get("endometrial_collection", "none")
+    het = d.get("endometrial_collection_het", False)
+    if coll == "none" and not het:
+        s.append(seg(" No collection seen in the endometrial canal."))
+    elif coll in ("mild", "moderate"):
+        if het:
+            s.append(seg(" " + ENDOMETRIAL_COLLECTION_HET[coll]))
+        else:
+            s.append(seg(" " + ENDOMETRIAL_COLLECTION_LABELS[coll]))
+
+    # RPOC
+    if d.get("rpoc"):
+        size_txt = d.get("rpoc_size", "")
+        echo = d.get("rpoc_echo", "hypo")
+        echo_word = "hypo-echoic" if echo == "hypo" else "hyper-echoic"
+        first_dim = _first_number(size_txt.split("x")[0] if size_txt else "")
+        if first_dim is not None and first_dim > 15:
+            s += [seg(" "),
+                  seg(f"A moderate sized ({size_txt}mm) {echo_word} structure "
+                      f"seen abutting the fundal endometrium showing color flow "
+                      f"& aliasing on CD study.", True)]
+        else:
+            s += [seg(" "),
+                  seg(f"A small ({size_txt}mm) {echo_word} SOL seen abutting "
+                      f"the fundal endometrium showing color flow & aliasing on "
+                      f"CD study.", True)]
+
+    # Cervix
+    if d.get("cervix_elongated"):
+        s += [seg(" "), seg("Cervix appears elongated.", True)]
+    if d.get("cervix_bulky"):
+        sz = d.get("cervix_bulky_size_mm", "")
+        sz_txt = f"({sz}mm)" if sz else ""
+        s += [seg(" "), seg(f"Cervix appears bulky{sz_txt}.", True)]
+    nab = d.get("nabothian", "none")
+    if nab != "none":
+        word = {"one": "A", "few": "Few", "multiple": "Multiple"}.get(nab, "Few")
+        s += [seg(" "), seg(f"{word} nabothian cysts seen in the cervix.", True)]
+    cx_coll = d.get("cervix_collection", "none")
+    if cx_coll != "none":
+        s += [seg(" "), seg(f"{cx_coll.title()} collection seen in the cervix.", True)]
+
     return s
 
 
-def ovaries_sentence(d):
+def _uterus_impression_lines(d, age_years):
+    """Return a list of impression strings contributed by uterus."""
+    lines = []
+    if d.get("status") == "not_visualized":
+        return lines
+    if d.get("status") == "operated":
+        return lines
+
+    status = d.get("status", "anteverted")
+    size = d.get("size", "")
+    length = _first_number(size)
+    cls = classify_uterus_size(length)
+
+    # Build the leading descriptor
+    leading = UTERUS_SIZE_IMPRESSION.get(cls, "")
+    if d.get("gravid"):
+        gravid_type = d.get("gravid_type", "CRL")
+        length_v = d.get("gravid_length", "")
+        wk = d.get("gravid_weeks", "")
+        dy = d.get("gravid_days", "")
+        return [f"GRAVID UTERUS (SINGLE & ALIVE: {gravid_type}={length_v} MM; "
+                f"GA={wk} WEEKS {dy} DAYS)."]
+
+    # Low-lying
+    low_lying = d.get("low_lying", False)
+    if low_lying:
+        cervix_state = d.get("cervix_visualized", "partially")
+        cervix_word = ("PARTIALLY VISUALIZED" if cervix_state == "partially"
+                       else "NOT VISUALIZED")
+        grade_word = "GRADE-II" if cervix_state == "partially" else "GRADE-II/III"
+        adj = UTERUS_SIZE_IMPRESSION_ADJ.get(cls, "")
+        if adj:
+            leading = f"{adj} LOW-LYING UTERUS"
+        else:
+            leading = "LOW-LYING UTERUS"
+        lines.append(f"{leading} WITH POSITIVE TRANSVERSE UTERUS SIGN, CERVIX "
+                     f"IS {cervix_word} IN THE RETRO-VESICAL SPACE ON TAS -- "
+                     f"LIKELY {grade_word} UTERINE PROLAPSE.")
+
+    # Adenomyosis
+    aden_frag = _adenomyosis_impression_fragment(d) if d.get("adenomyosis") else None
+    # Fibroid
+    fib_frag = _fibroid_impression_fragment(d)
+    # Adenomyomas
+    adenoma_frag = _adenomyomas_impression_fragment(d)
+
+    # Combine with a leading prefix
+    # Prefix options: BULKY UTERUS / MODERATELY BULKY UTERUS / etc. / HETEROGENOUS MYOMETRIUM
+    myo = d.get("myometrium", "homogenous")
+    myo_prefix = ""
+    if myo in ("mildly_heterogeneous", "heterogeneous"):
+        myo_prefix = "HETEROGENOUS MYOMETRIUM" if myo == "heterogeneous" else "MILDLY HETEROGENOUS MYOMETRIUM"
+
+    base_prefix_parts = []
+    if leading and not low_lying:
+        base_prefix_parts.append(leading.rstrip("."))
+    elif not low_lying and not leading:
+        pass  # normal uterus, no prefix
+
+    combined_prefix = ""
+    if base_prefix_parts:
+        combined_prefix = base_prefix_parts[0]
+    if myo_prefix and not low_lying:
+        if combined_prefix:
+            combined_prefix = f"{combined_prefix} WITH {myo_prefix}"
+        else:
+            combined_prefix = myo_prefix
+
+    # Now attach fragments
+    fragments_to_attach = []
+    if aden_frag:
+        fragments_to_attach.append(aden_frag)
+    if fib_frag:
+        fragments_to_attach.append(fib_frag)
+    if adenoma_frag:
+        fragments_to_attach.append(adenoma_frag)
+
+    if low_lying:
+        # Already emitted the prolapse line; chain fibroid via "ALSO THERE IS SUGGESTION OF"
+        if fib_frag and not aden_frag and not adenoma_frag:
+            lines[-1] = lines[-1] + " ALSO THERE IS " + fib_frag + "."
+        elif fib_frag and (aden_frag or adenoma_frag):
+            # fall through: emit aden and fibroid separately
+            if aden_frag:
+                lines.append(f"ALSO THERE IS {aden_frag}.")
+            if fib_frag:
+                lines.append(f"ALSO THERE IS {fib_frag}.")
+            if adenoma_frag:
+                lines.append(f"ALSO THERE IS {adenoma_frag}.")
+        elif aden_frag:
+            lines[-1] = lines[-1] + " ALSO THERE IS " + aden_frag + "."
+        elif adenoma_frag:
+            lines[-1] = lines[-1] + " ALSO THERE IS " + adenoma_frag + "."
+        return lines
+
+    # Non-low-lying: assemble
+    if not fragments_to_attach:
+        # Only prefix (bulky/hetero) exists -> emit bulky line
+        if combined_prefix:
+            lines.append(combined_prefix + ".")
+        return lines
+
+    # Attach fragments to prefix
+    assembled = combined_prefix
+    for i, frag in enumerate(fragments_to_attach):
+        if assembled:
+            assembled = assembled + " WITH " + frag
+        else:
+            assembled = "THERE IS " + frag
+
+    # If no prefix and no "THERE IS" clause was added, prefix with "THERE IS"
+    if not combined_prefix and assembled:
+        # Fragments will already start with "SUGGESTION OF" -> prepend "THERE IS"
+        if not assembled.startswith("THERE IS"):
+            assembled = "THERE IS " + assembled
+
+    # Multi-type fibroid, single prefix
+    if combined_prefix and not assembled.startswith(combined_prefix):
+        assembled = combined_prefix + " WITH " + assembled
+
+    lines.append(assembled + ".")
+    return lines
+
+
+# ============================================================
+# OVARIES
+# ============================================================
+
+def ovaries_sentence(d, age_years=None, uterus_operated=False):
     s = []
     r, l = d["right_status"], d["left_status"]
-    if r == "normal" and l == "normal":
+
+    # Operated uterus -> ovaries are not visualized (no "likely atrophic")
+    if uterus_operated:
+        if r == "not_visualized" and l == "not_visualized":
+            return [seg("BOTH OVARIES", True, True),
+                    seg(" are not visualized.")]
+
+    postmeno = (age_years is not None and age_years >= 48)
+    both_visible = (r == "normal" and l == "normal")
+
+    if r == "not_visualized" and l == "not_visualized":
+        if postmeno and not uterus_operated:
+            return [seg("BOTH OVARIES", True, True),
+                    seg(" are not visualized(likely atrophic).")]
+        return [seg("BOTH OVARIES", True, True),
+                seg(" are not visualized.")]
+
+    if both_visible:
         s += [seg("BOTH OVARIES", True, True),
               seg(" appears normal in size and echo pattern.")]
         if d["right_size"] or d["left_size"]:
@@ -1923,7 +2600,10 @@ def ovaries_sentence(d):
     def block(label, status, size, cyst_type, cyst_size):
         b = [seg(label, True, True)]
         if status == "not_visualized":
-            b.append(seg(" not visualized(likely atrophic)."))
+            if postmeno and not uterus_operated:
+                b.append(seg(" not visualized(likely atrophic)."))
+            else:
+                b.append(seg(" not visualized."))
         elif status == "normal":
             b.append(seg(" appears normal in size and echo pattern."))
             if size:
@@ -1945,6 +2625,10 @@ def ovaries_sentence(d):
                    d["left_cyst_size"]))
     return s
 
+
+# ============================================================
+# BOWEL / APPENDIX
+# ============================================================
 
 def bowel_sentence(d, sex, pancreas_status="normal"):
     acute = (pancreas_status == "acute")
@@ -2016,7 +2700,7 @@ def appendix_sentence(d):
 
 
 # ============================================================
-# IMPRESSION HELPERS
+# IMPRESSION — helpers
 # ============================================================
 
 def _ureter_impression_term(level):
@@ -2440,16 +3124,14 @@ def generate_impression(d, sex, age):
                 f"COLLECTION {loc_caps} (VOL= {vol}CC) WITH DEBRIS WITHIN AND "
                 f"SIGNIFICANT PERIPANCREATIC FAT STRANDING AND MILD FREE FLUID "
                 f"- LIKELY WALLED-OFF NECROSIS (WON) AS A SEQUELAE TO ACUTE "
-                f"PANCREATITIS. Adv- S.Amylase/Lipase Correlation."
-            )
+                f"PANCREATITIS. Adv- S.Amylase/Lipase Correlation.")
         elif wp_type == "pseudocyst":
             lines.append(
                 f"HYPOTROPHIED PANCREAS WITH IRREGULAR MARGINS WITH A LOCULATED "
                 f"COLLECTION (VOL= {vol}CC) WITH CLEAR CONTENTS {loc_caps} AND "
                 f"MILD PERIPANCREATIC FAT STRANDING WITH MILD FREE FLUID - "
                 f"LIKELY PANCREATIC PSEUDOCYST AS A SEQUELAE TO ACUTE "
-                f"PANCREATITIS. Adv- S.Amylase/Lipase Correlation."
-            )
+                f"PANCREATITIS. Adv- S.Amylase/Lipase Correlation.")
         else:
             lines.append(
                 f"HYPOTROPHIED PANCREAS WITH IRREGULAR MARGINS & A LOCULATED "
@@ -2457,8 +3139,7 @@ def generate_impression(d, sex, age):
                 f"ECHOES {loc_caps} AND MILD PERIPANCREATIC FAT STRANDING WITH "
                 f"MILD FREE FLUID - LIKELY WON/PANCREATIC PSEUDOCYST AS A "
                 f"SEQUELAE TO ACUTE PANCREATITIS. "
-                f"Adv- S.Amylase/Lipase Correlation."
-            )
+                f"Adv- S.Amylase/Lipase Correlation.")
 
     elif p_status == "chronic":
         foci = p.get("ch_foci", False)
@@ -2853,16 +3534,20 @@ def generate_impression(d, sex, age):
             if ub_wall_frag:
                 lines.append(ub_wall_frag + ".")
 
-    # --- Uterus / Ovaries (F) ---
-    if sex == "F" and not is_pediatric:
-        if d["uterus"]["status"] == "bulky":
-            lines.append("BULKY UTERUS.")
-        o = d["ovaries"]
-        for side in ("right", "left"):
-            if o[f"{side}_status"] == "cyst":
-                lines.append(f"A {side.upper()} OVARIAN "
-                             f"{o[f'{side}_cyst_type'].upper()} CYST "
-                             f"({o[f'{side}_cyst_size']}MM).")
+    # --- Uterus + Ovaries (F only) ---
+    if sex == "F":
+        uterus_operated = d["uterus"].get("status") == "operated"
+        uterus_lines = _uterus_impression_lines(d["uterus"], age_years)
+        for ln in uterus_lines:
+            lines.append(ln)
+
+        # Uterine negative lines
+        if d["uterus"].get("neg_rpoc"):
+            lines.append("NO OBVIOUS EVIDENCE OF ANY INTRA/EXTRA-UTERINE "
+                         "PREGNANCY OR RPOC APPRECIATED ON TAS AT THE TIME OF SCAN.")
+        if d["uterus"].get("neg_sol"):
+            lines.append("NO OBVIOUS EVIDENCE OF ANY FOCAL SOL, RPOC OR INCREASED "
+                         "VASCULARITY APPRECIATED IN THE UTERUS ON TAS.")
 
     # --- Bowel / effusions ---
     b = d["bowel"]
@@ -3004,10 +3689,11 @@ def _add_impression_line_runs(para, line):
         _add_run(para, " " + adv, bold=True, italic=True)
 
 
-def _render_segments(para, segs, italic_derive=True):
-    """Render list of seg tuples. Handles \\n as line break."""
+def _render_segments(para, segs):
     for tup in segs:
-        text, bold, underline = tup[0], tup[1], tup[2]
+        text = tup[0]
+        bold = tup[1]
+        underline = tup[2]
         italic_override = tup[3] if len(tup) > 3 else None
         if italic_override is None:
             italic = bold and not underline
@@ -3018,8 +3704,7 @@ def _render_segments(para, segs, italic_derive=True):
             for i, part in enumerate(parts):
                 if i > 0:
                     para.add_run().add_break()
-                _add_run(para, part, bold=bold, underline=underline,
-                         italic=italic)
+                _add_run(para, part, bold=bold, underline=underline, italic=italic)
         else:
             _add_run(para, text, bold=bold, underline=underline, italic=italic)
 
@@ -3037,6 +3722,8 @@ def build_docx_bytes(data):
     style = doc.styles["Normal"]
     style.font.name = FONT_BODY
     style.font.size = Pt(FONT_SIZE_BODY)
+    style.paragraph_format.space_after = Pt(0)
+    style.paragraph_format.space_before = Pt(0)
 
     table = doc.add_table(rows=2, cols=2)
     table.autofit = True
@@ -3063,6 +3750,7 @@ def build_docx_bytes(data):
     sex, age = p["sex"], p["age"]
     age_years = parse_age(age)
     is_ped = age_years is not None and age_years < 18
+    is_ped_female = (sex == "F" and age_years is not None and age_years < 14)
     p_status = data["pancreas"].get("status", "normal")
     spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
     ub_status = data["urinary_bladder"].get("status") or "adequately_distended"
@@ -3077,11 +3765,14 @@ def build_docx_bytes(data):
         urinary_bladder_sentence(data["urinary_bladder"]),
     ]
     if sex == "F":
-        sections.append(uterus_sentence(data["uterus"], pediatric=is_ped))
-        if not is_ped:
-            sections.append(ovaries_sentence(data["ovaries"]))
+        sections.append(uterus_sentence(data["uterus"], pediatric=is_ped_female,
+                                         age_years=age_years))
+        uterus_operated = data["uterus"].get("status") == "operated"
+        sections.append(ovaries_sentence(data["ovaries"], age_years=age_years,
+                                          uterus_operated=uterus_operated))
     else:
-        sections.append(prostate_sentence(data["prostate"], pediatric=is_ped))
+        sections.append(prostate_sentence(data["prostate"], pediatric=is_ped,
+                                           ub_status=ub_status))
     sections.append(bowel_sentence(data["bowel"], sex, pancreas_status=p_status))
     if data["appendix"]["status"] != "not_assessed":
         sections.append(appendix_sentence(data["appendix"]))
@@ -3091,18 +3782,20 @@ def build_docx_bytes(data):
             continue
         para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        para.paragraph_format.space_after = Pt(0)
+        para.paragraph_format.space_before = Pt(0)
         _render_segments(para, segs)
-        para.paragraph_format.space_after = Pt(6)
 
     addendum = (data.get("additional_body_findings") or "").strip()
     if addendum:
         para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        para.paragraph_format.space_after = Pt(0)
+        para.paragraph_format.space_before = Pt(0)
         for i, ln in enumerate(addendum.split("\n")):
             if i > 0:
                 para.add_run().add_break()
             _add_run(para, ln, bold=True, italic=True)
-        para.paragraph_format.space_after = Pt(6)
 
     doc.add_paragraph()
     imp_head = doc.add_paragraph()
@@ -3112,6 +3805,8 @@ def build_docx_bytes(data):
     for line in data["impression"]["lines"]:
         para = doc.add_paragraph(style="List Bullet")
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        para.paragraph_format.space_after = Pt(0)
+        para.paragraph_format.space_before = Pt(0)
         _add_impression_line_runs(para, line)
 
     doc.add_paragraph()
@@ -3159,12 +3854,10 @@ st.markdown(
         text-align: center; margin: 0 0 1.0rem 0; padding: 0;
         color: #555 !important; font-style: italic; font-size: 1.05rem;
     }
-    /* Desktop column alignment */
     div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
         display: flex !important; flex-direction: column !important;
         justify-content: flex-end !important;
     }
-    /* MOBILE: bigger radio tap targets */
     @media (max-width: 900px) {
         div[data-testid="stHorizontalBlock"] {
             flex-wrap: wrap !important;
@@ -3185,14 +3878,12 @@ st.markdown(
             user-select: none !important;
         }
         div[data-testid="stRadio"] label > div:first-child {
-            width: 22px !important;
-            height: 22px !important;
+            width: 22px !important; height: 22px !important;
             min-width: 22px !important;
             margin-right: 8px !important;
         }
         div[data-testid="stRadio"] label > div:first-child > div {
-            width: 22px !important;
-            height: 22px !important;
+            width: 22px !important; height: 22px !important;
         }
         div[data-testid="stCheckbox"] label {
             min-height: 44px !important;
@@ -3201,7 +3892,6 @@ st.markdown(
             user-select: none !important;
         }
     }
-    /* Desktop radio pointer too */
     div[data-testid="stRadio"] label,
     div[data-testid="stCheckbox"] label {
         cursor: pointer !important;
@@ -3996,80 +4686,252 @@ with col_find:
 
             st.text_input("Post-void residue (CC)", key="ub_post_void")
 
-    # ------- PROSTATE or UTERUS/OVARIES -------
-    if p_sex == "M":
-        pr_open = organ_button("PROSTATE", "PROSTATE")
-        if pr_open:
-            with st.container(border=True):
-                st.checkbox("Not visualized", key="pr_not_visualized")
-                if not ss("pr_not_visualized", False):
-                    st.text_input("Prostate volume (cc)  —  auto-graded",
-                                  key="pr_cc")
-                    _cc_val = ss("pr_cc", "")
-                    if _cc_val:
-                        _band = prostate_band_from_volume(_cc_val)
-                        if _band:
-                            st.info(f"→ Auto-grade: **{_band[1]}**")
-                    st.checkbox("Median lobe hypertrophy", key="pr_median_lobe")
-                    if ss("pr_median_lobe", False):
-                        st.text_input("Median lobe size (mm)",
-                                      key="pr_median_lobe_size")
-                        st.checkbox("Impinging upon bladder outlet",
-                                    key="pr_median_lobe_boo")
-                    st.checkbox("Prostatic cyst", key="pr_cyst")
-                    if ss("pr_cyst", False):
-                        c_a, c_b, c_c = st.columns(3)
-                        with c_a:
-                            st.text_input("Cyst size (mm)", key="pr_cyst_size")
-                        with c_b:
-                            st.checkbox("Left hemi-prostate",
-                                        key="pr_cyst_left_hemi")
-                        with c_c:
-                            st.checkbox("Right hemi-prostate",
-                                        key="pr_cyst_right_hemi")
-    else:
-        u_exp_col, u_sz_col, u_et_col = st.columns(
-            [4, 1, 1], vertical_alignment="bottom")
-        with u_exp_col:
-            uterus_open = organ_button("UTERUS", "UTERUS")
-        with u_sz_col:
-            st.text_input("UTERUS size (mm)", key="ut_size",
-                          placeholder="UTERUS mm",
-                          label_visibility="collapsed")
-        with u_et_col:
-            st.text_input("Endometrium (mm)", key="ut_et",
-                          placeholder="Endometrium",
-                          label_visibility="collapsed")
-        if uterus_open:
+    # ------- UTERUS / OVARIES (F) or PROSTATE (M) -------
+    if p_sex == "F":
+        _age_years = parse_age(p_age)
+        _is_ped_female = (_age_years is not None and _age_years < 14)
+
+        ut_open = organ_button("UTERUS", "UTERUS")
+        if ut_open:
             with st.container(border=True):
                 st.radio("Status",
-                         ["anteverted", "retroverted", "bulky",
-                          "operated", "not_visualized"],
-                         horizontal=True, key="ut_status")
+                         ["anteverted", "partially_visualized", "operated",
+                          "not_visualized"],
+                         horizontal=True,
+                         format_func=lambda x: {
+                             "anteverted": "Anteverted",
+                             "partially_visualized": "Partially visualized",
+                             "operated": "Operated",
+                             "not_visualized": "Not visualized"}[x],
+                         key="ut_status")
+                _uts = ss("ut_status", "anteverted")
 
-        o_exp_col, o_r_col, o_l_col = st.columns(
-            [4, 1, 1], vertical_alignment="bottom")
-        with o_exp_col:
-            ovaries_open = organ_button("OVARIES", "OVARIES")
-        with o_r_col:
-            st.text_input("Rt Ovary (mm)", key="ov_r_size",
-                          placeholder="Rt Ovary",
-                          label_visibility="collapsed")
-        with o_l_col:
-            st.text_input("LT Ovary (mm)", key="ov_l_size",
-                          placeholder="LT Ovary",
-                          label_visibility="collapsed")
-        if ovaries_open:
+                if _uts == "operated":
+                    st.caption("Ovaries auto-fill as not visualized. "
+                               "Override below if needed.")
+
+                if _uts in ("anteverted", "partially_visualized"):
+                    st.checkbox("Retro-flexed", key="ut_retroflexed")
+                    st.checkbox("Gravid uterus", key="ut_gravid")
+                    if ss("ut_gravid", False):
+                        c_a, c_b, c_c, c_d = st.columns([1, 1, 1, 1])
+                        with c_a:
+                            st.radio("Type", ["CRL", "GS"], horizontal=True,
+                                     key="ut_gravid_type")
+                        with c_b:
+                            st.text_input("Length (mm)", key="ut_gravid_length")
+                        with c_c:
+                            st.text_input("GA weeks", key="ut_gravid_weeks")
+                        with c_d:
+                            st.text_input("GA days", key="ut_gravid_days")
+                    st.checkbox("Low-lying uterus", key="ut_low_lying")
+                    if ss("ut_low_lying", False):
+                        st.radio("Cervix",
+                                 ["partially", "not_visualized"],
+                                 horizontal=True,
+                                 format_func=lambda x: {
+                                     "partially": "Partially visualized",
+                                     "not_visualized": "Not visualized"}[x],
+                                 key="ut_cervix_vis")
+
+                if _uts in ("anteverted", "partially_visualized"):
+                    st.text_input("Uterus size (mm) — e.g. 92x33",
+                                  key="ut_size")
+
+                    st.radio("Myometrium",
+                             ["homogenous", "mildly_heterogeneous",
+                              "heterogeneous"],
+                             horizontal=True,
+                             format_func=lambda x: {
+                                 "homogenous": "Homogenous",
+                                 "mildly_heterogeneous": "Mildly heterogenous",
+                                 "heterogeneous": "Heterogenous"}[x],
+                             key="ut_myometrium")
+                    st.checkbox("Prominent vascular channels",
+                                key="ut_prom_vasc")
+
+                    # Adenomyosis
+                    st.checkbox("Adenomyosis features", key="ut_adenomyosis")
+                    if ss("ut_adenomyosis", False):
+                        st.caption("Tick features. ≥2 features → 'likely adenomyosis'; "
+                                   "1 feature → '? early adenomyosis'.")
+                        st.checkbox("Globular shape",
+                                    key="ut_aden_globular")
+                        st.checkbox("Asymmetrically bulky posterior myometrium",
+                                    key="ut_aden_asymm")
+                        st.checkbox("Venetian blind sign",
+                                    key="ut_aden_venetian")
+                        st.checkbox("Endo-myometrial interface indistinct",
+                                    key="ut_aden_iface_indistinct")
+                        st.checkbox("Interface barely perceptible at fundus",
+                                    key="ut_aden_iface_fundus")
+                        st.checkbox("Interface lost",
+                                    key="ut_aden_iface_lost")
+                        st.checkbox("Subendometrial cysts",
+                                    key="ut_aden_cysts")
+                        st.radio("Confidence", ["auto", "likely", "early"],
+                                 horizontal=True, key="ut_aden_conf")
+
+                    # Fibroid
+                    st.checkbox("Fibroid", key="ut_fibroid")
+                    if ss("ut_fibroid", False):
+                        st.radio("Count", ["single", "few", "multiple"],
+                                 horizontal=True, key="ut_fibroid_count",
+                                 format_func=lambda x: x.title())
+                        st.caption("Tick all applicable types.")
+                        st.checkbox("Intramural",
+                                    key="ut_fib_type_intramural")
+                        st.checkbox("Intramural > subserosal",
+                                    key="ut_fib_type_intra_subser")
+                        st.checkbox("Intramural > submucosal",
+                                    key="ut_fib_type_intra_submuc")
+                        st.checkbox("Submucosal > intramural",
+                                    key="ut_fib_type_submuc_intra")
+                        st.checkbox("Subserosal > intramural",
+                                    key="ut_fib_type_subser_intra")
+                        st.caption("Enter size and location per ticked type, "
+                                   "largest first.")
+                        _type_keys = [
+                            ("ut_fib_type_intramural", "intramural", "Intramural"),
+                            ("ut_fib_type_intra_subser", "intramural_subserosal",
+                             "Intramural > subserosal"),
+                            ("ut_fib_type_intra_submuc", "intramural_submucosal",
+                             "Intramural > submucosal"),
+                            ("ut_fib_type_submuc_intra", "submucosal_intramural",
+                             "Submucosal > intramural"),
+                            ("ut_fib_type_subser_intra", "subserosal_intramural",
+                             "Subserosal > intramural"),
+                        ]
+                        for k, _, lbl in _type_keys:
+                            if ss(k, False):
+                                c_a, c_b = st.columns([1, 2])
+                                with c_a:
+                                    st.text_input(f"{lbl} size",
+                                                  key=f"{k}_size")
+                                with c_b:
+                                    st.selectbox(
+                                        f"{lbl} location",
+                                        ["fundal", "anterior", "posterior"],
+                                        key=f"{k}_loc",
+                                        format_func=lambda x: x.title())
+                        _n_types = sum(1 for k, _, _ in _type_keys
+                                        if ss(k, False))
+                        if _n_types > 1:
+                            st.text_input("FIGO range (manual, e.g. 3-5)",
+                                          key="ut_fib_figo_manual")
+
+                    # Adenomyomas
+                    st.checkbox("Adenomyomas", key="ut_adenomyomas")
+                    if ss("ut_adenomyomas", False):
+                        st.radio("Count",
+                                 ["single", "couple", "few", "multiple"],
+                                 horizontal=True, key="ut_adenoma_count",
+                                 format_func=lambda x: x.title())
+                        st.radio("Echo",
+                                 ["hyperechoic", "hypoechoic", "hypo-isoechoic"],
+                                 horizontal=True, key="ut_adenoma_echo",
+                                 format_func=lambda x: x.title())
+                        st.radio("Location",
+                                 ["anterior", "posterior", "fundal"],
+                                 horizontal=True, key="ut_adenoma_loc",
+                                 format_func=lambda x: x.title())
+                        if ss("ut_adenoma_count", "couple") == "single":
+                            st.text_input("Size (mm, e.g. 15x12)",
+                                          key="ut_adenoma_size")
+                        st.checkbox("Avascular (default on)",
+                                    value=True, key="ut_adenoma_avascular")
+
+                    # Endometrium
+                    st.text_input("Endometrial thickness (mm)",
+                                  key="ut_endo_mm")
+                    st.radio("Endometrial collection",
+                             ["none", "mild", "moderate"],
+                             horizontal=True, key="ut_endo_coll",
+                             format_func=lambda x: x.title())
+                    if ss("ut_endo_coll", "none") in ("mild", "moderate"):
+                        st.checkbox("Heterogeneous collection",
+                                    key="ut_endo_het")
+
+                    # RPOC
+                    st.checkbox("RPOC structure", key="ut_rpoc")
+                    if ss("ut_rpoc", False):
+                        st.text_input("Size (mm, e.g. 15x12)", key="ut_rpoc_size")
+                        st.radio("Echo", ["hypo", "hyper"], horizontal=True,
+                                 format_func=lambda x: {
+                                     "hypo": "Hypo-echoic",
+                                     "hyper": "Hyper-echoic"}[x],
+                                 key="ut_rpoc_echo")
+
+                    # Cervix
+                    st.checkbox("Elongated cervix", key="ut_cx_elong")
+                    st.checkbox("Bulky cervix", key="ut_cx_bulky")
+                    if ss("ut_cx_bulky", False):
+                        st.text_input("Bulky cervix size (mm)",
+                                      key="ut_cx_bulky_size")
+                    st.radio("Nabothian cysts",
+                             ["none", "one", "few", "multiple"],
+                             horizontal=True, key="ut_nabothian",
+                             format_func=lambda x: x.title())
+                    st.radio("Cervix collection",
+                             ["none", "mild", "moderate"],
+                             horizontal=True, key="ut_cx_coll",
+                             format_func=lambda x: x.title())
+
+                    # Negative lines
+                    st.checkbox("Add: no RPOC/pregnancy line",
+                                key="ut_neg_rpoc")
+                    st.checkbox("Add: no focal SOL/RPOC line",
+                                key="ut_neg_sol")
+
+        ov_open = organ_button("OVARIES", "OVARIES")
+        if ov_open:
             with st.container(border=True):
                 c1, c2 = st.columns(2)
                 with c1:
                     st.markdown("**Right Ovary**")
                     st.radio("Status", ["normal", "cyst", "not_visualized"],
                              horizontal=True, key="ov_r_status")
+                    st.text_input("RO size (mm)", key="ov_r_size")
                 with c2:
                     st.markdown("**Left Ovary**")
                     st.radio("Status", ["normal", "cyst", "not_visualized"],
                              horizontal=True, key="ov_l_status")
+                    st.text_input("LO size (mm)", key="ov_l_size")
+    else:
+        pr_open = organ_button("PROSTATE", "PROSTATE")
+        if pr_open:
+            with st.container(border=True):
+                st.checkbox("Not visualized", key="pr_not_visualized")
+                if not ss("pr_not_visualized", False):
+                    st.checkbox("Partially visualized",
+                                key="pr_partial_visualization")
+                    if not ss("pr_partial_visualization", False):
+                        st.text_input("Prostate volume (cc)  —  auto-graded",
+                                      key="pr_cc")
+                        _cc_val = ss("pr_cc", "")
+                        if _cc_val:
+                            _band = prostate_band_from_volume(_cc_val)
+                            if _band:
+                                st.info(f"→ Auto-grade: **{_band[1]}**")
+                        st.checkbox("Median lobe hypertrophy",
+                                    key="pr_median_lobe")
+                        if ss("pr_median_lobe", False):
+                            st.text_input("Median lobe size (mm)",
+                                          key="pr_median_lobe_size")
+                            st.checkbox("Impinging upon bladder outlet",
+                                        key="pr_median_lobe_boo")
+                        st.checkbox("Prostatic cyst", key="pr_cyst")
+                        if ss("pr_cyst", False):
+                            c_a, c_b, c_c = st.columns(3)
+                            with c_a:
+                                st.text_input("Cyst size (mm, e.g. 12x10)",
+                                              key="pr_cyst_size")
+                            with c_b:
+                                st.checkbox("Left hemi-prostate",
+                                            key="pr_cyst_left_hemi")
+                            with c_c:
+                                st.checkbox("Right hemi-prostate",
+                                            key="pr_cyst_right_hemi")
 
     # ------- BOWEL -------
     bowel_open = organ_button("BOWEL / FREE FLUID", "BOWEL / FREE FLUID")
@@ -4101,6 +4963,7 @@ data = new_report(p_sex)
 data["patient"] = {"name": p_name, "age": p_age, "sex": p_sex,
                    "date": p_date, "referred_by": p_ref}
 
+# ---- Liver ----
 _lf = ss("liver_focal", "none")
 _abscess_lesions = []
 if _lf == "abscess":
@@ -4355,8 +5218,119 @@ data["urinary_bladder"].update({
                                 or data["kidneys"]["left"]["ureter_not_traced"]),
 })
 
-# ---- PROSTATE or UTERUS/OVARIES ----
-if p_sex == "M":
+# ---- UTERUS (F) or PROSTATE (M) ----
+if p_sex == "F":
+    # Uterus
+    ut_status = ss("ut_status", "anteverted")
+    adeno_feats = []
+    if ss("ut_aden_globular", False):
+        adeno_feats.append("globular_shape")
+    if ss("ut_aden_asymm", False):
+        adeno_feats.append("asymmetric_posterior")
+    if ss("ut_aden_venetian", False):
+        adeno_feats.append("venetian_blind_sign")
+    if ss("ut_aden_iface_indistinct", False):
+        adeno_feats.append("interface_indistinct")
+    if ss("ut_aden_iface_fundus", False):
+        adeno_feats.append("interface_barely_perceptible_fundus")
+    if ss("ut_aden_iface_lost", False):
+        adeno_feats.append("interface_lost")
+    if ss("ut_aden_cysts", False):
+        adeno_feats.append("subendometrial_cysts")
+
+    fib_types = []
+    fib_lesions = []
+    _fib_type_keys = [
+        ("ut_fib_type_intramural", "intramural", "ut_fib_type_intramural"),
+        ("ut_fib_type_intra_subser", "intramural_subserosal",
+         "ut_fib_type_intra_subser"),
+        ("ut_fib_type_intra_submuc", "intramural_submucosal",
+         "ut_fib_type_intra_submuc"),
+        ("ut_fib_type_submuc_intra", "submucosal_intramural",
+         "ut_fib_type_submuc_intra"),
+        ("ut_fib_type_subser_intra", "subserosal_intramural",
+         "ut_fib_type_subser_intra"),
+    ]
+    for k, type_key, prefix in _fib_type_keys:
+        if ss(k, False):
+            fib_types.append(type_key)
+            fib_lesions.append({
+                "location": ss(f"{prefix}_loc", "fundal"),
+                "size": ss(f"{prefix}_size", ""),
+            })
+
+    data["uterus"].update({
+        "status": ut_status,
+        "size": ss("ut_size", ""),
+        "retroflexed": bool(ss("ut_retroflexed", False)),
+        "gravid": bool(ss("ut_gravid", False)),
+        "gravid_type": ss("ut_gravid_type", "CRL"),
+        "gravid_length": ss("ut_gravid_length", ""),
+        "gravid_weeks": ss("ut_gravid_weeks", ""),
+        "gravid_days": ss("ut_gravid_days", ""),
+        "low_lying": bool(ss("ut_low_lying", False)),
+        "cervix_visualized": ss("ut_cervix_vis", "partially"),
+        "myometrium": ss("ut_myometrium", "homogenous"),
+        "prominent_vascular_channels": bool(ss("ut_prom_vasc", False)),
+        "endometrial_thickness_mm": ss("ut_endo_mm", ""),
+        "endometrial_collection": ss("ut_endo_coll", "none"),
+        "endometrial_collection_het": bool(ss("ut_endo_het", False)),
+        "rpoc": bool(ss("ut_rpoc", False)),
+        "rpoc_size": ss("ut_rpoc_size", ""),
+        "rpoc_echo": ss("ut_rpoc_echo", "hypo"),
+        "cervix_elongated": bool(ss("ut_cx_elong", False)),
+        "cervix_bulky": bool(ss("ut_cx_bulky", False)),
+        "cervix_bulky_size_mm": ss("ut_cx_bulky_size", ""),
+        "nabothian": ss("ut_nabothian", "none"),
+        "cervix_collection": ss("ut_cx_coll", "none"),
+        "fibroid": bool(ss("ut_fibroid", False)),
+        "fibroid_count": ss("ut_fibroid_count", "single"),
+        "fibroid_types": fib_types,
+        "fibroid_lesions": fib_lesions,
+        "fibroid_figo_manual": ss("ut_fib_figo_manual", ""),
+        "adenomyosis": bool(ss("ut_adenomyosis", False)),
+        "adenomyosis_features": adeno_feats,
+        "adenomyosis_confidence": ss("ut_aden_conf", "auto"),
+        "adenomyomas": bool(ss("ut_adenomyomas", False)),
+        "adenomyomas_count": ss("ut_adenoma_count", "couple"),
+        "adenomyomas_echo": ss("ut_adenoma_echo", "hyperechoic"),
+        "adenomyomas_location": ss("ut_adenoma_loc", "posterior"),
+        "adenomyomas_size": ss("ut_adenoma_size", ""),
+        "adenomyomas_avascular": bool(ss("ut_adenoma_avascular", True)),
+        "neg_rpoc": bool(ss("ut_neg_rpoc", False)),
+        "neg_sol": bool(ss("ut_neg_sol", False)),
+    })
+
+    # Ovaries
+    uterus_operated = (ut_status == "operated")
+    _age_y = parse_age(p_age)
+    ov_r_status = ss("ov_r_status", "normal")
+    ov_l_status = ss("ov_l_status", "normal")
+    if uterus_operated:
+        if ov_r_status == "normal":
+            ov_r_status = "not_visualized"
+        if ov_l_status == "normal":
+            ov_l_status = "not_visualized"
+
+    data["ovaries"].update({
+        "right_status": ov_r_status,
+        "right_size": ss("ov_r_size", ""),
+        "left_status": ov_l_status,
+        "left_size": ss("ov_l_size", ""),
+    })
+else:
+    # Prostate
+    ub_empty = (data["urinary_bladder"]["status"] in ("empty",
+                                                       "partially_empty"))
+    pr_not_vis = bool(ss("pr_not_visualized", False))
+    pr_partial = bool(ss("pr_partial_visualization", False))
+    if ub_empty and not pr_not_vis and not pr_partial:
+        # Auto-fill partial visualization for empty UB
+        if data["urinary_bladder"]["status"] == "empty":
+            pr_not_vis = True
+        else:
+            pr_partial = True
+
     data["prostate"].update({
         "size_cc": ss("pr_cc", ""),
         "median_lobe": bool(ss("pr_median_lobe", False)),
@@ -4366,19 +5340,8 @@ if p_sex == "M":
         "cyst_size": ss("pr_cyst_size", ""),
         "cyst_left_hemi": bool(ss("pr_cyst_left_hemi", False)),
         "cyst_right_hemi": bool(ss("pr_cyst_right_hemi", False)),
-        "not_visualized": bool(ss("pr_not_visualized", False)),
-    })
-else:
-    data["uterus"].update({
-        "status": ss("ut_status", "anteverted"),
-        "size": ss("ut_size", ""),
-        "endometrial_thickness_mm": ss("ut_et", ""),
-    })
-    data["ovaries"].update({
-        "right_status": ss("ov_r_status", "normal"),
-        "right_size": ss("ov_r_size", ""),
-        "left_status": ss("ov_l_status", "normal"),
-        "left_size": ss("ov_l_size", ""),
+        "not_visualized": pr_not_vis,
+        "partial_visualization": pr_partial,
     })
 
 data["bowel"].update({
@@ -4426,6 +5389,7 @@ def render_preview_findings(data):
     sex, age = p["sex"], p["age"]
     age_years = parse_age(age)
     is_ped = age_years is not None and age_years < 18
+    is_ped_female = (sex == "F" and age_years is not None and age_years < 14)
     p_status = data["pancreas"].get("status", "normal")
     spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
     ub_status = data["urinary_bladder"].get("status") or "adequately_distended"
@@ -4438,11 +5402,14 @@ def render_preview_findings(data):
             kidneys_sentence(data["kidneys"], ub_status=ub_status, age_text=age),
             urinary_bladder_sentence(data["urinary_bladder"])]
     if sex == "F":
-        secs.append(uterus_sentence(data["uterus"], pediatric=is_ped))
-        if not is_ped:
-            secs.append(ovaries_sentence(data["ovaries"]))
+        secs.append(uterus_sentence(data["uterus"], pediatric=is_ped_female,
+                                     age_years=age_years))
+        uterus_operated = data["uterus"].get("status") == "operated"
+        secs.append(ovaries_sentence(data["ovaries"], age_years=age_years,
+                                      uterus_operated=uterus_operated))
     else:
-        secs.append(prostate_sentence(data["prostate"], pediatric=is_ped))
+        secs.append(prostate_sentence(data["prostate"], pediatric=is_ped,
+                                       ub_status=ub_status))
     secs.append(bowel_sentence(data["bowel"], sex, pancreas_status=p_status))
     if data["appendix"]["status"] != "not_assessed":
         secs.append(appendix_sentence(data["appendix"]))
