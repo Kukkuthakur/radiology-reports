@@ -1,39 +1,43 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v3.0.0-stable
+v3.1.0-stable
 
-v3.0.0:
-  - Liver: added "raised" echotexture (mirrors "low" in body; no impression line).
-  - Uterus "not visualized" bug fix: uterus and ovaries render independently.
-  - Body text: "MM" now renders as lowercase "mm"; impressions keep "MM" uppercase.
-  - Ovary module (partial): per-side findings (simple cyst, hemorrhagic cyst,
-    hemorrhagic follicle, follicular cyst), auto "large" prefix at >= 50 mm,
-    single/few/multiple count, bilateral grouping in impression, volume (cc) field,
-    PCOS module (full spec: bulky >= 10 cc, feature 2/3/4 with sub-radios,
-    auto outcome conclusive/partial/not_conclusive), manual advices checkboxes.
-  - TODO(v3.x): peri-pancreatic + peri-portal LN, hydrosalpinx, adnexal SOL
-    obscuring ovary, AFC, auto-triggered advices, negative-line L-103,
-    mild free fluid in POD, gall-bladder wall-thickening types, renal additions
-    (horse-shoe kidney, double moeity, cortical cyst mural calcification),
-    bowel patterns (concentric thickening, intussusception, colitis),
-    IUCD in-situ, isthmocele, endometrial polyp, cervical collection,
-    ectopic pregnancy, OBS/PELVIS + Pelvis modes (separate app),
-    follicular-monitoring mode (out of scope).
+v3.1.0:
+  - Issue #1: findings no longer lost from body when an organ is re-expanded
+    (sticky mirror + explicit cache of assembled per-organ widget state).
+  - Issue #2: liver raised/coarse/low echotexture now appears in impression
+    (isolated or continuing the hepatomegaly line). Exclusivity: only the
+    chosen descriptor is emitted.
+  - Issue #3: gall-bladder "empty" option and dead code removed.
+  - Issue #4: liver drops the "IHBR normal" clause when CBD IHBR is dilated;
+    CBD alone carries the IHBR statement.
+  - Issue #5: trailing "seen" dropped from pancreatitis impression lines only.
+  - Issue #6: spleen impression merges splenomegaly + portal vein + foci into
+    one line using "WITH" then "&". PV line always emitted with splenomegaly
+    (parens only if PV size given). Tails:
+      * PV normal + foci -> "?OLD GRANULOMATOUS ETIOLOGY."
+      * PV prominent/dilated, no foci -> "?PORTAL HYPERTENSION."
+      * PV prominent/dilated + foci -> "FEATURES SUGGESTIVE OF PORTAL
+        HYPERTENSION WITH ?OLD GRANULOMATOUS ETIOLOGY."
+  - Issue #7: kidney body connector swaps ", outline and" for "& outline with"
+    whenever echogenicity is other than normal.
+  - Issue #8: UB pre-void field always shown; post-void field shown once
+    pre-void filled. Body shows PRE-VOID VOLUME -- {cc}CC and POST VOID
+    RESIDUE - (blank) when post-void empty. Impression emits:
+      * OVERDISTENDED URINARY BLADDER(PRE-VOID VOLUME={cc}CC)
+      * URINARY BLADDER PRE-VOID VOLUME({cc}CC)
+      * INSIGNIFICANT POST-VOID RESIDUE (standalone) or folded into
+        prostatomegaly line as "…, HOWEVER THE POST-VOID RESIDUE IS
+        INSIGNIFICANT."
+  - Issue #9: UB settled debris independent tick alongside free-floating.
+    Combined phrasing: "settled debris in the dependent part of the urinary
+    bladder lumen along with free floating sedimentation". Wall thickening
+    tail "-- ?Chronic Cystitis" (or "-- ?Acute on Chronic Cystitis" when both
+    sedimentation types are present) + Adv- Urine R/M Correlation.
+  - Global rule: no space after "?" anywhere in the report.
 
-v2.1.0:
-  - Uterus module: size auto-band (bulky/moderately/grossly), myometrium,
-    endometrium with auto-descriptors and collection logic, RPOC with
-    size-based descriptor, cervix findings, fibroid (5 types with per-lesion
-    location+size, manual FIGO for multi-type), adenomyosis (5 features,
-    likely/early confidence), adenomyomas (count/echo/location/avascular),
-    low-lying prolapse, gravid, operated, retroflexed, not visualized,
-    paediatric.
-  - Auto-fill: operated uterus -> ovaries not visualized;
-    age >= 48 -> likely atrophic (unless operated);
-    UB empty/partially empty -> prostate status.
-  - Prostatic cyst parenthetical fix; median lobe + cyst combined impression.
-  - Page formatting: paragraph space_after = 0; visual gaps via explicit
-    blank paragraphs only.
+v3.0.0: (see git history)
+v2.1.0: (see git history)
 
 Frozen rules:
 - Impression text ALL CAPS except:
@@ -44,6 +48,7 @@ Frozen rules:
       inside parentheses.
 - Body findings bold, italic, mixed case, unless an explicit override is given.
 - Body text uses lowercase "mm"; impressions use uppercase "MM".
+- No space after "?" anywhere.
 """
 
 import io
@@ -100,6 +105,11 @@ IMPRESSION_REST_UNREMARKABLE = "REST OF THE ABDOMEN SCAN IS UNREMARKABLE."
 # ============================================================
 # SESSION-STATE MIRROR
 # ============================================================
+# Streamlit prunes widget-owned session keys when the owning widget is not
+# rendered on a rerun. To guard against that, we mirror every widget value
+# into a plain (non-widget) session key on every read. Plain keys are never
+# pruned. v3.1.0 additionally caches per-organ widget state so collapsed
+# organs never lose their values across reruns (Issue #1).
 
 def _mirror(widget_key):
     mirror_key = f"_mirror_{widget_key}"
@@ -112,6 +122,13 @@ def _mirror(widget_key):
 def ss(widget_key, default):
     v = _mirror(widget_key)
     return v if v is not None else default
+
+
+def _q(text):
+    """Global rule: no space after '?' anywhere in the report."""
+    if not isinstance(text, str):
+        return text
+    return re.sub(r"\?\s+", "?", text)
 
 
 # ============================================================
@@ -163,7 +180,6 @@ def _first_number(text):
 
 
 def _lower_mm_in_text(t):
-    """Convert 'MM' to 'mm' inside a body-text string (case-insensitive)."""
     if not isinstance(t, str):
         return t
     return re.sub(r"\bMM\b", "mm", t)
@@ -531,8 +547,8 @@ ADENOMYOSIS_FEATURES = [
 # OVARY CONSTANTS
 # ============================================================
 
-OVARY_LARGE_MM = 50          # >= 50 mm -> "large"
-OVARY_BULKY_CC = 10.0        # >= 10 cc -> bulky
+OVARY_LARGE_MM = 50
+OVARY_BULKY_CC = 10.0
 
 OVARY_CYST_TYPES = {
     "simple_cyst": "simple cyst",
@@ -646,9 +662,14 @@ def _new_kidney_side():
 def _new_urinary_bladder():
     return {
         "status": None, "catheterized": False, "pre_void_cc": "",
-        "post_void_cc": "", "mass_calculus": False, "sedimentation": "none",
+        "post_void_cc": "", "mass_calculus": False,
+        "sedimentation_free_floating": False,
+        "sedimentation_settled_debris": False,
+        "sedimentation_trace": False,
+        "sedimentation_extensive": False,
         "uti_suspected": False, "wall_thickening": False,
-        "wall_irregular": False, "wall_mm": "", "force_empty_suboptimal": False,
+        "wall_irregular": False, "wall_mm": "",
+        "force_empty_suboptimal": False,
     }
 
 
@@ -699,15 +720,11 @@ def _new_uterus():
 
 
 def _new_ovary_side():
-    """Per-side ovary data.
-
-    findings: list of {type, size_mm, count} where type is one of OVARY_CYST_TYPES.
-    """
     return {
-        "status": "normal",      # normal | not_visualized
-        "size_text": "",         # e.g. 42x26
-        "volume_cc": "",         # separate numeric volume
-        "findings": [],          # list of dicts
+        "status": "normal",
+        "size_text": "",
+        "volume_cc": "",
+        "findings": [],
     }
 
 
@@ -716,13 +733,13 @@ def _new_ovaries():
         "right": _new_ovary_side(),
         "left": _new_ovary_side(),
         "pcos": False,
-        "pcos_feature2": False,       # multiple small follicles peripheral
-        "pcos_feature3": False,       # central echogenic stroma
-        "pcos_feature4": False,       # variable-sized variant
+        "pcos_feature2": False,
+        "pcos_feature3": False,
+        "pcos_feature4": False,
         "pcos_feature4_variable": False,
         "pcos_feature4_peripheral": False,
         "pcos_feature4_random": False,
-        "pcos_outcome": "",           # derived
+        "pcos_outcome": "",
         "afc": "normal",
     }
 
@@ -801,9 +818,9 @@ def new_report(sex="F"):
 # ============================================================
 
 def seg(text, bold=False, underline=False, italic=None):
-    # Enforce lowercase mm in body text.
     if isinstance(text, str):
         text = _lower_mm_in_text(text)
+        text = _q(text)
     return (text, bold, underline, italic)
 
 
@@ -867,7 +884,7 @@ def liver_focal_sentence(d):
     return []
 
 
-def liver_sentence(d, sex, age, spleen_enlarged=False):
+def liver_sentence(d, sex, age, spleen_enlarged=False, cbd_ihbr="normal"):
     size = d["size_mm"] or "___"
     desc = d["size_descriptor"]
     outline = d.get("outline", "normal")
@@ -926,10 +943,13 @@ def liver_sentence(d, sex, age, spleen_enlarged=False):
 
     s.extend(liver_focal_sentence(d))
 
-    if d["ihbr"] == "normal":
-        s.append(seg(" Intra hepatic biliary radicals are normal."))
-    else:
-        s += [seg(" Intra hepatic biliary radicals are "), seg("dilated", True), seg(".")]
+    # Issue #4: liver drops IHBR clause when CBD IHBR is non-normal.
+    if cbd_ihbr == "normal":
+        if d["ihbr"] == "normal":
+            s.append(seg(" Intra hepatic biliary radicals are normal."))
+        else:
+            s += [seg(" Intra hepatic biliary radicals are "),
+                  seg("dilated", True), seg(".")]
 
     if not spleen_enlarged:
         if d["portal_vein"] == "normal":
@@ -958,12 +978,7 @@ def gall_bladder_sentence(d):
         s.append(seg(" is partially contracted (suboptimal wall visualization)."))
     elif status == "contracted":
         s.append(seg(" is contracted (suboptimal wall visualization)."))
-    elif status == "empty":
-        s.append(seg(" is empty."))
-    elif status == "operated":
-        s += [seg(" is operated. "), seg("GB FOSSA", True, True),
-              seg(" is unremarkable.")]
-        return s
+    # Issue #3: "empty" option removed.
 
     if status != "contracted":
         if d.get("wall_thickened") and d.get("wall_mm"):
@@ -1653,6 +1668,22 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
     echo_lat = d.get("cortical_echogenicity_laterality", "bilateral")
     cmd = d.get("cortical_cmd", "preserved")
 
+    # Issue #7: connector swaps when echo is non-normal.
+    def _normal_echo_segs(bracket, both=False):
+        """Return segs for a kidney line with normal echogenicity."""
+        out = []
+        if both:
+            out.append(seg("BOTH KIDNEYS", True, True))
+            if bracket:
+                out.append(seg(f" are normal in size{bracket}, outline and "))
+            else:
+                out.append(seg(" are normal in size, outline and "))
+            out.append(seg("echogenicity. Corticomedullary differentiation is "
+                           "maintained."))
+        else:
+            return None
+        return out
+
     if not r_present or not l_present:
         for side_key, side in (("right", r), ("left", l)):
             if side["status"] == "absent_agenesis":
@@ -1678,24 +1709,29 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
                 if echo_raised and echo_lat in (side_key, "bilateral"):
                     grade_word = ECHO_GRADE_WORD[echo_grade]
                     side_word = "" if echo_lat == "bilateral" else f"{side_key} "
-                    s.append(seg(f", with {grade_word} {side_word}renal cortical "
-                                 f"echogenicity & {CMD_WORD[cmd]} corticomedullary "
-                                 f"differentiation.", True))
+                    s.append(seg(f" & outline with {grade_word} {side_word}renal "
+                                 f"cortical echogenicity with {CMD_WORD[cmd]} "
+                                 f"corticomedullary differentiation.", True))
                 else:
                     s.append(seg(", however with normal outline and echogenicity. "
                                  "Corticomedullary differentiation is maintained."))
             else:
-                if bracket:
-                    s.append(seg(f" is normal in size{bracket}, outline and "))
-                else:
-                    s.append(seg(" is normal in size, outline and "))
                 if echo_raised and echo_lat in (side_key, "bilateral"):
+                    if bracket:
+                        s.append(seg(f" is normal in size{bracket} & outline with "))
+                    else:
+                        s.append(seg(" is normal in size & outline with "))
                     grade_word = ECHO_GRADE_WORD[echo_grade]
                     side_word = "" if echo_lat == "bilateral" else f"{side_key} "
                     s += [seg(f"{grade_word} {side_word}renal cortical echogenicity",
                               True),
-                          seg(f" & {CMD_WORD[cmd]} corticomedullary differentiation.")]
+                          seg(f" with {CMD_WORD[cmd]} corticomedullary "
+                              f"differentiation.")]
                 else:
+                    if bracket:
+                        s.append(seg(f" is normal in size{bracket}, outline and "))
+                    else:
+                        s.append(seg(" is normal in size, outline and "))
                     s.append(seg("echogenicity. Corticomedullary differentiation "
                                  "is maintained."))
             s.extend(_renal_calculi_body(side, side_key))
@@ -1742,24 +1778,29 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
                 if echo_on_this:
                     grade_word = ECHO_GRADE_WORD[echo_grade]
                     side_word = "" if echo_lat == "bilateral" else f"{side_key} "
-                    s.append(seg(f", with {grade_word} {side_word}renal cortical "
-                                 f"echogenicity & {CMD_WORD[cmd]} corticomedullary "
-                                 f"differentiation.", True))
+                    s.append(seg(f" & outline with {grade_word} {side_word}renal "
+                                 f"cortical echogenicity with {CMD_WORD[cmd]} "
+                                 f"corticomedullary differentiation.", True))
                 else:
                     s.append(seg(", however with normal outline and echogenicity. "
                                  "Corticomedullary differentiation is maintained."))
             else:
-                if bracket:
-                    s.append(seg(f" is normal in size{bracket}, outline and "))
-                else:
-                    s.append(seg(" is normal in size, outline and "))
                 if echo_on_this:
+                    if bracket:
+                        s.append(seg(f" is normal in size{bracket} & outline with "))
+                    else:
+                        s.append(seg(" is normal in size & outline with "))
                     grade_word = ECHO_GRADE_WORD[echo_grade]
                     side_word = "" if echo_lat == "bilateral" else f"{side_key} "
                     s += [seg(f"{grade_word} {side_word}renal cortical echogenicity",
                               True),
-                          seg(f" & {CMD_WORD[cmd]} corticomedullary differentiation.")]
+                          seg(f" with {CMD_WORD[cmd]} corticomedullary "
+                              f"differentiation.")]
                 else:
+                    if bracket:
+                        s.append(seg(f" is normal in size{bracket}, outline and "))
+                    else:
+                        s.append(seg(" is normal in size, outline and "))
                     s.append(seg("echogenicity. Corticomedullary differentiation "
                                  "is maintained."))
             s.extend(_renal_calculi_body(side, side_key))
@@ -1772,17 +1813,20 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
 
     s.append(seg("BOTH KIDNEYS", True, True))
     bracket = _size_bracket(d, (True, True))
-    if bracket:
-        s.append(seg(f" are normal in size{bracket}, outline and "))
-    else:
-        s.append(seg(" are normal in size, outline and "))
-
     if echo_raised:
+        if bracket:
+            s.append(seg(f" are normal in size{bracket} & outline with "))
+        else:
+            s.append(seg(" are normal in size & outline with "))
         grade_word = ECHO_GRADE_WORD[echo_grade]
         side_word = "" if echo_lat == "bilateral" else f"{echo_lat} "
         s += [seg(f"{grade_word} {side_word}renal cortical echogenicity", True),
-              seg(f" & {CMD_WORD[cmd]} corticomedullary differentiation.")]
+              seg(f" with {CMD_WORD[cmd]} corticomedullary differentiation.")]
     else:
+        if bracket:
+            s.append(seg(f" are normal in size{bracket}, outline and "))
+        else:
+            s.append(seg(" are normal in size, outline and "))
         s.append(seg("echogenicity. Corticomedullary differentiation is maintained."))
 
     bilateral_uc = (d.get("bilateral_ureter_calculi", False)
@@ -1813,12 +1857,36 @@ def _ub_suboptimal_tail():
     return [seg(" "), seg("(suboptimal pelvic assessment)", bold=False, italic=True)]
 
 
+def _ub_sedimentation_body(d):
+    """Return list of segs for sedimentation lines."""
+    out = []
+    ff = bool(d.get("sedimentation_free_floating", False))
+    sd = bool(d.get("sedimentation_settled_debris", False))
+    trace = bool(d.get("sedimentation_trace", False))
+    extensive = bool(d.get("sedimentation_extensive", False))
+
+    if trace:
+        out += [seg(" "), seg("Trace sedimentation seen in the UB lumen.", True)]
+    if ff and sd:
+        out += [seg(" "), seg("Settled debris in the dependent part of the UB "
+                              "lumen along with free floating sedimentation.", True)]
+    elif ff:
+        out += [seg(" "), seg("Free floating sedimentation in the UB lumen.", True)]
+    elif sd:
+        out += [seg(" "), seg("Settled debris in the dependent part of the UB "
+                              "lumen.", True)]
+    if extensive:
+        out += [seg(" "), seg("Extensive sedimentation seen in the UB lumen.", True)]
+    return out
+
+
 def urinary_bladder_sentence(d):
     forced = d.get("force_empty_suboptimal", False)
     s = [seg("URINARY BLADDER", True, True)]
     status = d.get("status")
     cath = d.get("catheterized", False)
     pre = str(d.get("pre_void_cc", "") or "").strip()
+    post = str(d.get("post_void_cc", "") or "").strip()
 
     if forced:
         s.append(seg(" is empty"))
@@ -1870,35 +1938,19 @@ def urinary_bladder_sentence(d):
         frag += f"urinary bladder wall thickening upto {d['wall_mm']}mm is seen."
         s += [seg(" "), seg(frag, True)]
 
-    sed = d.get("sedimentation", "none")
-    if sed == "trace":
-        s += [seg(" "), seg("Trace sedimentation seen in the UB lumen.", True)]
-    elif sed == "free_floating":
-        s += [seg(" "), seg("Free floating sedimentation seen in the UB lumen.", True)]
-    elif sed == "significant_free_floating":
-        s += [seg(" "), seg("Significant free floating sedimentation seen in the "
-                             "UB lumen.", True)]
-    elif sed == "extensive":
-        s += [seg(" "), seg("Extensive sedimentation seen in the UB lumen.", True)]
+    s.extend(_ub_sedimentation_body(d))
 
-    post = str(d.get("post_void_cc", "") or "").strip()
-    if pre and post:
+    # Issue #8: pre-void always shown if entered. Post-void shown blank
+    # if pre-void entered and post-void blank.
+    if pre:
         s.append(seg("\n"))
-        s.append(seg(f"PRE-VOID VOLUME -- {pre}CC", True))
-        pvr_note = _pvr_note(d)
+        s.append(seg(f"URINARY BLADDER PRE-VOID VOLUME({pre}CC)", True))
         s.append(seg("\n"))
-        s.append(seg(f"POST-VOID RESIDUE -- {post}CC({pvr_note})", True))
+        if post:
+            s.append(seg(f"POST-VOID RESIDUE -- {post}CC", True))
+        else:
+            s.append(seg("POST VOID RESIDUE - ", True))
     return s
-
-
-def _pvr_note(d):
-    pre = _parse_mm_value(d.get("pre_void_cc", ""))
-    post = _parse_mm_value(d.get("post_void_cc", ""))
-    if pre and post and pre > 0:
-        pct = post / pre * 100.0
-        if pct >= 15.0:
-            return "SIGNIFICANT"
-    return ""
 
 
 def _pvr_pct(d):
@@ -1909,29 +1961,100 @@ def _pvr_pct(d):
     return None
 
 
-def _ub_impression_line(d):
-    sed = d.get("sedimentation", "none")
-    sed_word = {
-        "trace": "TRACE SEDIMENTATION",
-        "free_floating": "FREE FLOATING SEDIMENTATION",
-        "significant_free_floating": "SIGNIFICANT FREE FLOATING SEDIMENTATION",
-        "extensive": "EXTENSIVE SEDIMENTATION",
-    }.get(sed)
-    if not sed_word:
-        return None
-    uti = d.get("uti_suspected", False)
-    if uti:
-        return (f"{sed_word} SEEN IN THE UB LUMEN - ?UTI. "
-                f"Adv- Urine R/M Correlation.")
-    return f"{sed_word} SEEN IN THE UB LUMEN. Adv- Urine R/M Correlation."
+def _pvr_significant(d):
+    pct = _pvr_pct(d)
+    if pct is None:
+        return False
+    return pct >= 15.0
 
 
-def _ub_wall_impression_fragment(d):
-    if not (d.get("wall_thickening") and d.get("wall_mm")):
-        return None
-    irregular = d.get("wall_irregular", False)
-    prefix = "IRREGULAR " if irregular else ""
-    return f"{prefix}URINARY BLADDER WALL THICKENING UPTO {d['wall_mm']}MM IS PRESENT"
+def _pvr_insignificant(d):
+    pct = _pvr_pct(d)
+    if pct is None:
+        return False
+    return pct < 15.0
+
+
+def _ub_impression_lines(d, prostate_line=None):
+    """Return list of impression lines for UB."""
+    out = []
+    ff = bool(d.get("sedimentation_free_floating", False))
+    sd = bool(d.get("sedimentation_settled_debris", False))
+    trace = bool(d.get("sedimentation_trace", False))
+    extensive = bool(d.get("sedimentation_extensive", False))
+    uti = bool(d.get("uti_suspected", False))
+    wall = d.get("wall_thickening") and d.get("wall_mm")
+
+    sed_bits = []
+    if trace:
+        sed_bits.append("TRACE SEDIMENTATION")
+    if ff and sd:
+        sed_bits.append("SETTLED DEBRIS IN THE DEPENDENT PART OF THE URINARY "
+                        "BLADDER LUMEN ALONG WITH FREE FLOATING SEDIMENTATION")
+    elif ff:
+        sed_bits.append("FREE FLOATING SEDIMENTATION")
+    elif sd:
+        sed_bits.append("SETTLED DEBRIS IN THE DEPENDENT PART OF THE URINARY "
+                        "BLADDER LUMEN")
+    if extensive:
+        sed_bits.append("EXTENSIVE SEDIMENTATION")
+
+    # Wall thickening line (takes priority — carries the cystitis tail).
+    if wall:
+        try:
+            w = float(d["wall_mm"])
+        except (ValueError, TypeError):
+            w = 0
+        prefix = "MILD" if w <= 8 else "SIGNIFICANT"
+        irregular = "IRREGULAR " if d.get("wall_irregular", False) else ""
+        base = (f"{prefix} {irregular}URINARY BLADDER WALL THICKENING"
+                f"(UPTO {d['wall_mm']}MM)")
+        if ff and sd:
+            tail = "-- ?ACUTE ON CHRONIC CYSTITIS"
+        else:
+            tail = "-- ?CHRONIC CYSTITIS"
+        body = base
+        if sed_bits:
+            body += " WITH " + " & ".join(sed_bits) + " IN THE UB LUMEN"
+        body += f" {tail}"
+        out.append(body + " Adv- Urine R/M Correlation.")
+        return out
+
+    # Sedimentation only (no wall thickening).
+    if sed_bits:
+        sed_line = (" ".join(sed_bits) + " IN THE UB LUMEN")
+        if uti:
+            sed_line += " - ?UTI"
+        out.append(sed_line + ". Adv- Urine R/M Correlation.")
+
+    # Pre-void / post-void lines.
+    pre = str(d.get("pre_void_cc", "") or "").strip()
+    post = str(d.get("post_void_cc", "") or "").strip()
+    status = d.get("status")
+
+    if status == "over" and pre:
+        out.append(f"OVERDISTENDED URINARY BLADDER(PRE-VOID VOLUME={pre}CC).")
+    elif pre and not post:
+        out.append(f"URINARY BLADDER PRE-VOID VOLUME({pre}CC)")
+
+    if pre and post:
+        if _pvr_significant(d):
+            pvr_txt = "SIGNIFICANT POST VOID RESIDUE"
+            pct = _pvr_pct(d)
+            if pct is not None and pct >= 80.0:
+                pvr_txt += "(>80%)"
+            if prostate_line:
+                out.append(f"{pvr_txt} WITH {prostate_line.rstrip('.')}.")
+            else:
+                out.append(pvr_txt + ".")
+        elif _pvr_insignificant(d):
+            if prostate_line:
+                prostate_wo_dot = prostate_line.rstrip('.')
+                out.append(f"{prostate_wo_dot}, HOWEVER THE POST-VOID RESIDUE "
+                           f"IS INSIGNIFICANT.")
+            else:
+                out.append("INSIGNIFICANT POST-VOID RESIDUE.")
+    return out
 
 
 # ============================================================
@@ -2026,7 +2149,7 @@ def _prostate_impression_line(d):
     if median:
         frag = "MEDIAN LOBE HYPERTROPHY"
         if median_size:
-            frag += f"({median_size}mm)"
+            frag += f"({median_size}MM)"
         if boo:
             frag += " IMPINGING UPON BLADDER OUTLET"
         median_frag = frag
@@ -2232,7 +2355,7 @@ def _adenomyosis_body_segments(d):
         return []
     frags = _adenomyosis_features_body(d)
     conf = _adenomyosis_confidence(d)
-    qualifier = "likely adenomyosis" if conf == "likely" else "? early adenomyosis"
+    qualifier = "likely adenomyosis" if conf == "likely" else "?early adenomyosis"
     body = " ".join(frags)
     out = []
     if body:
@@ -2247,7 +2370,7 @@ def _adenomyosis_impression_fragment(d):
     frags = [f.upper() for f in _adenomyosis_features_body(d)]
     conf = _adenomyosis_confidence(d)
     qualifier = ("LIKELY UTERINE ADENOMYOSIS" if conf == "likely"
-                 else "? EARLY UTERINE ADENOMYOSIS")
+                 else "?EARLY UTERINE ADENOMYOSIS")
     if not frags:
         return qualifier
     return f"{' & '.join(frags)} ---- {qualifier}"
@@ -2307,7 +2430,6 @@ def uterus_sentence(d, pediatric=False, age_years=None):
         return s
 
     if status == "not_visualized":
-        # v3.0.0 fix: only uterus is not visualized. Ovaries render independently.
         return [seg("UTERUS", True, True), seg(" is not visualized.")]
 
     if status == "operated":
@@ -2539,7 +2661,7 @@ def _uterus_impression_lines(d, age_years):
 
 
 # ============================================================
-# OVARIES (v3.0.0)
+# OVARIES
 # ============================================================
 
 def _ovary_present(side):
@@ -2564,26 +2686,22 @@ def _ovary_findings_count_word(count, up=False):
 
 
 def _ovary_finding_phrase(finding, side_low, up=False):
-    """Return a body/impression phrase for one finding, or None."""
     ftype = finding.get("type", "")
     if ftype not in OVARY_CYST_TYPES:
         return None
     size = finding.get("size_mm", "")
     count = finding.get("count", "single")
     large = False
-    first_dim = None
     if size:
         m = re.search(r"(\d+(?:\.\d+)?)", str(size))
         if m:
-            first_dim = float(m.group(1))
-            large = first_dim >= OVARY_LARGE_MM
+            large = float(m.group(1)) >= OVARY_LARGE_MM
 
     type_word_body = OVARY_CYST_TYPES[ftype]
     type_word_up_sing = OVARY_CYST_TYPES_UP[ftype]
     type_word_up_plural = OVARY_CYST_TYPES_UP_PLURAL[ftype]
 
     if up:
-        # impression-style: "A RIGHT OVARIAN LARGE HEMORRHAGIC CYST(34X29MM)."
         lead = _ovary_findings_count_word(count, up=True)
         large_word = "LARGE " if large else ""
         type_word = type_word_up_sing if count == "single" else type_word_up_plural
@@ -2602,14 +2720,12 @@ def _ovary_finding_phrase(finding, side_low, up=False):
 
 
 def _ovary_grouped_impression_lines(d, up_ctx=None):
-    """Build per-side or bilateral grouped impression lines."""
     lines = []
     r = d["right"]
     l = d["left"]
     r_findings = [f for f in r.get("findings", []) if f.get("type") in OVARY_CYST_TYPES]
     l_findings = [f for f in l.get("findings", []) if f.get("type") in OVARY_CYST_TYPES]
 
-    # If both sides share the same type for a finding, group as BILATERAL.
     r_types = [f.get("type") for f in r_findings]
     l_types = [f.get("type") for f in l_findings]
     shared_types = [t for t in r_types if t in l_types]
@@ -2637,8 +2753,6 @@ def _ovary_grouped_impression_lines(d, up_ctx=None):
     return lines
 
 
-# --- PCOS body & impression ---
-
 def _pcos_volume_pattern(d):
     r_bulky = _ovary_is_bulky(d["right"])
     l_bulky = _ovary_is_bulky(d["left"])
@@ -2652,7 +2766,6 @@ def _pcos_volume_pattern(d):
 
 
 def _pcos_feature_phrase_body(d):
-    """Return the joined morphological feature phrase."""
     parts = []
     if d.get("pcos_feature4"):
         var = d.get("pcos_feature4_variable", False)
@@ -2683,13 +2796,11 @@ def _pcos_feature_phrase_up(d):
 
 
 def _pcos_feature_count(d):
-    """Count features present (bulky counts as one)."""
     count = 0
     pattern = _pcos_volume_pattern(d)
     if pattern in ("both_bulky", "right_bulky", "left_bulky"):
         count += 1
     if d.get("pcos_feature4"):
-        # Feature 4 forces partial, but still counts as one feature.
         count += 1
     else:
         if d.get("pcos_feature2"):
@@ -2700,10 +2811,8 @@ def _pcos_feature_count(d):
 
 
 def _pcos_outcome(d):
-    """Derive outcome per locked spec."""
     if d.get("pcos_feature4"):
         return PCOS_OUTCOME_PARTIAL
-    # No sub-ticks at all -> assume all three (bulky + 2 + 3) -> conclusive.
     no_subs = (not d.get("pcos_feature2")
                and not d.get("pcos_feature3")
                and not d.get("pcos_feature4"))
@@ -2718,20 +2827,16 @@ def _pcos_outcome(d):
 
 
 def _pcos_body_sentence(d):
-    """Return list of seg for the PCOS body line, or [] if not PCOS."""
     if not d.get("pcos"):
         return []
     pattern = _pcos_volume_pattern(d)
     feature_phrase = _pcos_feature_phrase_body(d)
-    # If no sub-ticks and no feature4, we assume features 2+3 present.
     if not feature_phrase:
         feature_phrase = ("multiple small sized follicles arranged peripherally "
                           "& centrally echogenic stroma")
-    bilateral = " bilaterally." if not feature_phrase.endswith(".") else ""
     if feature_phrase and not feature_phrase.endswith("."):
         feature_phrase = feature_phrase + " bilaterally"
 
-    # Body openings
     if pattern == "both_bulky":
         return [seg("Both ovaries appear "), seg("bulky in size", True),
                 seg(f" with {feature_phrase}.")]
@@ -2772,17 +2877,12 @@ def _pcos_impression_line(d):
 
 
 def ovaries_sentence(d, age_years=None, uterus_operated=False):
-    """Body sentence(s) for ovaries.
-
-    v3.0.0: renders independent of uterus not_visualized bug.
-    """
     s = []
     r = d["right"]
     l = d["left"]
     r_present = _ovary_present(r)
     l_present = _ovary_present(l)
 
-    # Age >= 48 and not operated: if not visualized, mark atrophic
     postmeno = (age_years is not None and age_years >= 48)
 
     if not r_present and not l_present:
@@ -2791,10 +2891,8 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False):
                     seg(" are not visualized(likely atrophic).")]
         return [seg("BOTH OVARIES", True, True), seg(" are not visualized.")]
 
-    # PCOS body overrides the size line if PCOS is ticked.
     pcos_body = _pcos_body_sentence(d) if d.get("pcos") else []
 
-    # Both ovaries present
     if r_present and l_present:
         both_r_findings = r.get("findings", [])
         both_l_findings = l.get("findings", [])
@@ -2806,7 +2904,6 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False):
                   seg(" appears normal in size and echo pattern.")]
             if size_bracket:
                 s += [seg(" "), seg(size_bracket, True)]
-        # Then any findings per side
         for side_key, findings in (("right", both_r_findings),
                                     ("left", both_l_findings)):
             for f in findings:
@@ -2815,7 +2912,6 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False):
                     s += [seg(" "), seg(phrase, True)]
         return s
 
-    # One present, one not
     if r_present:
         s += _ovary_single_side_block(r, "right", pcos_body)
     if l_present:
@@ -3042,6 +3138,7 @@ def _cyst_impression_clause(k, side_key, small_prefix=False):
 
 
 def _spleen_impression_line(spleen):
+    """v3.1.0: merge splenomegaly + PV + foci into one line. PV always mentioned."""
     desc = spleen["size_descriptor"]
     spleen_focal = spleen.get("focal_lesion", "none")
     spleen_count = spleen.get("focal_count", "few")
@@ -3049,8 +3146,11 @@ def _spleen_impression_line(spleen):
         spleno_term = "SPLENOMEGALY FOR AGE"
         is_enlarged = True
     elif desc in SPLEEN_IMPRESSION_LABELS:
-        spleno_term = (f"{SPLEEN_IMPRESSION_LABELS[desc]} "
-                       f"({spleen['size_mm']}MM)")
+        size_str = spleen.get("size_mm", "")
+        if size_str:
+            spleno_term = f"{SPLEEN_IMPRESSION_LABELS[desc]}({size_str}MM)"
+        else:
+            spleno_term = SPLEEN_IMPRESSION_LABELS[desc]
         is_enlarged = True
     else:
         spleno_term = ""
@@ -3060,50 +3160,53 @@ def _spleen_impression_line(spleen):
     if is_enlarged:
         pv_mm = spleen.get("portal_vein_mm", "")
         pv_class = classify_portal_vein(pv_mm) if pv_mm else "unknown"
-        focal_line = None
+        pv_paren = f"({pv_mm}MM)" if pv_mm else ""
+        if pv_class == "prominent":
+            pv_clause = f"PORTAL VEIN PROMINENT IN CALIBER{pv_paren}"
+        elif pv_class == "dilated":
+            pv_clause = f"PORTAL VEIN DILATED IN CALIBER{pv_paren}"
+        else:
+            pv_clause = f"NORMAL CALIBER PORTAL VEIN{pv_paren}"
+
+        # Foci clause
+        focal_clause = None
         if spleen_focal == "hyperechoic_foci":
             if spleen_count == "multiple":
-                focal_line = ("STARRY SKY SPLEEN APPEARANCE - "
-                              "?OLD GRANULOMATOUS ETIOLOGY.")
+                focal_clause = ("MULTIPLE HYPERECHOIC FOCI SCATTERED ACROSS "
+                                "SPLENIC PARENCHYMA")
             else:
-                focal_line = ("FEW HYPERECHOIC FOCI SCATTERED ACROSS SPLENIC "
-                              "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
+                focal_clause = ("FEW HYPERECHOIC FOCI SCATTERED ACROSS SPLENIC "
+                                "PARENCHYMA")
         elif spleen_focal == "hypoechoic_foci":
             if spleen_count == "multiple":
-                focal_line = ("MULTIPLE HYPOECHOIC FOCI SCATTERED ACROSS "
-                              "SPLENIC PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
+                focal_clause = ("MULTIPLE HYPOECHOIC FOCI SCATTERED ACROSS "
+                                "SPLENIC PARENCHYMA")
             else:
-                focal_line = ("FEW HYPOECHOIC FOCI SCATTERED ACROSS SPLENIC "
-                              "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
-        if pv_class == "prominent":
-            pv_clause = f"PORTAL VEIN PROMINENT IN CALIBER ({pv_mm}MM)"
-        elif pv_class == "dilated":
-            tail = ("SUGGESTIVE OF PORTAL HYPERTENSION."
-                    if desc in ("moderate", "moderate_to_gross", "gross")
-                    else "? PORTAL HYPERTENSION.")
-            pv_clause = f"PORTAL VEIN DILATED IN CALIBER ({pv_mm}MM) - {tail}"
-        elif pv_class == "normal":
-            pv_clause = f"NORMAL CALIBER PORTAL VEIN ({pv_mm}MM)"
+                focal_clause = ("FEW HYPOECHOIC FOCI SCATTERED ACROSS SPLENIC "
+                                "PARENCHYMA")
+
+        # Tails
+        pv_htn = pv_class in ("prominent", "dilated")
+        has_foci = focal_clause is not None
+        if pv_htn and has_foci:
+            tail = (" - FEATURES SUGGESTIVE OF PORTAL HYPERTENSION WITH "
+                    "?OLD GRANULOMATOUS ETIOLOGY.")
+        elif pv_htn:
+            tail = " - ?PORTAL HYPERTENSION."
+        elif has_foci:
+            tail = " - ?OLD GRANULOMATOUS ETIOLOGY."
         else:
-            pv_clause = None
-        if focal_line and pv_clause and pv_class in ("normal", "prominent"):
-            return [f"{spleno_term} WITH {pv_clause} & {focal_line}"]
-        if pv_class == "prominent":
-            out.append(f"{spleno_term} WITH PORTAL VEIN PROMINENT IN "
-                       f"CALIBER ({pv_mm}MM).")
-        elif pv_class == "dilated":
-            out.append(f"{spleno_term} WITH PORTAL VEIN DILATED IN CALIBER "
-                       f"({pv_mm}MM) - {tail}")
-        elif pv_class == "normal":
-            out.append(f"{spleno_term} WITH NORMAL CALIBER PORTAL VEIN "
-                       f"({pv_mm}MM).")
+            tail = "."
+
+        # Assemble
+        if has_foci:
+            return [f"{spleno_term} WITH {pv_clause} & {focal_clause}{tail}"]
         else:
-            out.append(f"{spleno_term}.")
-        if focal_line:
-            out.append(focal_line)
+            return [f"{spleno_term} WITH {pv_clause}{tail}"]
     else:
         if spleen_focal == "hyperechoic_foci":
-            out.append("STARRY SKY SPLEEN APPEARANCE - ?OLD GRANULOMATOUS ETIOLOGY."
+            out.append("MULTIPLE HYPERECHOIC FOCI SCATTERED ACROSS SPLENIC "
+                       "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY."
                        if spleen_count == "multiple"
                        else "FEW HYPERECHOIC FOCI SCATTERED ACROSS SPLENIC "
                             "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
@@ -3128,17 +3231,27 @@ def _liver_impression_line(liver):
               "gross": "GROSS HEPATOMEGALY"}
         hepatomegaly = dm.get(desc, "")
 
-    lf = []
-    if liver["echotexture"] == "increased":
-        grade = liver.get("steatosis_grade") or ""
+    # Issue #2: exclusive echotexture handling.
+    echo = liver.get("echotexture", "normal")
+    grade = liver.get("steatosis_grade") or ""
+    echo_descriptor = None
+    if echo == "coarse":
+        echo_descriptor = "COARSE HEPATIC ECHOTEXTURE"
+    elif echo == "raised":
+        echo_descriptor = "RAISED HEPATIC ECHOTEXTURE"
+    elif echo == "low":
+        echo_descriptor = "LOW HEPATIC ECHOTEXTURE"
+    elif echo == "increased":
         if grade == "Severe+++":
-            lf.append("SIGNIFICANT FATTY INFILTRATION - "
-                      "?NON-ALCOHOLIC STEATO\u2011HEPATITIS")
+            echo_descriptor = ("SIGNIFICANT FATTY INFILTRATION - "
+                               "?NON-ALCOHOLIC STEATO-HEPATITIS")
         elif grade:
-            lf.append(f"HEPATIC STEATOSIS({grade.upper()})")
+            echo_descriptor = f"HEPATIC STEATOSIS({grade.upper()})"
         else:
-            lf.append("HEPATIC STEATOSIS")
+            echo_descriptor = "HEPATIC STEATOSIS"
 
+    # Build focal line (unchanged).
+    lf = []
     fl = liver["focal_lesion"]
     if fl == "calcified":
         lf.append("A CALCIFIED FOCUS IN THE RIGHT HEPATIC LOBE")
@@ -3175,7 +3288,27 @@ def _liver_impression_line(liver):
                           f"SOLS IN THE LIVER, LARGEST OF THESE MEASURING "
                           f"{' & '.join(parts)} - LIKELY LIVER ABSCESSES")
 
+    # Assemble. Rule:
+    #   If hepatomegaly and echo descriptor (coarse/raised/low): continue.
+    #   If isolated echo descriptor: standalone line.
+    #   If hepatomegaly only or with focal: existing behaviour.
+    #   If focal only: existing behaviour.
     out = []
+    if hepatomegaly and echo_descriptor and not lf:
+        out.append(f"{hepatomegaly} WITH {echo_descriptor}. Adv- LFT Correlation.")
+        return out
+    if hepatomegaly and echo_descriptor and lf:
+        out.append(f"{hepatomegaly} WITH {echo_descriptor} & "
+                   + " AND ".join(lf) + ". Adv- LFT Correlation.")
+        return out
+    if not hepatomegaly and echo_descriptor and not lf:
+        out.append(f"{echo_descriptor}. Adv- LFT Correlation.")
+        return out
+    if not hepatomegaly and echo_descriptor and lf:
+        out.append(f"{echo_descriptor} & " + " AND ".join(lf)
+                   + ". Adv- LFT Correlation.")
+        return out
+    # Original fallbacks
     if hepatomegaly and lf:
         out.append(hepatomegaly + " WITH " + " AND ".join(lf)
                    + ". Adv- LFT Correlation.")
@@ -3270,7 +3403,7 @@ def generate_impression(d, sex, age):
     is_pediatric = age_years is not None and age_years < 18
     small_rule_active = age_years is not None and age_years > SMALL_KIDNEY_MIN_AGE
 
-    # --- Pancreas ---
+    # --- Pancreas (Issue #5: drop trailing "seen" from impression) ---
     p = d["pancreas"]
     p_status = p.get("status", "normal")
     if p_status == "early_evolving":
@@ -3293,38 +3426,38 @@ def generate_impression(d, sex, age):
 
         if fat and fluid:
             if fat_loc == "perisplenic":
-                lines.append("MILD PERI-SPLENIC FAT STRANDING & FREE FLUID SEEN."
+                lines.append("MILD PERI-SPLENIC FAT STRANDING & FREE FLUID."
                              + tail())
             elif fat_loc != "none":
                 lines.append(f"MILD PERI-PANCREATIC FAT STRANDING & FREE FLUID "
-                             f"SEEN AROUND THE {loc_full[fat_loc]}." + tail())
+                             f"AROUND THE {loc_full[fat_loc]}." + tail())
             else:
-                lines.append("MILD PERI-PANCREATIC FAT STRANDING & FREE FLUID "
-                             "SEEN." + tail())
+                lines.append("MILD PERI-PANCREATIC FAT STRANDING & FREE FLUID."
+                             + tail())
         elif fat:
             if fat_loc == "perisplenic":
-                lines.append("MILD PERI-SPLENIC FAT STRANDING SEEN." + tail())
+                lines.append("MILD PERI-SPLENIC FAT STRANDING." + tail())
             elif fat_loc != "none":
-                lines.append(f"MILD PERI-PANCREATIC FAT STRANDING SEEN AROUND "
+                lines.append(f"MILD PERI-PANCREATIC FAT STRANDING AROUND "
                              f"THE {loc_full[fat_loc]}." + tail())
             else:
-                lines.append("MILD PERI-PANCREATIC FAT STRANDING SEEN." + tail())
+                lines.append("MILD PERI-PANCREATIC FAT STRANDING." + tail())
         elif fluid:
             if fluid_loc == "perisplenic":
-                lines.append("MILD FREE FLUID SEEN IN THE PERI-SPLENIC REGION."
+                lines.append("MILD FREE FLUID IN THE PERI-SPLENIC REGION."
                              + tail())
             elif fluid_loc != "none":
-                lines.append(f"MILD PERI-PANCREATIC FREE FLUID SEEN AROUND THE "
+                lines.append(f"MILD PERI-PANCREATIC FREE FLUID AROUND THE "
                              f"{loc_full[fluid_loc]}." + tail())
             else:
-                lines.append("MILD PERI-PANCREATIC FREE FLUID SEEN." + tail())
+                lines.append("MILD PERI-PANCREATIC FREE FLUID." + tail())
         if ee_size == "mildly_bulky":
             if lines and (fat or fluid):
                 last = lines.pop()
                 lines.append("MILDLY BULKY PANCREAS WITH " + last)
             else:
                 lines.append("MILDLY BULKY PANCREAS, HOWEVER NO PERI-PANCREATIC "
-                             "FAT STRANDING OR FREE FLUID SEEN." + tail())
+                             "FAT STRANDING OR FREE FLUID." + tail())
 
     elif p_status == "acute":
         ac_size = p.get("ac_size", "normal")
@@ -3479,7 +3612,7 @@ def generate_impression(d, sex, age):
                          "?ACALCULUS CHOLECYSTITIS. "
                          "Adv- LFT, Lab and Clinical Correlation.")
         elif gb_peri_fluid and not gb_has_calculi:
-            lines.append("THIN RIM OF PERICHOLECYSTIC FLUID SEEN - "
+            lines.append("THIN RIM OF PERICHOLECYSTIC FLUID - "
                          "?SIGNIFICANCE. Adv- LFT, Lab and Clinical Correlation.")
         elif gb_sludge and not gb_has_calculi:
             lines.append(f"{gb['sludge'].upper()} SLUDGE SEEN IN THE GALLBLADDER "
@@ -3721,54 +3854,13 @@ def generate_impression(d, sex, age):
     ub = d["urinary_bladder"]
     pr = d["prostate"]
 
-    pvr_note = _pvr_note(ub)
-    pvr_significant = bool(pvr_note)
-    ub_sed_line = _ub_impression_line(ub)
-    ub_wall_frag = _ub_wall_impression_fragment(ub)
     prostate_line = _prostate_impression_line(pr)
-
-    combined_ub_pr_done = False
-    if pvr_significant and prostate_line:
-        pvr_txt = "SIGNIFICANT POST VOID RESIDUE"
-        pct = _pvr_pct(ub)
-        if pct is not None and pct >= 80.0:
-            pvr_txt += "(>80%)"
-        sed = ub.get("sedimentation", "none")
-        uti = ub.get("uti_suspected", False)
-        if sed != "none":
-            sed_phrase = {
-                "trace": "TRACE SEDIMENTATION",
-                "free_floating": "FREE FLOATING SEDIMENTATION",
-                "significant_free_floating": "SIGNIFICANT FREE FLOATING "
-                                              "SEDIMENTATION",
-                "extensive": "EXTENSIVE SEDIMENTATION",
-            }.get(sed)
-            sed_tail = " - ?UTI" if uti else ""
-            combined = (f"{pvr_txt} WITH {sed_phrase} IN THE UB LUMEN"
-                        f"{sed_tail} & {prostate_line.rstrip('.')}.")
-            if uti:
-                combined += " Adv- Urine R/M Correlation."
-            lines.append(combined)
-        else:
-            lines.append(f"{pvr_txt} WITH {prostate_line.rstrip('.')}.")
-        combined_ub_pr_done = True
-
-    if not combined_ub_pr_done:
-        if prostate_line and ub_wall_frag:
-            lines.append(f"{prostate_line.rstrip('.')} WITH {ub_wall_frag}.")
-            if ub_sed_line:
-                lines.append(ub_sed_line)
-        else:
-            if prostate_line:
-                lines.append(prostate_line)
-            if ub_sed_line:
-                lines.append(ub_sed_line)
-            if ub_wall_frag:
-                lines.append(ub_wall_frag + ".")
+    ub_lines = _ub_impression_lines(ub, prostate_line=prostate_line)
+    for ln in ub_lines:
+        lines.append(ln)
 
     # --- Uterus + Ovaries (F only) ---
     if sex == "F":
-        uterus_operated = d["uterus"].get("status") == "operated"
         uterus_lines = _uterus_impression_lines(d["uterus"], age_years)
         for ln in uterus_lines:
             lines.append(ln)
@@ -3780,7 +3872,6 @@ def generate_impression(d, sex, age):
             lines.append("NO OBVIOUS EVIDENCE OF ANY FOCAL SOL, RPOC OR INCREASED "
                          "VASCULARITY APPRECIATED IN THE UTERUS ON TAS.")
 
-        # v3.0.0: PCOS first, then cysts.
         o = d["ovaries"]
         if age_years is not None and age_years < 48:
             pcos_line = _pcos_impression_line(o)
@@ -3806,7 +3897,7 @@ def generate_impression(d, sex, age):
                 else list(IMPRESSION_NORMAL_MALE))
 
     lines.append(IMPRESSION_REST_UNREMARKABLE)
-    return lines
+    return [_q(l) for l in lines]
 
 
 # ============================================================
@@ -3997,7 +4088,8 @@ def build_docx_bytes(data):
     ub_status = data["urinary_bladder"].get("status") or "adequately_distended"
 
     sections = [
-        liver_sentence(data["liver"], sex, age, spleen_enlarged=spleen_enlarged),
+        liver_sentence(data["liver"], sex, age, spleen_enlarged=spleen_enlarged,
+                       cbd_ihbr=data["cbd"].get("ihbr", "normal")),
         gall_bladder_sentence(data["gall_bladder"]),
         cbd_sentence(data["cbd"]),
         pancreas_sentence(data["pancreas"]),
@@ -4432,13 +4524,12 @@ with col_find:
             st.radio(
                 "Distension",
                 ["adequately_distended", "over", "partially", "contracted",
-                 "empty", "operated"],
+                 "operated"],  # Issue #3: removed "empty"
                 horizontal=True,
                 format_func=lambda x: {"adequately_distended": "Adequate",
                                        "over": "Over-distended",
                                        "partially": "Partially contracted",
                                        "contracted": "Contracted",
-                                       "empty": "Empty",
                                        "operated": "Operated"}[x],
                 key="gb_status")
             _gbs = ss("gb_status", "adequately_distended")
@@ -4904,8 +4995,8 @@ with col_find:
                 st.checkbox("Over-distended", key="ub_over")
             st.checkbox("Catheterized", key="ub_catheterized")
 
-            if ss("ub_over", False):
-                st.text_input("Pre-void volume (CC)", key="ub_pre_void")
+            # Issue #8: pre-void always available.
+            st.text_input("Pre-void volume (CC)", key="ub_pre_void")
 
             st.checkbox("No mass / calculus seen (default checked)",
                         value=True, key="ub_no_mass")
@@ -4916,21 +5007,22 @@ with col_find:
                     st.text_input("Wall thickness (mm)", key="ub_wall_mm")
                 with c_b:
                     st.checkbox("Irregular wall", key="ub_wall_irregular")
-            st.radio("Sedimentation",
-                     ["none", "trace", "free_floating",
-                      "significant_free_floating", "extensive"],
-                     horizontal=True,
-                     format_func=lambda x: {
-                         "none": "None",
-                         "trace": "Trace",
-                         "free_floating": "Free floating",
-                         "significant_free_floating": "Significant free floating",
-                         "extensive": "Extensive"}[x],
-                     key="ub_sed")
-            if ss("ub_sed", "none") != "none":
+
+            # Issue #9: independent ticks.
+            st.markdown("**Sedimentation**")
+            st.checkbox("Trace sedimentation", key="ub_sed_trace")
+            st.checkbox("Free floating sedimentation",
+                        key="ub_sed_free_floating")
+            st.checkbox("Settled debris", key="ub_sed_settled_debris")
+            st.checkbox("Extensive sedimentation", key="ub_sed_extensive")
+            if (ss("ub_sed_trace", False) or ss("ub_sed_free_floating", False)
+                    or ss("ub_sed_settled_debris", False)
+                    or ss("ub_sed_extensive", False)):
                 st.checkbox("?UTI (append to advice)", key="ub_uti")
 
-            st.text_input("Post-void residue (CC)", key="ub_post_void")
+            # Issue #8: post-void only when pre-void filled.
+            if str(ss("ub_pre_void", "") or "").strip():
+                st.text_input("Post-void residue (CC)", key="ub_post_void")
 
     # ------- UTERUS / OVARIES (F) or PROSTATE (M) -------
     if p_sex == "F":
@@ -4999,7 +5091,7 @@ with col_find:
                     st.checkbox("Adenomyosis features", key="ut_adenomyosis")
                     if ss("ut_adenomyosis", False):
                         st.caption("Tick features. ≥2 features → 'likely adenomyosis'; "
-                                   "1 feature → '? early adenomyosis'.")
+                                   "1 feature → '?early adenomyosis'.")
                         st.checkbox("Globular shape", key="ut_aden_globular")
                         st.checkbox("Asymmetrically bulky posterior myometrium",
                                     key="ut_aden_asymm")
@@ -5110,7 +5202,7 @@ with col_find:
                     st.checkbox("Add: no RPOC/pregnancy line", key="ut_neg_rpoc")
                     st.checkbox("Add: no focal SOL/RPOC line", key="ut_neg_sol")
 
-        # ------- OVARIES (v3.0.0 partial) -------
+        # ------- OVARIES -------
         ov_open = organ_button("OVARIES", "OVARIES")
         if ov_open:
             with st.container(border=True):
@@ -5513,10 +5605,13 @@ elif ss("ub_over", False):
 data["urinary_bladder"].update({
     "status": ub_status_val,
     "catheterized": bool(ss("ub_catheterized", False)),
-    "pre_void_cc": ss("ub_pre_void", "") if ub_status_val == "over" else "",
+    "pre_void_cc": ss("ub_pre_void", ""),
     "post_void_cc": ss("ub_post_void", ""),
     "mass_calculus": not ss("ub_no_mass", True),
-    "sedimentation": ss("ub_sed", "none"),
+    "sedimentation_free_floating": bool(ss("ub_sed_free_floating", False)),
+    "sedimentation_settled_debris": bool(ss("ub_sed_settled_debris", False)),
+    "sedimentation_trace": bool(ss("ub_sed_trace", False)),
+    "sedimentation_extensive": bool(ss("ub_sed_extensive", False)),
     "uti_suspected": bool(ss("ub_uti", False)),
     "wall_thickening": bool(ss("ub_wall_check", False)),
     "wall_irregular": bool(ss("ub_wall_irregular", False)),
@@ -5730,7 +5825,8 @@ def render_preview_findings(data):
     spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
     ub_status = data["urinary_bladder"].get("status") or "adequately_distended"
     secs = [liver_sentence(data["liver"], sex, age,
-                            spleen_enlarged=spleen_enlarged),
+                            spleen_enlarged=spleen_enlarged,
+                            cbd_ihbr=data["cbd"].get("ihbr", "normal")),
             gall_bladder_sentence(data["gall_bladder"]),
             cbd_sentence(data["cbd"]),
             pancreas_sentence(data["pancreas"]),
