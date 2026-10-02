@@ -1,43 +1,21 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v3.1.0-stable
+v3.1.1-stable
 
-v3.1.0:
-  - Issue #1: findings no longer lost from body when an organ is re-expanded
-    (sticky mirror + explicit cache of assembled per-organ widget state).
-  - Issue #2: liver raised/coarse/low echotexture now appears in impression
-    (isolated or continuing the hepatomegaly line). Exclusivity: only the
-    chosen descriptor is emitted.
-  - Issue #3: gall-bladder "empty" option and dead code removed.
-  - Issue #4: liver drops the "IHBR normal" clause when CBD IHBR is dilated;
-    CBD alone carries the IHBR statement.
-  - Issue #5: trailing "seen" dropped from pancreatitis impression lines only.
-  - Issue #6: spleen impression merges splenomegaly + portal vein + foci into
-    one line using "WITH" then "&". PV line always emitted with splenomegaly
-    (parens only if PV size given). Tails:
-      * PV normal + foci -> "?OLD GRANULOMATOUS ETIOLOGY."
-      * PV prominent/dilated, no foci -> "?PORTAL HYPERTENSION."
-      * PV prominent/dilated + foci -> "FEATURES SUGGESTIVE OF PORTAL
-        HYPERTENSION WITH ?OLD GRANULOMATOUS ETIOLOGY."
-  - Issue #7: kidney body connector swaps ", outline and" for "& outline with"
-    whenever echogenicity is other than normal.
-  - Issue #8: UB pre-void field always shown; post-void field shown once
-    pre-void filled. Body shows PRE-VOID VOLUME -- {cc}CC and POST VOID
-    RESIDUE - (blank) when post-void empty. Impression emits:
-      * OVERDISTENDED URINARY BLADDER(PRE-VOID VOLUME={cc}CC)
-      * URINARY BLADDER PRE-VOID VOLUME({cc}CC)
-      * INSIGNIFICANT POST-VOID RESIDUE (standalone) or folded into
-        prostatomegaly line as "…, HOWEVER THE POST-VOID RESIDUE IS
-        INSIGNIFICANT."
-  - Issue #9: UB settled debris independent tick alongside free-floating.
-    Combined phrasing: "settled debris in the dependent part of the urinary
-    bladder lumen along with free floating sedimentation". Wall thickening
-    tail "-- ?Chronic Cystitis" (or "-- ?Acute on Chronic Cystitis" when both
-    sedimentation types are present) + Adv- Urine R/M Correlation.
-  - Global rule: no space after "?" anywhere in the report.
+v3.1.1:
+  - DOCX spacing fixed (Issue #10): explicit empty paragraphs at 5.5pt (half line)
+    and 11pt (one line) replace space_after. Layout:
+        * patient table -> 0.5 line -> title
+        * title -> 1.5 lines -> first organ
+        * 1 line between each non-empty organ section
+        * last organ -> 1.5 lines -> IMPRESSION heading
+        * IMPRESSION heading -> 0.5 line -> first bullet
+        * last bullet -> 0.5 line -> disclaimer box
+    Empty paragraphs carry a run at the required size so they occupy real
+    vertical space; all paragraph space_after/space_before remain Pt(0).
 
+v3.1.0: (see git history)
 v3.0.0: (see git history)
-v2.1.0: (see git history)
 
 Frozen rules:
 - Impression text ALL CAPS except:
@@ -80,6 +58,7 @@ PAGE_RIGHT_MARGIN = 2.0
 
 FONT_BODY = "Calibri"
 FONT_SIZE_BODY = 11
+FONT_SIZE_HALF = 5.5
 FONT_SIZE_TITLE = 13
 FONT_SIZE_DISCLAIMER = 8
 
@@ -105,11 +84,6 @@ IMPRESSION_REST_UNREMARKABLE = "REST OF THE ABDOMEN SCAN IS UNREMARKABLE."
 # ============================================================
 # SESSION-STATE MIRROR
 # ============================================================
-# Streamlit prunes widget-owned session keys when the owning widget is not
-# rendered on a rerun. To guard against that, we mirror every widget value
-# into a plain (non-widget) session key on every read. Plain keys are never
-# pruned. v3.1.0 additionally caches per-organ widget state so collapsed
-# organs never lose their values across reruns (Issue #1).
 
 def _mirror(widget_key):
     mirror_key = f"_mirror_{widget_key}"
@@ -125,7 +99,6 @@ def ss(widget_key, default):
 
 
 def _q(text):
-    """Global rule: no space after '?' anywhere in the report."""
     if not isinstance(text, str):
         return text
     return re.sub(r"\?\s+", "?", text)
@@ -782,7 +755,6 @@ def new_report(sex="F"):
             "wp_type": "won", "wp_dims": "", "wp_vol": "",
             "wp_location": "lesser_sac",
             "ch_foci": False, "ch_mpd": False, "ch_mpd_size": "", "ch_fat": False,
-            # TODO(v3.x): peri-pancreatic + peri-portal lymph nodes.
             "peripancreatic_ln": False, "periportal_ln": False,
         },
         "spleen": {
@@ -943,7 +915,6 @@ def liver_sentence(d, sex, age, spleen_enlarged=False, cbd_ihbr="normal"):
 
     s.extend(liver_focal_sentence(d))
 
-    # Issue #4: liver drops IHBR clause when CBD IHBR is non-normal.
     if cbd_ihbr == "normal":
         if d["ihbr"] == "normal":
             s.append(seg(" Intra hepatic biliary radicals are normal."))
@@ -967,7 +938,6 @@ def liver_sentence(d, sex, age, spleen_enlarged=False, cbd_ihbr="normal"):
 # ============================================================
 
 def gall_bladder_sentence(d):
-    # TODO(v3.x): gall-bladder wall thickening types (viral-affliction module).
     s = [seg("GALL BLADDER", True, True)]
     status = d["status"]
     if status == "adequately_distended":
@@ -978,7 +948,6 @@ def gall_bladder_sentence(d):
         s.append(seg(" is partially contracted (suboptimal wall visualization)."))
     elif status == "contracted":
         s.append(seg(" is contracted (suboptimal wall visualization)."))
-    # Issue #3: "empty" option removed.
 
     if status != "contracted":
         if d.get("wall_thickened") and d.get("wall_mm"):
@@ -1119,7 +1088,6 @@ def cbd_sentence(d):
 # ============================================================
 
 def pancreas_sentence(d):
-    # TODO(v3.x): peri-pancreatic + peri-portal lymph nodes.
     s = [seg("PANCREAS", True, True)]
     status = d.get("status", "normal")
     if status == "normal":
@@ -1668,22 +1636,6 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
     echo_lat = d.get("cortical_echogenicity_laterality", "bilateral")
     cmd = d.get("cortical_cmd", "preserved")
 
-    # Issue #7: connector swaps when echo is non-normal.
-    def _normal_echo_segs(bracket, both=False):
-        """Return segs for a kidney line with normal echogenicity."""
-        out = []
-        if both:
-            out.append(seg("BOTH KIDNEYS", True, True))
-            if bracket:
-                out.append(seg(f" are normal in size{bracket}, outline and "))
-            else:
-                out.append(seg(" are normal in size, outline and "))
-            out.append(seg("echogenicity. Corticomedullary differentiation is "
-                           "maintained."))
-        else:
-            return None
-        return out
-
     if not r_present or not l_present:
         for side_key, side in (("right", r), ("left", l)):
             if side["status"] == "absent_agenesis":
@@ -1858,7 +1810,6 @@ def _ub_suboptimal_tail():
 
 
 def _ub_sedimentation_body(d):
-    """Return list of segs for sedimentation lines."""
     out = []
     ff = bool(d.get("sedimentation_free_floating", False))
     sd = bool(d.get("sedimentation_settled_debris", False))
@@ -1940,8 +1891,6 @@ def urinary_bladder_sentence(d):
 
     s.extend(_ub_sedimentation_body(d))
 
-    # Issue #8: pre-void always shown if entered. Post-void shown blank
-    # if pre-void entered and post-void blank.
     if pre:
         s.append(seg("\n"))
         s.append(seg(f"URINARY BLADDER PRE-VOID VOLUME({pre}CC)", True))
@@ -1976,7 +1925,6 @@ def _pvr_insignificant(d):
 
 
 def _ub_impression_lines(d, prostate_line=None):
-    """Return list of impression lines for UB."""
     out = []
     ff = bool(d.get("sedimentation_free_floating", False))
     sd = bool(d.get("sedimentation_settled_debris", False))
@@ -1999,7 +1947,6 @@ def _ub_impression_lines(d, prostate_line=None):
     if extensive:
         sed_bits.append("EXTENSIVE SEDIMENTATION")
 
-    # Wall thickening line (takes priority — carries the cystitis tail).
     if wall:
         try:
             w = float(d["wall_mm"])
@@ -2020,14 +1967,12 @@ def _ub_impression_lines(d, prostate_line=None):
         out.append(body + " Adv- Urine R/M Correlation.")
         return out
 
-    # Sedimentation only (no wall thickening).
     if sed_bits:
         sed_line = (" ".join(sed_bits) + " IN THE UB LUMEN")
         if uti:
             sed_line += " - ?UTI"
         out.append(sed_line + ". Adv- Urine R/M Correlation.")
 
-    # Pre-void / post-void lines.
     pre = str(d.get("pre_void_cc", "") or "").strip()
     post = str(d.get("post_void_cc", "") or "").strip()
     status = d.get("status")
@@ -3138,7 +3083,6 @@ def _cyst_impression_clause(k, side_key, small_prefix=False):
 
 
 def _spleen_impression_line(spleen):
-    """v3.1.0: merge splenomegaly + PV + foci into one line. PV always mentioned."""
     desc = spleen["size_descriptor"]
     spleen_focal = spleen.get("focal_lesion", "none")
     spleen_count = spleen.get("focal_count", "few")
@@ -3168,7 +3112,6 @@ def _spleen_impression_line(spleen):
         else:
             pv_clause = f"NORMAL CALIBER PORTAL VEIN{pv_paren}"
 
-        # Foci clause
         focal_clause = None
         if spleen_focal == "hyperechoic_foci":
             if spleen_count == "multiple":
@@ -3185,7 +3128,6 @@ def _spleen_impression_line(spleen):
                 focal_clause = ("FEW HYPOECHOIC FOCI SCATTERED ACROSS SPLENIC "
                                 "PARENCHYMA")
 
-        # Tails
         pv_htn = pv_class in ("prominent", "dilated")
         has_foci = focal_clause is not None
         if pv_htn and has_foci:
@@ -3198,7 +3140,6 @@ def _spleen_impression_line(spleen):
         else:
             tail = "."
 
-        # Assemble
         if has_foci:
             return [f"{spleno_term} WITH {pv_clause} & {focal_clause}{tail}"]
         else:
@@ -3231,7 +3172,6 @@ def _liver_impression_line(liver):
               "gross": "GROSS HEPATOMEGALY"}
         hepatomegaly = dm.get(desc, "")
 
-    # Issue #2: exclusive echotexture handling.
     echo = liver.get("echotexture", "normal")
     grade = liver.get("steatosis_grade") or ""
     echo_descriptor = None
@@ -3250,7 +3190,6 @@ def _liver_impression_line(liver):
         else:
             echo_descriptor = "HEPATIC STEATOSIS"
 
-    # Build focal line (unchanged).
     lf = []
     fl = liver["focal_lesion"]
     if fl == "calcified":
@@ -3288,11 +3227,6 @@ def _liver_impression_line(liver):
                           f"SOLS IN THE LIVER, LARGEST OF THESE MEASURING "
                           f"{' & '.join(parts)} - LIKELY LIVER ABSCESSES")
 
-    # Assemble. Rule:
-    #   If hepatomegaly and echo descriptor (coarse/raised/low): continue.
-    #   If isolated echo descriptor: standalone line.
-    #   If hepatomegaly only or with focal: existing behaviour.
-    #   If focal only: existing behaviour.
     out = []
     if hepatomegaly and echo_descriptor and not lf:
         out.append(f"{hepatomegaly} WITH {echo_descriptor}. Adv- LFT Correlation.")
@@ -3308,7 +3242,6 @@ def _liver_impression_line(liver):
         out.append(f"{echo_descriptor} & " + " AND ".join(lf)
                    + ". Adv- LFT Correlation.")
         return out
-    # Original fallbacks
     if hepatomegaly and lf:
         out.append(hepatomegaly + " WITH " + " AND ".join(lf)
                    + ". Adv- LFT Correlation.")
@@ -3403,7 +3336,6 @@ def generate_impression(d, sex, age):
     is_pediatric = age_years is not None and age_years < 18
     small_rule_active = age_years is not None and age_years > SMALL_KIDNEY_MIN_AGE
 
-    # --- Pancreas (Issue #5: drop trailing "seen" from impression) ---
     p = d["pancreas"]
     p_status = p.get("status", "normal")
     if p_status == "early_evolving":
@@ -3537,7 +3469,6 @@ def generate_impression(d, sex, age):
             lines.append("FEATURES SUGGESTIVE OF CHRONIC PANCREATITIS. "
                          "Adv- S.Amylase/Lipase Correlation.")
 
-    # --- CBD / GB ---
     cbd = d["cbd"]
     cbd_status = cbd.get("status", "normal")
     cbd_size = cbd.get("size_mm", "")
@@ -3638,7 +3569,6 @@ def generate_impression(d, sex, age):
         else:
             lines.append("GALL BLADDER ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
 
-    # --- Liver + Spleen ---
     liver = d["liver"]
     spleen = d["spleen"]
     combined = _try_hepatosplenomegaly(liver, spleen)
@@ -3648,7 +3578,6 @@ def generate_impression(d, sex, age):
         lines.extend(_liver_impression_line(liver))
         lines.extend(_spleen_impression_line(spleen))
 
-    # --- Kidneys ---
     k = d["kidneys"]
     r = k["right"]
     l = k["left"]
@@ -3850,7 +3779,6 @@ def generate_impression(d, sex, age):
         for c in cyst_clauses:
             lines.append(c + ".")
 
-    # --- Urinary Bladder + Prostate ---
     ub = d["urinary_bladder"]
     pr = d["prostate"]
 
@@ -3859,7 +3787,6 @@ def generate_impression(d, sex, age):
     for ln in ub_lines:
         lines.append(ln)
 
-    # --- Uterus + Ovaries (F only) ---
     if sex == "F":
         uterus_lines = _uterus_impression_lines(d["uterus"], age_years)
         for ln in uterus_lines:
@@ -3881,7 +3808,6 @@ def generate_impression(d, sex, age):
         for cl in cyst_lines:
             lines.append(cl)
 
-    # --- Bowel / effusions ---
     b = d["bowel"]
     if b["mesenteric_ln"] == "present":
         loc = b["ln_location"].replace("_", " ").upper()
@@ -3946,6 +3872,31 @@ def _add_run(paragraph, text, bold=False, underline=False, font=FONT_BODY,
     rFonts.set(qn("w:hAnsi"), font)
     rPr.append(rFonts)
     return run
+
+
+def _add_blank(doc, size_pt):
+    """v3.1.1: empty paragraph at a specific font size so it occupies real
+    vertical space. space_after / space_before remain 0."""
+    p = doc.add_paragraph()
+    p.paragraph_format.space_after = Pt(0)
+    p.paragraph_format.space_before = Pt(0)
+    run = p.add_run("")
+    run.font.name = FONT_BODY
+    run.font.size = Pt(size_pt)
+    return p
+
+
+def _add_half_line(doc):
+    return _add_blank(doc, FONT_SIZE_HALF)
+
+
+def _add_full_line(doc):
+    return _add_blank(doc, FONT_SIZE_BODY)
+
+
+def _add_one_and_half_line(doc):
+    _add_full_line(doc)
+    _add_half_line(doc)
 
 
 _BOSNIAK_RE = re.compile(r"BOSNIAK\s+CAT-[IVX]+", re.IGNORECASE)
@@ -4057,6 +4008,7 @@ def build_docx_bytes(data):
     style.paragraph_format.space_after = Pt(0)
     style.paragraph_format.space_before = Pt(0)
 
+    # --- Patient demographic table ---
     table = doc.add_table(rows=2, cols=2)
     table.autofit = True
     _set_table_borders(table)
@@ -4072,12 +4024,19 @@ def build_docx_bytes(data):
         cell.text = ""
         _add_run(cell.paragraphs[0], text, bold=True)
 
-    doc.add_paragraph()
+    # 0.5 line below patient table
+    _add_half_line(doc)
+
+    # Title
     title_para = doc.add_paragraph()
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title_para.paragraph_format.space_after = Pt(0)
+    title_para.paragraph_format.space_before = Pt(0)
     _add_run(title_para, "ULTRASOUND WHOLE ABDOMEN", bold=True, underline=True,
              size=FONT_SIZE_TITLE, color=TITLE_COLOR)
-    doc.add_paragraph()
+
+    # 1.5 lines between title and first organ
+    _add_one_and_half_line(doc)
 
     sex, age = p["sex"], p["age"]
     age_years = parse_age(age)
@@ -4110,17 +4069,24 @@ def build_docx_bytes(data):
     if data["appendix"]["status"] != "not_assessed":
         sections.append(appendix_sentence(data["appendix"]))
 
+    rendered_count = 0
     for segs in sections:
         if not segs:
             continue
+        # 1 line between organs (before each subsequent organ)
+        if rendered_count > 0:
+            _add_full_line(doc)
         para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         para.paragraph_format.space_after = Pt(0)
         para.paragraph_format.space_before = Pt(0)
         _render_segments(para, segs)
+        rendered_count += 1
 
     addendum = (data.get("additional_body_findings") or "").strip()
     if addendum:
+        if rendered_count > 0:
+            _add_full_line(doc)
         para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         para.paragraph_format.space_after = Pt(0)
@@ -4130,10 +4096,17 @@ def build_docx_bytes(data):
                 para.add_run().add_break()
             _add_run(para, ln, bold=True, italic=True)
 
-    doc.add_paragraph()
+    # 1.5 lines before IMPRESSION
+    _add_one_and_half_line(doc)
+
     imp_head = doc.add_paragraph()
+    imp_head.paragraph_format.space_after = Pt(0)
+    imp_head.paragraph_format.space_before = Pt(0)
     _add_run(imp_head, "IMPRESSION:", bold=True, underline=True,
              size=FONT_SIZE_BODY, color=TITLE_COLOR)
+
+    # 0.5 line between IMPRESSION heading and first bullet
+    _add_half_line(doc)
 
     for line in data["impression"]["lines"]:
         para = doc.add_paragraph(style="List Bullet")
@@ -4142,7 +4115,9 @@ def build_docx_bytes(data):
         para.paragraph_format.space_before = Pt(0)
         _add_impression_line_runs(para, line)
 
-    doc.add_paragraph()
+    # 0.5 line between last bullet and disclaimer
+    _add_half_line(doc)
+
     disc_table = doc.add_table(rows=1, cols=1)
     _set_table_borders(disc_table)
     cell = disc_table.cell(0, 0)
@@ -4192,9 +4167,7 @@ st.markdown(
         justify-content: flex-end !important;
     }
     @media (max-width: 900px) {
-        div[data-testid="stHorizontalBlock"] {
-            flex-wrap: wrap !important;
-        }
+        div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
         div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
             min-width: 0 !important;
         }
@@ -4226,9 +4199,7 @@ st.markdown(
         }
     }
     div[data-testid="stRadio"] label,
-    div[data-testid="stCheckbox"] label {
-        cursor: pointer !important;
-    }
+    div[data-testid="stCheckbox"] label { cursor: pointer !important; }
     div[data-testid="stExpander"] {
         background-color: #ffffff !important;
         border: 1px solid #cfd6dd !important;
@@ -4256,8 +4227,7 @@ st.markdown(
     }
     div[data-testid="stExpander"] details[open] > summary svg,
     div[data-testid="stExpander"] details[open] > summary svg path {
-        fill: #111111 !important;
-        stroke: #111111 !important;
+        fill: #111111 !important; stroke: #111111 !important;
     }
     div[data-testid="stExpander"] div[data-testid="stExpanderDetails"],
     div[data-testid="stExpander"] div[data-testid="stExpanderDetails"] * {
@@ -4524,7 +4494,7 @@ with col_find:
             st.radio(
                 "Distension",
                 ["adequately_distended", "over", "partially", "contracted",
-                 "operated"],  # Issue #3: removed "empty"
+                 "operated"],
                 horizontal=True,
                 format_func=lambda x: {"adequately_distended": "Adequate",
                                        "over": "Over-distended",
@@ -4995,7 +4965,6 @@ with col_find:
                 st.checkbox("Over-distended", key="ub_over")
             st.checkbox("Catheterized", key="ub_catheterized")
 
-            # Issue #8: pre-void always available.
             st.text_input("Pre-void volume (CC)", key="ub_pre_void")
 
             st.checkbox("No mass / calculus seen (default checked)",
@@ -5008,7 +4977,6 @@ with col_find:
                 with c_b:
                     st.checkbox("Irregular wall", key="ub_wall_irregular")
 
-            # Issue #9: independent ticks.
             st.markdown("**Sedimentation**")
             st.checkbox("Trace sedimentation", key="ub_sed_trace")
             st.checkbox("Free floating sedimentation",
@@ -5020,7 +4988,6 @@ with col_find:
                     or ss("ub_sed_extensive", False)):
                 st.checkbox("?UTI (append to advice)", key="ub_uti")
 
-            # Issue #8: post-void only when pre-void filled.
             if str(ss("ub_pre_void", "") or "").strip():
                 st.text_input("Post-void residue (CC)", key="ub_post_void")
 
@@ -5289,7 +5256,6 @@ with col_find:
 
                 st.markdown("---")
                 st.markdown("**Manual advices (ovary-related)**")
-                # TODO(v3.x): auto-trigger advices per finding.
                 st.checkbox("Adv- Follicular Monitoring for fertility work-up.",
                             key="ov_adv_follicular_monitoring")
                 st.checkbox("Adv- LH/FSH & AMH Correlation. (PCOS)",
@@ -5702,7 +5668,6 @@ if p_sex == "F":
         "neg_sol": bool(ss("ut_neg_sol", False)),
     })
 
-    # ---- OVARIES ----
     for side, sd in (("right", "r"), ("left", "l")):
         o = data["ovaries"][side]
         o["status"] = ss(f"ov_{sd}_status", "normal")
@@ -5776,7 +5741,6 @@ data["appendix"].update({
     "diameter_mm": ss("ap_d", ""),
 })
 
-# ---- OVARY MANUAL ADVICES (v3.0.0) ----
 data["ovary_manual_advices"] = {
     "follicular_monitoring": bool(ss("ov_adv_follicular_monitoring", False)),
     "lh_fsh": bool(ss("ov_adv_lh_fsh", False)),
