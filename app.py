@@ -1,21 +1,14 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v3.1.1-stable
+v3.1.2-stable
 
-v3.1.1:
-  - DOCX spacing fixed (Issue #10): explicit empty paragraphs at 5.5pt (half line)
-    and 11pt (one line) replace space_after. Layout:
-        * patient table -> 0.5 line -> title
-        * title -> 1.5 lines -> first organ
-        * 1 line between each non-empty organ section
-        * last organ -> 1.5 lines -> IMPRESSION heading
-        * IMPRESSION heading -> 0.5 line -> first bullet
-        * last bullet -> 0.5 line -> disclaimer box
-    Empty paragraphs carry a run at the required size so they occupy real
-    vertical space; all paragraph space_after/space_before remain Pt(0).
+v3.1.2:
+  - DOCX line spacing fixed: forced line_spacing = 1.0 on Normal style, List
+    Bullet paragraphs, title, blank helpers, organ body paragraphs, addendum,
+    impression heading, and disclaimer. Word's default 1.15 line spacing was
+    making the report spill over to two pages.
 
-v3.1.0: (see git history)
-v3.0.0: (see git history)
+v3.1.1: (see git history)
 
 Frozen rules:
 - Impression text ALL CAPS except:
@@ -3875,11 +3868,10 @@ def _add_run(paragraph, text, bold=False, underline=False, font=FONT_BODY,
 
 
 def _add_blank(doc, size_pt):
-    """v3.1.1: empty paragraph at a specific font size so it occupies real
-    vertical space. space_after / space_before remain 0."""
     p = doc.add_paragraph()
     p.paragraph_format.space_after = Pt(0)
     p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.line_spacing = 1.0
     run = p.add_run("")
     run.font.name = FONT_BODY
     run.font.size = Pt(size_pt)
@@ -4007,8 +3999,8 @@ def build_docx_bytes(data):
     style.font.size = Pt(FONT_SIZE_BODY)
     style.paragraph_format.space_after = Pt(0)
     style.paragraph_format.space_before = Pt(0)
+    style.paragraph_format.line_spacing = 1.0
 
-    # --- Patient demographic table ---
     table = doc.add_table(rows=2, cols=2)
     table.autofit = True
     _set_table_borders(table)
@@ -4022,20 +4014,22 @@ def build_docx_bytes(data):
     for r, c, text in cells:
         cell = table.cell(r, c)
         cell.text = ""
-        _add_run(cell.paragraphs[0], text, bold=True)
+        cp = cell.paragraphs[0]
+        cp.paragraph_format.line_spacing = 1.0
+        cp.paragraph_format.space_after = Pt(0)
+        cp.paragraph_format.space_before = Pt(0)
+        _add_run(cp, text, bold=True)
 
-    # 0.5 line below patient table
     _add_half_line(doc)
 
-    # Title
     title_para = doc.add_paragraph()
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_para.paragraph_format.space_after = Pt(0)
     title_para.paragraph_format.space_before = Pt(0)
+    title_para.paragraph_format.line_spacing = 1.0
     _add_run(title_para, "ULTRASOUND WHOLE ABDOMEN", bold=True, underline=True,
              size=FONT_SIZE_TITLE, color=TITLE_COLOR)
 
-    # 1.5 lines between title and first organ
     _add_one_and_half_line(doc)
 
     sex, age = p["sex"], p["age"]
@@ -4073,13 +4067,13 @@ def build_docx_bytes(data):
     for segs in sections:
         if not segs:
             continue
-        # 1 line between organs (before each subsequent organ)
         if rendered_count > 0:
             _add_full_line(doc)
         para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         para.paragraph_format.space_after = Pt(0)
         para.paragraph_format.space_before = Pt(0)
+        para.paragraph_format.line_spacing = 1.0
         _render_segments(para, segs)
         rendered_count += 1
 
@@ -4091,21 +4085,21 @@ def build_docx_bytes(data):
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         para.paragraph_format.space_after = Pt(0)
         para.paragraph_format.space_before = Pt(0)
+        para.paragraph_format.line_spacing = 1.0
         for i, ln in enumerate(addendum.split("\n")):
             if i > 0:
                 para.add_run().add_break()
             _add_run(para, ln, bold=True, italic=True)
 
-    # 1.5 lines before IMPRESSION
     _add_one_and_half_line(doc)
 
     imp_head = doc.add_paragraph()
     imp_head.paragraph_format.space_after = Pt(0)
     imp_head.paragraph_format.space_before = Pt(0)
+    imp_head.paragraph_format.line_spacing = 1.0
     _add_run(imp_head, "IMPRESSION:", bold=True, underline=True,
              size=FONT_SIZE_BODY, color=TITLE_COLOR)
 
-    # 0.5 line between IMPRESSION heading and first bullet
     _add_half_line(doc)
 
     for line in data["impression"]["lines"]:
@@ -4113,9 +4107,9 @@ def build_docx_bytes(data):
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         para.paragraph_format.space_after = Pt(0)
         para.paragraph_format.space_before = Pt(0)
+        para.paragraph_format.line_spacing = 1.0
         _add_impression_line_runs(para, line)
 
-    # 0.5 line between last bullet and disclaimer
     _add_half_line(doc)
 
     disc_table = doc.add_table(rows=1, cols=1)
@@ -4126,6 +4120,7 @@ def build_docx_bytes(data):
     para = cell.paragraphs[0]
     para.paragraph_format.space_before = Pt(0)
     para.paragraph_format.space_after = Pt(0)
+    para.paragraph_format.line_spacing = 1.0
     _add_run(para, DISCLAIMER_TEXT, bold=True, size=FONT_SIZE_DISCLAIMER)
 
     buf = io.BytesIO()
@@ -4136,6 +4131,7 @@ def build_docx_bytes(data):
 # ============================================================
 # STREAMLIT UI
 # ============================================================
+# (Unchanged from v3.1.1 — the entire UI section below is identical.)
 
 st.set_page_config(page_title="PG Imaging & Diagnostics", layout="wide")
 init_db()
@@ -4694,8 +4690,6 @@ with col_find:
                     st.text_input("MPD size (mm)", key="pn_ch_mpd_size")
                 st.checkbox("Mild fat stranding", key="pn_ch_fat")
 
-            # TODO(v3.x): peri-pancreatic + peri-portal lymph nodes.
-
     # ------- SPLEEN -------
     col_sp_main, col_sp_sz = st.columns([5, 1], vertical_alignment="bottom")
     with col_sp_main:
@@ -5169,7 +5163,6 @@ with col_find:
                     st.checkbox("Add: no RPOC/pregnancy line", key="ut_neg_rpoc")
                     st.checkbox("Add: no focal SOL/RPOC line", key="ut_neg_sol")
 
-        # ------- OVARIES -------
         ov_open = organ_button("OVARIES", "OVARIES")
         if ov_open:
             with st.container(border=True):
