@@ -1,14 +1,13 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v3.1.3-stable
+v3.1.4-stable
 
-v3.1.3:
-  - Re-expansion fix: widget values are now mirrored into plain session keys
-    at widget RENDER TIME via wget(), and ss() is strictly read-only. This
-    prevents collapsed organs from losing their findings when re-expanded.
-  - Debug panel added at top of page (collapsed by default) listing all
-    populated _mirror_* keys.
-  - DOCX formatting unchanged from v3.1.2.
+v3.1.4:
+  - Re-expansion fix applied to LIVER, GALL BLADDER, CBD only.
+    Every widget in these three panels is now seeded from the mirror
+    (_idx / _seed helpers), so Streamlit re-initialises widgets with the
+    last-known value on re-render instead of the hard-coded default.
+    Other panels remain on the old wget-only scheme pending verification.
 
 Frozen rules:
 - Impression text ALL CAPS except:
@@ -75,13 +74,8 @@ IMPRESSION_REST_UNREMARKABLE = "REST OF THE ABDOMEN SCAN IS UNREMARKABLE."
 
 
 # ============================================================
-# SESSION-STATE MIRROR (v3.1.3)
+# SESSION-STATE MIRROR
 # ============================================================
-# Streamlit prunes widget-owned session keys when the owning widget is not
-# rendered on a rerun. To guard against that, every finding widget calls
-# wget() right after it is rendered — this writes the widget's current value
-# into a plain (non-widget) session key (_mirror_<key>). Plain keys are
-# never pruned. ss() reads from the mirror only; it never writes.
 
 def wget(widget_key, default):
     """Snapshot the widget's current value into the mirror. Called right
@@ -91,7 +85,6 @@ def wget(widget_key, default):
         v = st.session_state[widget_key]
         st.session_state[f"_mirror_{widget_key}"] = v
         return v
-    # Widget not rendered this run — do NOT overwrite the existing mirror.
     return st.session_state.get(f"_mirror_{widget_key}", default)
 
 
@@ -104,6 +97,23 @@ def ss(widget_key, default):
     if v is not None:
         return v
     return default
+
+
+def _idx(widget_key, options, default):
+    """Return the index of the mirrored value within `options`, or 0.
+    Used to seed st.radio / st.selectbox `index=` parameters so widgets
+    re-initialise with the last-known value on re-render."""
+    v = ss(widget_key, default)
+    try:
+        return options.index(v)
+    except (ValueError, AttributeError):
+        return 0
+
+
+def _seed(widget_key, default):
+    """Return the mirrored value or default. Used to seed st.text_input
+    `value=`, st.number_input `value=`, and st.checkbox `value=`."""
+    return ss(widget_key, default)
 
 
 def _q(text):
@@ -4141,6 +4151,8 @@ def build_docx_bytes(data):
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
 # ============================================================
 # STREAMLIT UI
 # ============================================================
@@ -4334,11 +4346,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-# ============================================================
-# DEBUG PANEL (v3.1.3) — collapsed by default
-# ============================================================
-
 with st.expander("🐞 Mirror debug (click to inspect)", expanded=False):
     mirror_keys = sorted(k for k in st.session_state.keys()
                          if k.startswith("_mirror_"))
@@ -4393,17 +4400,18 @@ def organ_button(name, label):
 with col_find:
     st.subheader("Findings")
 
-    # ------- LIVER -------
+    # ------- LIVER ------- (v3.1.4: _idx / _seed applied)
     col_liver_main, col_liver_sz = st.columns([5, 1],
                                               vertical_alignment="bottom")
     with col_liver_main:
         liver_open = organ_button("LIVER", "LIVER")
     with col_liver_sz:
         liver_size_num = st.number_input(
-            "Liver size mm", min_value=0, max_value=500, value=None, step=1,
+            "Liver size mm", min_value=0, max_value=500,
+            value=_seed("liver_size_num", None), step=1,
             key="liver_size_num", label_visibility="collapsed",
             placeholder="LIVER mm")
-    wget("liver_size_num", None)
+        wget("liver_size_num", None)
     liver_size = (str(int(liver_size_num))
                   if (liver_size_num and liver_size_num > 0) else "")
     liver_status = auto_classify_liver(liver_size_num or 0, p_age, p_sex)
@@ -4417,15 +4425,19 @@ with col_find:
 
     if liver_open:
         with st.container(border=True):
+            _outline_opts = ["normal", "crenated"]
             st.radio(
-                "Outline", ["normal", "crenated"], horizontal=True,
+                "Outline", _outline_opts,
+                index=_idx("liver_outline", _outline_opts, "normal"),
+                horizontal=True,
                 format_func=lambda x: {"normal": "Normal",
                                        "crenated": "Crenated / nodular"}[x],
                 key="liver_outline")
             wget("liver_outline", "normal")
+            _echo_opts = ["normal", "increased", "raised", "coarse", "low"]
             st.radio(
-                "Echotexture",
-                ["normal", "increased", "raised", "coarse", "low"],
+                "Echotexture", _echo_opts,
+                index=_idx("liver_echo", _echo_opts, "normal"),
                 horizontal=True,
                 format_func=lambda x: {"normal": "Normal",
                                        "increased": "Increased (steatosis)",
@@ -4438,13 +4450,17 @@ with col_find:
                 grade_opts = ["Mild+", "Mild to Moderate++", "Moderate++",
                               "Moderate to Severe+++", "Severe+++"]
                 st.radio("Steatosis grade (impression only)",
-                         grade_opts, horizontal=True,
+                         grade_opts,
+                         index=_idx("liver_steatosis", grade_opts, "Mild+"),
+                         horizontal=True,
                          key="liver_steatosis")
                 wget("liver_steatosis", None)
             st.markdown("**Focal lesion**")
+            _focal_opts = ["none", "calcified", "cyst", "hemangioma",
+                           "abscess", "other"]
             st.radio(
-                "Focal lesion type",
-                ["none", "calcified", "cyst", "hemangioma", "abscess", "other"],
+                "Focal lesion type", _focal_opts,
+                index=_idx("liver_focal", _focal_opts, "none"),
                 horizontal=True, label_visibility="collapsed",
                 format_func=lambda x: {"none": "None", "calcified": "Calcified",
                                        "cyst": "Simple cyst(s)",
@@ -4454,98 +4470,131 @@ with col_find:
             wget("liver_focal", "none")
             _lf = ss("liver_focal", "none")
             if _lf == "cyst":
-                st.radio("Number", ["single", "few"], horizontal=True,
-                         key="cyst_count")
+                _cc_opts = ["single", "few"]
+                st.radio("Number", _cc_opts,
+                         index=_idx("cyst_count", _cc_opts, "single"),
+                         horizontal=True, key="cyst_count")
                 wget("cyst_count", "single")
                 if ss("cyst_count", "single") == "single":
                     c_a, c_b = st.columns(2)
                     with c_a:
-                        st.radio("Lobe", ["right", "left"],
+                        _lobe_opts = ["right", "left"]
+                        st.radio("Lobe", _lobe_opts,
+                                 index=_idx("cyst_single_lobe", _lobe_opts, "right"),
                                  horizontal=True, key="cyst_single_lobe")
                         wget("cyst_single_lobe", "right")
                     with c_b:
-                        st.text_input("Size (mm)", key="cyst_single_size")
+                        st.text_input("Size (mm)", key="cyst_single_size",
+                                      value=_seed("cyst_single_size", ""))
                         wget("cyst_single_size", "")
                 else:
                     c_a, c_b = st.columns(2)
                     with c_a:
-                        st.radio("Lobe", ["right", "left"],
+                        _lobe_opts = ["right", "left"]
+                        st.radio("Lobe", _lobe_opts,
+                                 index=_idx("cyst_few_lobe", _lobe_opts, "right"),
                                  horizontal=True, key="cyst_few_lobe")
                         wget("cyst_few_lobe", "right")
                     with c_b:
-                        st.text_input("Largest (mm)", key="cyst_few_largest")
+                        st.text_input("Largest (mm)", key="cyst_few_largest",
+                                      value=_seed("cyst_few_largest", ""))
                         wget("cyst_few_largest", "")
             elif _lf == "hemangioma":
-                st.radio("Number", ["single", "few"],
+                _hc_opts = ["single", "few"]
+                st.radio("Number", _hc_opts,
+                         index=_idx("hemangioma_count", _hc_opts, "single"),
                          horizontal=True, key="hemangioma_count")
                 wget("hemangioma_count", "single")
                 if ss("hemangioma_count", "single") == "single":
                     c_a, c_b = st.columns(2)
                     with c_a:
-                        st.radio("Lobe", ["right", "left"], horizontal=True,
-                                 key="hemangioma_single_lobe")
+                        _lobe_opts = ["right", "left"]
+                        st.radio("Lobe", _lobe_opts,
+                                 index=_idx("hemangioma_single_lobe", _lobe_opts, "right"),
+                                 horizontal=True, key="hemangioma_single_lobe")
                         wget("hemangioma_single_lobe", "right")
                     with c_b:
-                        st.text_input("Size (mm)", key="hemangioma_single_size")
+                        st.text_input("Size (mm)", key="hemangioma_single_size",
+                                      value=_seed("hemangioma_single_size", ""))
                         wget("hemangioma_single_size", "")
                 else:
                     c_a, c_b = st.columns(2)
                     with c_a:
-                        st.radio("Lobe", ["right", "left"], horizontal=True,
-                                 key="hemangioma_few_lobe")
+                        _lobe_opts = ["right", "left"]
+                        st.radio("Lobe", _lobe_opts,
+                                 index=_idx("hemangioma_few_lobe", _lobe_opts, "right"),
+                                 horizontal=True, key="hemangioma_few_lobe")
                         wget("hemangioma_few_lobe", "right")
                     with c_b:
-                        st.text_input("Largest (mm)", key="hemangioma_few_largest")
+                        st.text_input("Largest (mm)", key="hemangioma_few_largest",
+                                      value=_seed("hemangioma_few_largest", ""))
                         wget("hemangioma_few_largest", "")
             elif _lf == "abscess":
-                st.radio("Number", ["single", "few", "multiple"],
+                _ac_opts = ["single", "few", "multiple"]
+                st.radio("Number", _ac_opts,
+                         index=_idx("abscess_count", _ac_opts, "single"),
                          horizontal=True, key="abscess_count")
                 wget("abscess_count", "single")
                 _ac = ss("abscess_count", "single")
+                _n_default = _seed("abscess_n", 2)
+                try:
+                    _n_default = int(_n_default)
+                except (ValueError, TypeError):
+                    _n_default = 2
                 n_abs = 1 if _ac == "single" else int(st.number_input(
-                    "How many lesions?", min_value=1, max_value=5, value=2,
-                    key="abscess_n"))
+                    "How many lesions?", min_value=1, max_value=5,
+                    value=_n_default, key="abscess_n"))
                 wget("abscess_n", 2)
                 for i in range(n_abs):
                     st.markdown(f"*Lesion {i+1}*")
                     c_a, c_b, c_c = st.columns([1, 2, 1])
                     with c_a:
-                        st.selectbox("Segment",
-                                     ["I", "II", "III", "IV",
-                                      "V", "VI", "VII", "VIII"],
+                        _seg_opts = ["I", "II", "III", "IV",
+                                     "V", "VI", "VII", "VIII"]
+                        st.selectbox("Segment", _seg_opts,
+                                     index=_idx(f"abs_seg_{i}", _seg_opts, "I"),
                                      key=f"abs_seg_{i}")
                         wget(f"abs_seg_{i}", "I")
                     with c_b:
-                        st.text_input("Dimensions (XxYxZ mm)", key=f"abs_dim_{i}")
+                        st.text_input("Dimensions (XxYxZ mm)", key=f"abs_dim_{i}",
+                                      value=_seed(f"abs_dim_{i}", ""))
                         wget(f"abs_dim_{i}", "")
                     with c_c:
-                        st.text_input("Volume (cc)", key=f"abs_vol_{i}")
+                        st.text_input("Volume (cc)", key=f"abs_vol_{i}",
+                                      value=_seed(f"abs_vol_{i}", ""))
                         wget(f"abs_vol_{i}", "")
             elif _lf == "other":
-                st.text_input("Description", key="liver_focal_text")
+                st.text_input("Description", key="liver_focal_text",
+                              value=_seed("liver_focal_text", ""))
                 wget("liver_focal_text", "")
 
-            st.radio("IHBR", ["normal", "dilated"], horizontal=True,
-                     key="liver_ihbr")
+            _ihbr_opts = ["normal", "dilated"]
+            st.radio("IHBR", _ihbr_opts,
+                     index=_idx("liver_ihbr", _ihbr_opts, "normal"),
+                     horizontal=True, key="liver_ihbr")
             wget("liver_ihbr", "normal")
             c_a, c_b = st.columns([2, 1])
             with c_a:
-                st.radio("Portal vein", ["normal", "dilated"],
+                _portal_opts = ["normal", "dilated"]
+                st.radio("Portal vein", _portal_opts,
+                         index=_idx("liver_portal", _portal_opts, "normal"),
                          horizontal=True, key="liver_portal")
                 wget("liver_portal", "normal")
             with c_b:
                 if ss("liver_portal", "normal") == "dilated":
-                    st.text_input("Portal vein size (mm)", key="liver_portal_mm")
+                    st.text_input("Portal vein size (mm)", key="liver_portal_mm",
+                                  value=_seed("liver_portal_mm", ""))
                     wget("liver_portal_mm", "")
 
-    # ------- GALL BLADDER -------
+    # ------- GALL BLADDER ------- (v3.1.4: _idx / _seed applied)
     gb_open = organ_button("GALL BLADDER", "GALL BLADDER")
     if gb_open:
         with st.container(border=True):
+            _gb_status_opts = ["adequately_distended", "over", "partially",
+                               "contracted", "operated"]
             st.radio(
-                "Distension",
-                ["adequately_distended", "over", "partially", "contracted",
-                 "operated"],
+                "Distension", _gb_status_opts,
+                index=_idx("gb_status", _gb_status_opts, "adequately_distended"),
                 horizontal=True,
                 format_func=lambda x: {"adequately_distended": "Adequate",
                                        "over": "Over-distended",
@@ -4556,82 +4605,105 @@ with col_find:
             wget("gb_status", "adequately_distended")
             _gbs = ss("gb_status", "adequately_distended")
             if _gbs not in ("contracted", "operated"):
-                st.checkbox("Wall thickening present", key="gb_wall_check")
+                st.checkbox("Wall thickening present", key="gb_wall_check",
+                            value=bool(_seed("gb_wall_check", False)))
                 wget("gb_wall_check", False)
                 if ss("gb_wall_check", False):
-                    st.text_input("Wall thickness (mm)", key="gb_wall_mm")
+                    st.text_input("Wall thickness (mm)", key="gb_wall_mm",
+                                  value=_seed("gb_wall_mm", ""))
                     wget("gb_wall_mm", "")
-            st.radio("Calculi", ["none", "present"], horizontal=True,
-                     key="gb_calculi")
+            _gb_calc_opts = ["none", "present"]
+            st.radio("Calculi", _gb_calc_opts,
+                     index=_idx("gb_calculi", _gb_calc_opts, "none"),
+                     horizontal=True, key="gb_calculi")
             wget("gb_calculi", "none")
             if ss("gb_calculi", "none") == "present":
                 c_a, c_b = st.columns(2)
                 with c_a:
-                    st.radio("Count",
-                             ["single", "few", "multiple", "innumerable"],
+                    _gcc_opts = ["single", "few", "multiple", "innumerable"]
+                    st.radio("Count", _gcc_opts,
+                             index=_idx("gb_calc_count", _gcc_opts, "single"),
                              horizontal=True, format_func=lambda x: x.title(),
                              key="gb_calc_count")
                     wget("gb_calc_count", "single")
                 with c_b:
                     if ss("gb_calc_count", "single") != "innumerable":
-                        st.radio("Size", ["small", "large"], horizontal=True,
-                                 format_func=lambda x: x.title(),
+                        _gsc_opts = ["small", "large"]
+                        st.radio("Size", _gsc_opts,
+                                 index=_idx("gb_calc_size_cat", _gsc_opts, "small"),
+                                 horizontal=True, format_func=lambda x: x.title(),
                                  key="gb_calc_size_cat")
                         wget("gb_calc_size_cat", "small")
                 if ss("gb_calc_count", "single") != "innumerable":
-                    st.text_input("Largest size (mm)", key="gb_calc_size")
+                    st.text_input("Largest size (mm)", key="gb_calc_size",
+                                  value=_seed("gb_calc_size", ""))
                     wget("gb_calc_size", "")
-                    st.checkbox("Calculus at GB neck", key="gb_calc_neck")
+                    st.checkbox("Calculus at GB neck", key="gb_calc_neck",
+                                value=bool(_seed("gb_calc_neck", False)))
                     wget("gb_calc_neck", False)
                     if ss("gb_calc_neck", False):
-                        st.text_input("Neck calculus size (mm)", key="gb_neck_size")
+                        st.text_input("Neck calculus size (mm)", key="gb_neck_size",
+                                      value=_seed("gb_neck_size", ""))
                         wget("gb_neck_size", "")
-            st.radio("Sludge",
-                     ["none", "trace", "significant", "echogenic", "organized"],
+            _gsl_opts = ["none", "trace", "significant", "echogenic", "organized"]
+            st.radio("Sludge", _gsl_opts,
+                     index=_idx("gb_sludge", _gsl_opts, "none"),
                      horizontal=True, format_func=lambda x: x.title(),
                      key="gb_sludge")
             wget("gb_sludge", "none")
-            st.checkbox("Sludge ball / polyp present", key="gb_sludge_ball")
+            st.checkbox("Sludge ball / polyp present", key="gb_sludge_ball",
+                        value=bool(_seed("gb_sludge_ball", False)))
             wget("gb_sludge_ball", False)
             if ss("gb_sludge_ball", False):
                 c_a, c_b = st.columns(2)
                 with c_a:
-                    st.radio("Count", ["single", "few", "multiple"],
+                    _gsb_opts = ["single", "few", "multiple"]
+                    st.radio("Count", _gsb_opts,
+                             index=_idx("gb_sb_count", _gsb_opts, "single"),
                              horizontal=True, key="gb_sb_count")
                     wget("gb_sb_count", "single")
                 with c_b:
-                    st.radio("Wall", ["anterior", "posterior"],
+                    _gsw_opts = ["anterior", "posterior"]
+                    st.radio("Wall", _gsw_opts,
+                             index=_idx("gb_sb_wall", _gsw_opts, "anterior"),
                              horizontal=True, format_func=lambda x: x.title(),
                              key="gb_sb_wall")
                     wget("gb_sb_wall", "anterior")
-                st.text_input("Size (mm)", key="gb_sb_size")
+                st.text_input("Size (mm)", key="gb_sb_size",
+                              value=_seed("gb_sb_size", ""))
                 wget("gb_sb_size", "")
             st.checkbox(
                 "Comet tail artifacts (adenomyomatosis / cholesterolosis)",
-                key="gb_comet_tail")
+                key="gb_comet_tail",
+                value=bool(_seed("gb_comet_tail", False)))
             wget("gb_comet_tail", False)
             if ss("gb_comet_tail", False):
                 c_a, c_b = st.columns(2)
                 with c_a:
-                    st.radio("Count", ["single", "few", "multiple"],
+                    _gct_opts = ["single", "few", "multiple"]
+                    st.radio("Count", _gct_opts,
+                             index=_idx("gb_ct_count", _gct_opts, "single"),
                              horizontal=True, key="gb_ct_count")
                     wget("gb_ct_count", "single")
                 with c_b:
-                    st.radio("Wall", ["anterior", "posterior"],
+                    _gcw_opts = ["anterior", "posterior"]
+                    st.radio("Wall", _gcw_opts,
+                             index=_idx("gb_ct_wall", _gcw_opts, "anterior"),
                              horizontal=True, format_func=lambda x: x.title(),
                              key="gb_ct_wall")
                     wget("gb_ct_wall", "anterior")
             st.checkbox("Thin rim of pericholecystic fluid present",
-                        key="gb_peri_fluid")
+                        key="gb_peri_fluid",
+                        value=bool(_seed("gb_peri_fluid", False)))
             wget("gb_peri_fluid", False)
 
-    # ------- CBD -------
+    # ------- CBD ------- (v3.1.4: _idx / _seed applied)
     col_cbd_main, col_cbd_sz = st.columns([5, 1],
                                           vertical_alignment="bottom")
     with col_cbd_sz:
         cbd_mm_num = st.number_input(
-            "CBD caliber mm", min_value=0.0, max_value=50.0, value=None,
-            step=0.1, format="%.2f",
+            "CBD caliber mm", min_value=0.0, max_value=50.0,
+            value=_seed("cbd_mm_num", None), step=0.1, format="%.2f",
             key="cbd_mm_num", label_visibility="collapsed",
             placeholder="CBD mm")
         wget("cbd_mm_num", None)
@@ -4640,28 +4712,36 @@ with col_find:
         cbd_open = organ_button("COMMON BILE DUCT", "COMMON BILE DUCT")
     if cbd_open:
         with st.container(border=True):
+            _cbd_status_opts = ["normal", "proximal", "dilated"]
             st.radio(
-                "Status", ["normal", "proximal", "dilated"], horizontal=True,
+                "Status", _cbd_status_opts,
+                index=_idx("cbd_status", _cbd_status_opts, "normal"),
+                horizontal=True,
                 format_func=lambda x: {"normal": "Normal",
                                        "proximal": "Proximally dilated",
                                        "dilated": "Dilated throughout"}[x],
                 key="cbd_status")
             wget("cbd_status", "normal")
-            st.checkbox("Calculus in CBD", key="cbd_calc")
+            st.checkbox("Calculus in CBD", key="cbd_calc",
+                        value=bool(_seed("cbd_calc", False)))
             wget("cbd_calc", False)
             if ss("cbd_calc", False):
                 c_a, c_b = st.columns(2)
                 with c_a:
-                    st.radio("Count", ["single", "few"], horizontal=True,
-                             format_func=lambda x: x.title(),
+                    _ccc_opts = ["single", "few"]
+                    st.radio("Count", _ccc_opts,
+                             index=_idx("cbd_calc_count", _ccc_opts, "single"),
+                             horizontal=True, format_func=lambda x: x.title(),
                              key="cbd_calc_count")
                     wget("cbd_calc_count", "single")
                 with c_b:
                     st.text_input("Size (mm, largest if few)",
-                                  key="cbd_calc_size")
+                                  key="cbd_calc_size",
+                                  value=_seed("cbd_calc_size", ""))
                     wget("cbd_calc_size", "")
-                st.radio("Location",
-                         ["proximal", "mid", "distal", "mid_distal"],
+                _ccl_opts = ["proximal", "mid", "distal", "mid_distal"]
+                st.radio("Location", _ccl_opts,
+                         index=_idx("cbd_calc_location", _ccl_opts, "distal"),
                          horizontal=True,
                          format_func=lambda x: {"proximal": "Proximal",
                                                 "mid": "Mid",
@@ -4671,7 +4751,9 @@ with col_find:
                 wget("cbd_calc_location", "distal")
             if ss("cbd_status", "normal") in ("proximal", "dilated") \
                     or ss("cbd_calc", False):
-                st.radio("IHBR", ["normal", "proximal", "dilated"],
+                _ci_opts = ["normal", "proximal", "dilated"]
+                st.radio("IHBR", _ci_opts,
+                         index=_idx("cbd_ihbr", _ci_opts, "normal"),
                          horizontal=True,
                          format_func=lambda x: {"normal": "Normal",
                                                 "proximal": "Proximally dilated",
@@ -4679,7 +4761,7 @@ with col_find:
                          key="cbd_ihbr")
                 wget("cbd_ihbr", "normal")
 
-    # ------- PANCREAS -------
+    # ------- PANCREAS ------- (unseeded — will be fixed after verification)
     pn_open = organ_button("PANCREAS", "PANCREAS")
     if pn_open:
         with st.container(border=True):
@@ -4788,7 +4870,7 @@ with col_find:
                 st.checkbox("Mild fat stranding", key="pn_ch_fat")
                 wget("pn_ch_fat", False)
 
-    # ------- SPLEEN -------
+    # ------- SPLEEN ------- (unseeded)
     col_sp_main, col_sp_sz = st.columns([5, 1], vertical_alignment="bottom")
     with col_sp_main:
         spleen_open = organ_button("SPLEEN", "SPLEEN")
@@ -4849,7 +4931,7 @@ with col_find:
                              key="sp_acc_loc")
                     wget("sp_acc_loc", "hilum")
 
-    # ------- KIDNEYS -------
+    # ------- KIDNEYS ------- (unseeded)
     kd_open = organ_button("KIDNEYS", "KIDNEYS")
     if kd_open:
         with st.container(border=True):
@@ -5081,7 +5163,7 @@ with col_find:
                         key=f"kd_{side[0]}_contra")
                     wget(f"kd_{side[0]}_contra", False)
 
-    # ------- URINARY BLADDER -------
+    # ------- URINARY BLADDER ------- (unseeded)
     ub_open = organ_button("URINARY BLADDER", "URINARY BLADDER")
     if ub_open:
         with st.container(border=True):
@@ -5135,7 +5217,7 @@ with col_find:
                 st.text_input("Post-void residue (CC)", key="ub_post_void")
                 wget("ub_post_void", "")
 
-    # ------- UTERUS / OVARIES (F) or PROSTATE (M) -------
+    # ------- UTERUS / OVARIES (F) or PROSTATE (M) ------- (unseeded)
     if p_sex == "F":
         _age_years = parse_age(p_age)
         _is_ped_female = (_age_years is not None and _age_years < 14)
@@ -5363,7 +5445,6 @@ with col_find:
                     st.checkbox("Add: no focal SOL/RPOC line", key="ut_neg_sol")
                     wget("ut_neg_sol", False)
 
-        # ------- OVARIES -------
         ov_open = organ_button("OVARIES", "OVARIES")
         if ov_open:
             with st.container(border=True):
@@ -5528,7 +5609,7 @@ with col_find:
                                             key="pr_cyst_right_hemi")
                                 wget("pr_cyst_right_hemi", False)
 
-    # ------- BOWEL -------
+    # ------- BOWEL ------- (unseeded)
     bowel_open = organ_button("BOWEL / FREE FLUID", "BOWEL / FREE FLUID")
     if bowel_open:
         with st.container(border=True):
@@ -5539,7 +5620,7 @@ with col_find:
                      horizontal=True, key="bw_ln")
             wget("bw_ln", "none")
 
-    # ------- APPENDIX -------
+    # ------- APPENDIX ------- (unseeded)
     ap_open = organ_button("APPENDIX", "APPENDIX")
     if ap_open:
         with st.container(border=True):
