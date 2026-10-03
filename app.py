@@ -3836,7 +3836,10 @@ def _echogenicity_impression_lines(k):
                 f"GRADE-II/III vs AKI. Adv- KFT Correlation."]
     return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY WITH LOST "
             f"CORTICOMEDULLARY DIFFERENTIATION - ?MEDICAL RENAL DISEASE "
-            f"GRADE-III/IV vs AKI. Adv- KFT Correlation."]# ============================================================
+            f"GRADE-III/IV vs AKI. Adv- KFT Correlation."]
+
+
+# ============================================================
 # IMPRESSION GENERATOR
 # ============================================================
 
