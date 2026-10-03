@@ -1,26 +1,45 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v3.3.1-stable
+v3.3.2-stable
+
+v3.3.2:
+  - Endometrial thickening (impression):
+      * Body matrix: normal / thickened / significantly thickened / thinned out,
+        with regular / irregular pattern. Connector rule: 2 descriptors -> "&";
+        3 descriptors -> comma between first two, "&" before third.
+        Descriptor block bold-italic; the "&" itself plain. "irregular" is
+        bold-italic. Subendometrial cysts join with a comma. Heterogeneous +
+        increased vascularity render as a separate sentence.
+      * Impression pathways (precedence C > B > A):
+          A. THICKENED ENDOMETRIUM WITH A CORPUS LUTEUM CYST IN THE {SIDE}
+             OVARY -- SUSPICIOUS FOR VERY EARLY PREGNANCY, MAY NOT BE
+             VISUALIZABLE SONOGRAPHICALLY AT THE TIME OF SCAN.
+             Adv- UPT & B-HCG Correlation.
+          B. {THICKENED/SIGNIFICANTLY THICKENED} ENDOMETRIUM WITH MULTIPLE
+             SUBENDOMETRIAL CYSTIC SPACES - ?CYSTIC ENDOMETRIAL HYPERPLASIA.
+             Adv- Endometrial Biopsy & Clinical Correlation.
+          C. SIGNIFICANTLY THICKENED & HETEROGENEOUS ENDOMETRIUM WITH
+             INCREASED VASCULARITY - ?CA ENDOMETRIUM.
+             Adv- CA 125, HE4, Endometrial Biopsy & Clinical Correlation.
+      * Manual Suspicion radio (none / very_early_pregnancy /
+        cystic_hyperplasia / ca_endometrium) suppresses auto lines entirely.
+      * CL cyst re-added to ovary findings. Body: "A corpus luteum cyst(xxmm)
+        seen in the {side} ovary." Impression: "A {SIDE} OVARIAN CORPUS
+        LUTEUM CYST(XXMM)."
+  - "No focal SOL or RPOC" (ut_neg_sol) gained two independent sub-checkboxes
+    (mildly irregular endometrium / mild endometrial collection) with four
+    impression variants. No advice tail. Body untouched.
+  - Dark theme trial (Liver, GB, CBD only):
+      * Page background: #1e1e1e
+      * Findings panels: black background, bright green text
+      * Organ button border: orange when closed, green when open
+      * Radio circles and labels: orange
+      * Inputs inside the trial panels: dark-gray with green text
+    Rollback: delete between "# ---- THEME TRIAL START ----" and
+    "# ---- THEME TRIAL END ----".
 
 v3.3.1:
-  - Cervix body & impression reworked:
-      * Cervix findings always render LAST in the uterus body section.
-      * Bulky cervix absorbs nabothian / collection via with/& connectors;
-        elongated is dropped when bulky cervix is present.
-      * Elongated alone: body only, no impression.
-      * Bulky uterus + elongated: merged as "BULKY UTERUS WITH ELONGATED CERVIX."
-      * Bulky cervix auto-appends "?CERVICITIS. Adv - PAP Smear."
-      * Cervicitis radio available independently; appends the same tail
-        (deduplicated).
-      * Cervix impression line comes BEFORE the uterus line.
-  - RPOC: dedicated body (already) + new impression line:
-      "A SMALL/MODERATE SIZED HYPOECHOIC/HYPERECHOIC SOL IN THE FUNDAL
-       ENDOMETRIUM SHOWING COLOR FLOW & ALIASING - FEATURES SUGGESTIVE OF
-       ?RETAINED PRODUCTS OF CONCEPTION. Adv- Clinical Correlation."
-    RPOC takes precedence over any cervix findings in both body and
-    impression when both somehow present.
-  - Impression order: splenomegaly now appears ABOVE hepatomegaly when both
-    are emitted as separate lines.
+  - Cervix body & impression, RPOC, spleen above liver.
 
 v3.3.0:
   - Uterus body / impression, fibroid+myometrium, pelvic congestion, DOCX.
@@ -557,18 +576,21 @@ OVARY_CYST_TYPES = {
     "hemorrhagic_cyst": "hemorrhagic cyst",
     "hemorrhagic_follicle": "hemorrhagic follicle",
     "follicular_cyst": "follicular cyst",
+    "corpus_luteum": "corpus luteum cyst",
 }
 OVARY_CYST_TYPES_UP = {
     "simple_cyst": "SIMPLE CYST",
     "hemorrhagic_cyst": "HEMORRHAGIC CYST",
     "hemorrhagic_follicle": "HEMORRHAGIC FOLLICLE",
     "follicular_cyst": "FOLLICULAR CYST",
+    "corpus_luteum": "CORPUS LUTEUM CYST",
 }
 OVARY_CYST_TYPES_UP_PLURAL = {
     "simple_cyst": "SIMPLE CYSTS",
     "hemorrhagic_cyst": "HEMORRHAGIC CYSTS",
     "hemorrhagic_follicle": "HEMORRHAGIC FOLLICLES",
     "follicular_cyst": "FOLLICULAR CYSTS",
+    "corpus_luteum": "CORPUS LUTEUM CYSTS",
 }
 
 PCOS_OUTCOME_CONCLUSIVE = "conclusive"
@@ -705,6 +727,11 @@ def _new_uterus():
         "prominent_vascular_channels": False,
         "prominent_vascular_adnexa_scope": "myometrium",
         "endometrial_thickness_mm": "",
+        "endometrial_pattern": "regular",
+        "endometrial_echotexture": "homogeneous",
+        "endometrial_subcysts": False,
+        "endometrial_vascularity": False,
+        "endometrial_suspicion": "none",
         "endometrial_collection": "none",
         "endometrial_collection_het": False,
         "rpoc": False, "rpoc_size": "", "rpoc_echo": "hypo",
@@ -721,6 +748,8 @@ def _new_uterus():
         "adenomyomas_location": "posterior", "adenomyomas_size": "",
         "adenomyomas_avascular": True,
         "neg_rpoc": False, "neg_sol": False,
+        "neg_sol_irregular": False,
+        "neg_sol_collection": False,
     }
 
 
@@ -815,9 +844,7 @@ def new_report(sex="F"):
         "additional_body_findings": "",
         "impression": {"lines": []},
     }
-
-
-# ============================================================
+  # ============================================================
 # SEGMENTS
 # ============================================================
 
@@ -1570,7 +1597,7 @@ def _cyst_descriptor_phrase(k):
 
 
 def _cyst_count_word(count):
-    return {"single": "", "few": "Few", "multiple": "Multiple"}.get(count, "")
+    return {"single":    return {"single": "", "few": "Few", "multiple": "Multiple"}.get(count, "")
 
 
 def _cyst_impression_count_word(count):
@@ -2397,6 +2424,100 @@ def _cervix_body_fragments(d):
     return out
 
 
+def _endometrial_body_segments(d):
+    """Build the endometrial body sentence per the v3.3.2 locked spec.
+
+    Connector rule: 2 descriptors -> "&"; 3 descriptors -> comma between
+    first two, "&" before third. Bold-italic descriptor blocks exclude "&".
+    "irregular" is bold-italic. Subendometrial cysts join with a comma.
+    Heterogeneous + vascularity render as a separate sentence.
+    """
+    endo_mm = d.get("endometrial_thickness_mm", "")
+    if not endo_mm:
+        return None
+    endo_val = _first_number(endo_mm)
+    endo_cls = classify_endometrium(endo_val)
+    pattern = d.get("endometrial_pattern", "regular")
+    irregular = (pattern == "irregular")
+
+    # Descriptor word + value that we bold-italic
+    if endo_cls == "thinned_out":
+        thick_word = "thinned out"
+        thick_bi = f"{thick_word}({endo_mm}mm)"
+        normal_prefix = True
+    elif endo_cls == "thickened":
+        thick_word = "thickened"
+        thick_bi = f"{thick_word}({endo_mm}mm)"
+        normal_prefix = False
+    elif endo_cls == "significantly_thickened":
+        thick_word = "significantly thickened"
+        thick_bi = f"{thick_word}({endo_mm}mm)"
+        normal_prefix = False
+    else:
+        thick_word = None
+        thick_bi = f"thickness({endo_mm}mm)"
+        normal_prefix = True
+
+    segs = []
+
+    if normal_prefix and not irregular:
+        # normal or thinned_out, regular
+        if endo_cls is None:
+            segs = [seg(f"Endometrial echo is central & regular in "
+                        f"thickness({endo_mm}mm).")]
+        else:
+            # thinned_out regular
+            segs = [seg("Endometrial echo is central & "),
+                    seg(thick_bi, True, False, True),
+                    seg(".")]
+    elif normal_prefix and irregular:
+        # normal or thinned_out, irregular
+        if endo_cls is None:
+            segs = [seg("Endometrial echo is central, "),
+                    seg("irregular", True, False, True),
+                    seg(f" in thickness({endo_mm}mm).")]
+        else:
+            segs = [seg("Endometrial echo is central, "),
+                    seg("irregular", True, False, True),
+                    seg(" & "),
+                    seg(thick_bi, True, False, True),
+                    seg(".")]
+    elif not normal_prefix and not irregular:
+        # thickened / sig thickened, regular
+        segs = [seg("Endometrial echo is central & "),
+                seg(thick_bi, True, False, True),
+                seg(".")]
+    else:
+        # thickened / sig thickened, irregular
+        segs = [seg("Endometrial echo is central, "),
+                seg("irregular", True, False, True),
+                seg(" & "),
+                seg(thick_bi, True, False, True),
+                seg(".")]
+
+    # Subendometrial cysts — joined with a comma, not bold
+    if d.get("endometrial_subcysts"):
+        segs += [seg(" "), seg("studded by multiple subendometrial cystic spaces.",
+                               False)]
+
+    # Heterogeneous + increased vascularity — separate sentence
+    hetero = (d.get("endometrial_echotexture", "homogeneous") == "heterogeneous")
+    vasc = bool(d.get("endometrial_vascularity"))
+    if hetero and vasc:
+        segs += [seg(" "),
+                 seg("The endometrium appears heterogeneous with increased "
+                     "vascularity on colour Doppler.", True, False, True)]
+    elif hetero:
+        segs += [seg(" "),
+                 seg("The endometrium appears heterogeneous.", True, False, True)]
+    elif vasc:
+        segs += [seg(" "),
+                 seg("Increased vascularity is seen within the endometrium on "
+                     "colour Doppler.", True, False, True)]
+
+    return segs
+
+
 def uterus_sentence(d, pediatric=False, age_years=None):
     status = d.get("status", "anteverted")
 
@@ -2487,19 +2608,11 @@ def uterus_sentence(d, pediatric=False, age_years=None):
                   "uterine myometrium", True),
               seg(tail, True)]
 
-    # Endometrium
-    endo_mm = d.get("endometrial_thickness_mm", "")
-    endo_cls = classify_endometrium(_first_number(endo_mm))
-    if endo_mm:
-        endo_descriptor = ""
-        if endo_cls == "thinned_out":
-            endo_descriptor = " (thinned out endometrium)"
-        elif endo_cls == "thickened":
-            endo_descriptor = " (thickened endometrium)"
-        elif endo_cls == "significantly_thickened":
-            endo_descriptor = " (significantly thickened endometrium)"
-        s.append(seg(f" Endometrial echo is central and regular in "
-                     f"thickness({endo_mm}mm){endo_descriptor}."))
+    # Endometrium — v3.3.2 body matrix
+    endo_segs = _endometrial_body_segments(d)
+    if endo_segs:
+        s += [seg(" ")] + endo_segs
+
     coll = d.get("endometrial_collection", "none")
     het = d.get("endometrial_collection_het", False)
     if coll == "none" and not het:
@@ -2732,7 +2845,109 @@ def _congestion_impression_line(d):
             f"MYOMETRIUM{tail} - LIKELY MILD PELVIC CONGESTION.")
 
 
-def _uterus_impression_lines(d, age_years):
+def _ovary_has_corpus_luteum(d):
+    """Return side (right/left) if a CL cyst is present, else None."""
+    for side_key in ("right", "left"):
+        for f in d[side_key].get("findings", []):
+            if f.get("type") == "corpus_luteum":
+                return side_key
+    return None
+
+
+def _endometrial_impression_pathways(d, ovaries):
+    """Return the single endometrial impression line per the v3.3.2 spec.
+
+    Precedence C > B > A. Manual Suspicion radio overrides auto entirely.
+    """
+    endo_mm_str = d.get("endometrial_thickness_mm", "")
+    if not endo_mm_str:
+        return None
+    endo_val = _first_number(endo_mm_str)
+    endo_cls = classify_endometrium(endo_val)
+    if endo_cls is None or endo_cls == "thinned_out":
+        # normal thickness or thinned out — no endometrial impression line
+        # unless the user manually raised a suspicion
+        if d.get("endometrial_suspicion", "none") == "none":
+            return None
+
+    pattern = d.get("endometrial_pattern", "regular")
+    irregular = (pattern == "irregular")
+    hetero = (d.get("endometrial_echotexture", "homogeneous") == "heterogeneous")
+    vasc = bool(d.get("endometrial_vascularity"))
+    subcysts = bool(d.get("endometrial_subcysts"))
+    suspicion = d.get("endometrial_suspicion", "none")
+
+    # Manual override — suppress auto lines entirely.
+    if suspicion != "none":
+        if suspicion == "very_early_pregnancy":
+            cl_side = _ovary_has_corpus_luteum(ovaries)
+            side_up = _ovary_side_label(cl_side) if cl_side else "RIGHT"
+            return (
+                "THICKENED ENDOMETRIUM WITH A CORPUS LUTEUM CYST IN THE "
+                f"{side_up} OVARY -- SUSPICIOUS FOR VERY EARLY PREGNANCY, MAY "
+                "NOT BE VISUALIZABLE SONOGRAPHICALLY AT THE TIME OF SCAN. "
+                "Adv- UPT & B-HCG Correlation."
+            )
+        if suspicion == "cystic_hyperplasia":
+            if endo_cls == "significantly_thickened":
+                head = "SIGNIFICANTLY THICKENED ENDOMETRIUM"
+            else:
+                head = "THICKENED ENDOMETRIUM"
+            return (
+                f"{head} WITH MULTIPLE SUBENDOMETRIAL CYSTIC SPACES - "
+                "?CYSTIC ENDOMETRIAL HYPERPLASIA. Adv- Endometrial Biopsy & "
+                "Clinical Correlation."
+            )
+        if suspicion == "ca_endometrium":
+            return (
+                "SIGNIFICANTLY THICKENED & HETEROGENEOUS ENDOMETRIUM WITH "
+                "INCREASED VASCULARITY - ?CA ENDOMETRIUM. Adv- CA 125, HE4, "
+                "Endometrial Biopsy & Clinical Correlation."
+            )
+
+    # Auto-detection
+    auto_lines = {}
+
+    # Pathway C: >20 mm + heterogeneous + increased vascularity
+    if (endo_cls == "significantly_thickened" and hetero and vasc):
+        auto_lines["C"] = (
+            "SIGNIFICANTLY THICKENED & HETEROGENEOUS ENDOMETRIUM WITH "
+            "INCREASED VASCULARITY - ?CA ENDOMETRIUM. Adv- CA 125, HE4, "
+            "Endometrial Biopsy & Clinical Correlation."
+        )
+
+    # Pathway B: >15 mm + irregular + multiple subendometrial cystic spaces
+    if (endo_cls in ("thickened", "significantly_thickened")
+            and irregular and subcysts):
+        if endo_cls == "significantly_thickened":
+            head = "SIGNIFICANTLY THICKENED ENDOMETRIUM"
+        else:
+            head = "THICKENED ENDOMETRIUM"
+        auto_lines["B"] = (
+            f"{head} WITH MULTIPLE SUBENDOMETRIAL CYSTIC SPACES - "
+            "?CYSTIC ENDOMETRIAL HYPERPLASIA. Adv- Endometrial Biopsy & "
+            "Clinical Correlation."
+        )
+
+    # Pathway A: >15 mm + regular + CL cyst in either ovary
+    cl_side = _ovary_has_corpus_luteum(ovaries)
+    if (endo_cls in ("thickened", "significantly_thickened")
+            and not irregular and cl_side is not None):
+        side_up = _ovary_side_label(cl_side)
+        auto_lines["A"] = (
+            "THICKENED ENDOMETRIUM WITH A CORPUS LUTEUM CYST IN THE "
+            f"{side_up} OVARY -- SUSPICIOUS FOR VERY EARLY PREGNANCY, MAY "
+            "NOT BE VISUALIZABLE SONOGRAPHICALLY AT THE TIME OF SCAN. "
+            "Adv- UPT & B-HCG Correlation."
+        )
+
+    for key in ("C", "B", "A"):
+        if key in auto_lines:
+            return auto_lines[key]
+    return None
+
+
+def _uterus_impression_lines(d, age_years, ovaries=None):
     """Return list of impression strings for the uterus."""
     lines = []
     if d.get("status") in ("not_visualized", "operated"):
@@ -2758,8 +2973,7 @@ def _uterus_impression_lines(d, age_years):
     has_adenomyomas = bool(d.get("adenomyomas"))
     has_congestion = bool(d.get("prominent_vascular_channels"))
 
-    # Gravid overrides everything else in the uterus block (but pre_lines still
-    # carry RPOC / cervix per the user's rules — RPOC wins).
+    # Gravid overrides everything else in the uterus block.
     if d.get("gravid"):
         gravid_type = d.get("gravid_type", "CRL")
         length_v = d.get("gravid_length", "")
@@ -2875,6 +3089,31 @@ def _uterus_impression_lines(d, age_years):
             cl = _congestion_impression_line(d)
             if cl and (not lines or lines[-1] != cl):
                 lines.append(cl)
+
+    # Endometrial impression pathway (single line, precedence C > B > A)
+    if ovaries is not None:
+        endo_line = _endometrial_impression_pathways(d, ovaries)
+        if endo_line:
+            lines.append(endo_line)
+
+    # "no focal SOL or RPOC" — sub-checkbox variants (impression only)
+    if d.get("neg_sol"):
+        irr = bool(d.get("neg_sol_irregular"))
+        coll = bool(d.get("neg_sol_collection"))
+        base_tail = ("NO FOCAL SOL, RPOC OR INCREASED VASCULARITY "
+                     "APPRECIATED IN THE UTERUS ON TAS.")
+        if irr and coll:
+            lines.append("ENDOMETRIUM APPEARS MILDLY IRREGULAR WITH MILD "
+                         "ENDOMETRIAL COLLECTION. HOWEVER " + base_tail)
+        elif irr:
+            lines.append("ENDOMETRIUM APPEARS MILDLY IRREGULAR. HOWEVER "
+                         + base_tail)
+        elif coll:
+            lines.append("MILD ENDOMETRIAL COLLECTION IS PRESENT. HOWEVER "
+                         + base_tail)
+        else:
+            lines.append("NO OBVIOUS EVIDENCE OF ANY FOCAL SOL, RPOC OR "
+                         "INCREASED VASCULARITY APPRECIATED IN THE UTERUS ON TAS.")
 
     return pre_lines + lines
 
@@ -3597,10 +3836,7 @@ def _echogenicity_impression_lines(k):
                 f"GRADE-II/III vs AKI. Adv- KFT Correlation."]
     return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY WITH LOST "
             f"CORTICOMEDULLARY DIFFERENTIATION - ?MEDICAL RENAL DISEASE "
-            f"GRADE-III/IV vs AKI. Adv- KFT Correlation."]
-
-
-# ============================================================
+            f"GRADE-III/IV vs AKI. Adv- KFT Correlation."]# ============================================================
 # IMPRESSION GENERATOR
 # ============================================================
 
@@ -4063,16 +4299,14 @@ def generate_impression(d, sex, age):
         lines.append(ln)
 
     if sex == "F":
-        uterus_lines = _uterus_impression_lines(d["uterus"], age_years)
+        uterus_lines = _uterus_impression_lines(d["uterus"], age_years,
+                                                 ovaries=d["ovaries"])
         for ln in uterus_lines:
             lines.append(ln)
 
         if d["uterus"].get("neg_rpoc"):
             lines.append("NO OBVIOUS EVIDENCE OF ANY INTRA/EXTRA-UTERINE "
                          "PREGNANCY OR RPOC APPRECIATED ON TAS AT THE TIME OF SCAN.")
-        if d["uterus"].get("neg_sol"):
-            lines.append("NO OBVIOUS EVIDENCE OF ANY FOCAL SOL, RPOC OR INCREASED "
-                         "VASCULARITY APPRECIATED IN THE UTERUS ON TAS.")
 
         o = d["ovaries"]
         if age_years is not None and age_years < 48:
@@ -4603,6 +4837,70 @@ st.markdown(
         overflow-wrap: anywhere !important;
         word-break: break-word !important;
     }
+
+    /* ---- THEME TRIAL START ----
+       Dark-gray page + black findings panels with green text for the first
+       three organs (Liver / Gall Bladder / CBD). Rollback = delete this
+       entire block between the START and END markers. */
+    .stApp, [data-testid="stAppViewContainer"], section.main {
+        background-color: #1e1e1e !important;
+    }
+    .stApp, .stApp p, .stApp label, .stApp span, .stApp div,
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
+    .stApp li { color: #22c55e !important; }
+    /* Organ button border: orange closed, green open for the trial organs */
+    div[class*="st-key-organ_btn_LIVER"] button,
+    div[class*="st-key-organ_btn_GALL_BLADDER"] button,
+    div[class*="st-key-organ_btn_COMMON_BILE_DUCT"] button {
+        background-color: #000000 !important;
+        color: #22c55e !important;
+        border: 2px solid #f97316 !important;
+    }
+    div[class*="st-key-organ_btn_LIVER"] button[kind="primary"],
+    div[class*="st-key-organ_btn_GALL_BLADDER"] button[kind="primary"],
+    div[class*="st-key-organ_btn_COMMON_BILE_DUCT"] button[kind="primary"] {
+        background-color: #000000 !important;
+        color: #22c55e !important;
+        border: 2px solid #22c55e !important;
+    }
+    /* Radio + checkbox text stays green; radios orange */
+    div[data-testid="stRadio"] label,
+    div[data-testid="stRadio"] label * {
+        color: #22c55e !important;
+    }
+    div[data-testid="stRadio"] label > div:first-child,
+    div[data-testid="stRadio"] label > div:first-child * {
+        border-color: #f97316 !important;
+        color: #f97316 !important;
+        fill: #f97316 !important;
+        stroke: #f97316 !important;
+    }
+    div[data-testid="stRadio"] label[data-checked="true"] > div:first-child,
+    div[data-testid="stRadio"] input:checked + div {
+        background-color: #f97316 !important;
+        border-color: #f97316 !important;
+    }
+    div[data-testid="stCheckbox"] label,
+    div[data-testid="stCheckbox"] label * {
+        color: #22c55e !important;
+    }
+    /* Findings-panel containers (bordered) inside open organs */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: #000000 !important;
+        border-color: #22c55e !important;
+    }
+    /* Inputs inside dark theme — dark gray bg + green text */
+    div[data-testid="stNumberInput"] input,
+    .stTextInput input, .stTextArea textarea,
+    [data-baseweb="input"] input, [data-baseweb="base-input"] input {
+        background-color: #2a2a2a !important;
+        color: #22c55e !important;
+        border: 1px solid #22c55e !important;
+    }
+    .stTextInput input::placeholder, .stTextArea textarea::placeholder {
+        color: #4ade80 !important;
+    }
+    /* ---- THEME TRIAL END ---- */
     </style>
     """,
     unsafe_allow_html=True,
@@ -5841,9 +6139,55 @@ with col_find:
                                     key="ut_adenoma_avascular")
                         wget("ut_adenoma_avascular", True)
 
+                    # ---------------- ENDOMETRIUM ----------------
                     st.text_input("Endometrial thickness (mm)", key="ut_endo_mm",
                                   value=_seed("ut_endo_mm", ""))
                     wget("ut_endo_mm", "")
+
+                    _endo_pat_opts = ["regular", "irregular"]
+                    st.radio("Endometrial echo pattern", _endo_pat_opts,
+                             index=_idx("ut_endo_pattern",
+                                        _endo_pat_opts, "regular"),
+                             horizontal=True, key="ut_endo_pattern",
+                             format_func=lambda x: x.title())
+                    wget("ut_endo_pattern", "regular")
+
+                    _endo_tex_opts = ["homogeneous", "heterogeneous"]
+                    st.radio("Endometrial echotexture", _endo_tex_opts,
+                             index=_idx("ut_endo_texture",
+                                        _endo_tex_opts, "homogeneous"),
+                             horizontal=True, key="ut_endo_texture",
+                             format_func=lambda x: x.title())
+                    wget("ut_endo_texture", "homogeneous")
+
+                    st.checkbox("Multiple subendometrial cystic spaces",
+                                key="ut_endo_subcysts",
+                                value=bool(_seed("ut_endo_subcysts", False)))
+                    wget("ut_endo_subcysts", False)
+
+                    st.checkbox("Increased vascularity (colour Doppler)",
+                                key="ut_endo_vascularity",
+                                value=bool(_seed("ut_endo_vascularity", False)))
+                    wget("ut_endo_vascularity", False)
+
+                    _endo_susp_opts = ["none", "very_early_pregnancy",
+                                       "cystic_hyperplasia", "ca_endometrium"]
+                    st.radio("Suspicion (manual override)",
+                             _endo_susp_opts,
+                             index=_idx("ut_endo_suspicion",
+                                        _endo_susp_opts, "none"),
+                             horizontal=True,
+                             key="ut_endo_suspicion",
+                             format_func=lambda x: {
+                                 "none": "None",
+                                 "very_early_pregnancy":
+                                     "?Very early pregnancy",
+                                 "cystic_hyperplasia":
+                                     "?Cystic endometrial hyperplasia",
+                                 "ca_endometrium":
+                                     "?CA endometrium"}[x])
+                    wget("ut_endo_suspicion", "none")
+
                     _endo_coll_opts = ["none", "mild", "moderate"]
                     st.radio("Endometrial collection", _endo_coll_opts,
                              index=_idx("ut_endo_coll",
@@ -5909,6 +6253,17 @@ with col_find:
                     st.checkbox("Add: no focal SOL/RPOC line", key="ut_neg_sol",
                                 value=bool(_seed("ut_neg_sol", False)))
                     wget("ut_neg_sol", False)
+                    if ss("ut_neg_sol", False):
+                        st.checkbox("Mildly irregular endometrium",
+                                    key="ut_neg_sol_irregular",
+                                    value=bool(_seed("ut_neg_sol_irregular",
+                                                     False)))
+                        wget("ut_neg_sol_irregular", False)
+                        st.checkbox("Mild endometrial collection",
+                                    key="ut_neg_sol_collection",
+                                    value=bool(_seed("ut_neg_sol_collection",
+                                                     False)))
+                        wget("ut_neg_sol_collection", False)
 
         ov_open = organ_button("OVARIES", "OVARIES")
         if ov_open:
@@ -5943,6 +6298,7 @@ with col_find:
                                 ("hem", "Hemorrhagic cyst"),
                                 ("hemf", "Hemorrhagic follicle"),
                                 ("foll", "Follicular cyst"),
+                                ("cl", "Corpus luteum cyst"),
                             ]:
                                 _full_key = f"ov_{_sd}_f_{f_key}"
                                 st.checkbox(f_label, key=_full_key,
@@ -6427,6 +6783,11 @@ if p_sex == "F":
         "prominent_vascular_channels": bool(ss("ut_prom_vasc", False)),
         "prominent_vascular_adnexa_scope": ss("ut_prom_vasc_scope", "myometrium"),
         "endometrial_thickness_mm": ss("ut_endo_mm", ""),
+        "endometrial_pattern": ss("ut_endo_pattern", "regular"),
+        "endometrial_echotexture": ss("ut_endo_texture", "homogeneous"),
+        "endometrial_subcysts": bool(ss("ut_endo_subcysts", False)),
+        "endometrial_vascularity": bool(ss("ut_endo_vascularity", False)),
+        "endometrial_suspicion": ss("ut_endo_suspicion", "none"),
         "endometrial_collection": ss("ut_endo_coll", "none"),
         "endometrial_collection_het": bool(ss("ut_endo_het", False)),
         "rpoc": bool(ss("ut_rpoc", False)),
@@ -6454,6 +6815,8 @@ if p_sex == "F":
         "adenomyomas_avascular": bool(ss("ut_adenoma_avascular", True)),
         "neg_rpoc": bool(ss("ut_neg_rpoc", False)),
         "neg_sol": bool(ss("ut_neg_sol", False)),
+        "neg_sol_irregular": bool(ss("ut_neg_sol_irregular", False)),
+        "neg_sol_collection": bool(ss("ut_neg_sol_collection", False)),
     })
 
     for side, sd in (("right", "r"), ("left", "l")):
@@ -6472,6 +6835,8 @@ if p_sex == "F":
                  f"ov_{sd}_f_hemf_size", f"ov_{sd}_f_hemf_count"),
                 (f"ov_{sd}_f_foll", "follicular_cyst",
                  f"ov_{sd}_f_foll_size", f"ov_{sd}_f_foll_count"),
+                (f"ov_{sd}_f_cl", "corpus_luteum",
+                 f"ov_{sd}_f_cl_size", f"ov_{sd}_f_cl_count"),
             ]
             for _ck, _ftype, _sz_key, _cnt_key in _finding_map:
                 if ss(_ck, False):
