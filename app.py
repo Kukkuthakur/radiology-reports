@@ -1597,7 +1597,7 @@ def _cyst_descriptor_phrase(k):
 
 
 def _cyst_count_word(count):
-    return {"single":    return {"single": "", "few": "Few", "multiple": "Multiple"}.get(count, "")
+    return {"single": "", "few": "Few", "multiple": "Multiple"}.get(count, "")
 
 
 def _cyst_impression_count_word(count):
