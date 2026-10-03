@@ -1,43 +1,29 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v3.3.0-stable
+v3.3.1-stable
+
+v3.3.1:
+  - Cervix body & impression reworked:
+      * Cervix findings always render LAST in the uterus body section.
+      * Bulky cervix absorbs nabothian / collection via with/& connectors;
+        elongated is dropped when bulky cervix is present.
+      * Elongated alone: body only, no impression.
+      * Bulky uterus + elongated: merged as "BULKY UTERUS WITH ELONGATED CERVIX."
+      * Bulky cervix auto-appends "?CERVICITIS. Adv - PAP Smear."
+      * Cervicitis radio available independently; appends the same tail
+        (deduplicated).
+      * Cervix impression line comes BEFORE the uterus line.
+  - RPOC: dedicated body (already) + new impression line:
+      "A SMALL/MODERATE SIZED HYPOECHOIC/HYPERECHOIC SOL IN THE FUNDAL
+       ENDOMETRIUM SHOWING COLOR FLOW & ALIASING - FEATURES SUGGESTIVE OF
+       ?RETAINED PRODUCTS OF CONCEPTION. Adv- Clinical Correlation."
+    RPOC takes precedence over any cervix findings in both body and
+    impression when both somehow present.
+  - Impression order: splenomegaly now appears ABOVE hepatomegaly when both
+    are emitted as separate lines.
 
 v3.3.0:
-  - Uterus body: echopattern dropped everywhere. New size/shape wording:
-      * normal size + no globular -> "normal in size(XXmm) & shape"
-      * bulky variants            -> "{size_word} in size(XXmm) with normal shape"
-      * normal size + globular    -> "normal in size(XXmm) with globular shape"
-      * bulky + globular          -> "{size_word} in size(XXmm) with globular shape"
-    Applied to anteverted / retro-flexed / partially_visualized / low-lying.
-  - Uterus impression: hetero myometrium wording reworked.
-      * Standalone             -> "HETEROGENOUS UTERINE MYOMETRIUM."
-      * Standalone + fibroid   -> "HETEROGENOUS UTERINE MYOMETRIUM WITH SUGGESTION OF A FIBROID..."
-      * Bulky + hetero         -> "BULKY UTERUS WITH HETEROGENOUS MYOMETRIUM."
-      * Bulky + hetero + fibroid -> "BULKY UTERUS WITH HETEROGENOUS MYOMETRIUM & SUGGESTION OF A FIBROID..."
-      * "UTERINE" used ONLY in standalone (no bulky prefix).
-      * Globular shape + hetero myometrium auto-suggests early adenomyosis:
-          - Bulky + globular + hetero  -> "BULKY UTERUS WITH GLOBULAR SHAPE AND HETEROGENOUS MYOMETRIUM - ?EARLY UTERINE ADENOMYOSIS."
-          - Normal + globular + hetero -> "GLOBULAR UTERUS WITH HETEROGENOUS MYOMETRIUM - ?EARLY UTERINE ADENOMYOSIS."
-        (Overridden when the user ticks adenomyosis explicitly.)
-  - Uterus body: fibroid / adenomyomas interact with myometrium clause.
-      * "and no focal lesion is seen" dropped when a focal SOL is present
-        (fibroid OR adenomyomas).
-      * Myometrium clause joins focal SOL via "with" (e.g. "Myometrium appears
-        homogenous with a hypoechoic heterogenous SOL...").
-      * Opening "Myometrium appears {X}" retained.
-  - Pelvic congestion: sub-radio (myometrium only / + right adnexa / + left
-    adnexa / + bilateral adnexae). Body and impression both expanded.
-    Folded into bulky-uterus prefix only when no other uterus finding exists;
-    otherwise emitted as its own impression line.
-  - DOCX formatting: disclaimer box 7 pt (fixed line spacing), cell margins
-    shrunk to 10/10, Word-required trailing paragraph shrunk to a 1 pt stub so
-    no phantom page 2 appears on one-page reports.
-
-v3.2.0:
-  - Re-expansion fix rolled out to the ENTIRE report (_idx / _seed / wget).
-
-v3.1.4:
-  - Re-expansion fix applied to LIVER, GALL BLADDER, CBD only.
+  - Uterus body / impression, fibroid+myometrium, pelvic congestion, DOCX.
 
 Frozen rules:
 - Impression text ALL CAPS except:
@@ -497,7 +483,6 @@ def classify_uterus_size(length_mm):
     return "grossly_bulky"
 
 
-# Size word used in body ("bulky in size", etc.) and in impression ("BULKY UTERUS")
 UTERUS_SIZE_BODY_WORD = {
     "normal": None,
     "bulky": "bulky",
@@ -718,7 +703,7 @@ def _new_uterus():
         "myometrium": "homogenous",
         "globular_shape": False,
         "prominent_vascular_channels": False,
-        "prominent_vascular_adnexa_scope": "myometrium",  # myometrium | right | left | bilateral
+        "prominent_vascular_adnexa_scope": "myometrium",
         "endometrial_thickness_mm": "",
         "endometrial_collection": "none",
         "endometrial_collection_het": False,
@@ -726,6 +711,7 @@ def _new_uterus():
         "cervix_elongated": False, "cervix_bulky": False,
         "cervix_bulky_size_mm": "",
         "nabothian": "none", "cervix_collection": "none",
+        "cervicitis_suspected": False,
         "fibroid": False, "fibroid_count": "single",
         "fibroid_types": [], "fibroid_lesions": [], "fibroid_figo_manual": "",
         "adenomyosis": False, "adenomyosis_features": [],
@@ -2184,7 +2170,6 @@ def _uterus_size_class(d):
 
 
 def _uterus_has_focal_sol(d):
-    """True when a focal SOL is present (fibroid or adenomyomas)."""
     if d.get("fibroid"):
         return True
     if d.get("adenomyomas"):
@@ -2193,7 +2178,6 @@ def _uterus_has_focal_sol(d):
 
 
 def _myometrium_descriptor_body(d):
-    """Return the body-text descriptor for the chosen myometrium option."""
     m = d.get("myometrium", "homogenous")
     if m == "mildly_heterogeneous":
         return "mildly heterogenous"
@@ -2202,8 +2186,11 @@ def _myometrium_descriptor_body(d):
     return "homogenous"
 
 
+def _fibroid_lesion_sort_key(lesion):
+    return -(_first_number(lesion.get("size", "")) or 0)
+
+
 def _fibroid_body_fragment(d):
-    """Return seg list for the fibroid fragment, starting with 'with'."""
     if not d.get("fibroid"):
         return None
     count = d.get("fibroid_count", "single")
@@ -2246,7 +2233,7 @@ def _fibroid_body_fragment(d):
         desc_list.append(f"{size}mm in {loc} myometrium{suffix}")
     if len(desc_list) == 1:
         joined_desc = desc_list[0]
-    elif len(desc_desc := desc_list) == 2:
+    elif len(desc_list) == 2:
         joined_desc = f"{desc_list[0]} and {desc_list[1]}"
     else:
         joined_desc = ", ".join(desc_list[:-1]) + " and " + desc_list[-1]
@@ -2256,7 +2243,6 @@ def _fibroid_body_fragment(d):
 
 
 def _adenomyomas_body_fragment(d):
-    """Return the adenomyomas fragment text (starts lowercase), or None."""
     if not d.get("adenomyomas"):
         return None
     count = d.get("adenomyomas_count", "couple")
@@ -2280,17 +2266,6 @@ def _adenomyomas_body_fragment(d):
 
 
 def _myometrium_body_clause(d):
-    """Build the myometrium body clause.
-
-    Case A: no focal SOL present
-        Myometrium appears {X} and no focal lesion is seen.
-    Case B: fibroid present (single)
-        Myometrium appears {X} with a hypoechoic heterogenous SOL in the ...
-    Case C: fibroid present (few/multiple)
-        Myometrium appears {X} with few hypoechoic heterogenous SOLs ...
-    Case D: adenomyomas present (no fibroid)
-        Myometrium appears {X} with {count_word} {echo} small SOL(s) ...
-    """
     desc = _myometrium_descriptor_body(d)
     has_fibroid = bool(d.get("fibroid"))
     has_adenomyomas = bool(d.get("adenomyomas"))
@@ -2302,9 +2277,124 @@ def _myometrium_body_clause(d):
         fib_segs = _fibroid_body_fragment(d) or []
         return [seg(f"Myometrium appears {desc} with")] + fib_segs[1:]
 
-    # adenomyomas only
     aden_text = _adenomyomas_body_fragment(d) or ""
     return [seg(f"Myometrium appears {desc} with "), seg(aden_text, True)]
+
+
+def _adenomyosis_features_body(d):
+    feats = d.get("adenomyosis_features", []) or []
+    frags = []
+    for f in ADENOMYOSIS_FEATURES:
+        if f not in feats:
+            continue
+        if f == "globular_shape":
+            frags.append("with globular shape")
+        elif f == "asymmetric_posterior":
+            frags.append("with asymmetrically bulky posterior myometrium")
+        elif f == "venetian_blind_sign":
+            frags.append("diffusely heterogeneous echo pattern(venetian blind sign "
+                         "is positive) of myometrium")
+        elif f == "interface_indistinct":
+            frags.append("with indistinct endo-myometrial interface")
+        elif f == "interface_barely_perceptible_fundus":
+            frags.append("endo-myometrial interface is indistinct and barely "
+                         "perceptible at fundus level")
+        elif f == "interface_lost":
+            frags.append("loss of endo-myometrial interface")
+        elif f == "subendometrial_cysts":
+            frags.append("with few subendometrial cysts abutting the endometrium")
+    return frags
+
+
+def _adenomyosis_confidence(d):
+    conf = d.get("adenomyosis_confidence", "auto")
+    if conf in ("likely", "early"):
+        return conf
+    feats = d.get("adenomyosis_features", []) or []
+    return "likely" if len(feats) >= 2 else "early"
+
+
+def _adenomyosis_body_segments(d):
+    if not d.get("adenomyosis"):
+        return []
+    frags = _adenomyosis_features_body(d)
+    conf = _adenomyosis_confidence(d)
+    qualifier = "likely adenomyosis" if conf == "likely" else "?early adenomyosis"
+    body = " ".join(frags)
+    out = []
+    if body:
+        out += [seg(" "), seg(body, True)]
+    out += [seg(f" -- {qualifier}.", True)]
+    return out
+
+
+def _cervix_body_fragments(d):
+    """Build the cervix body sentence(s) per the locked rules.
+
+    Order of precedence / suppression:
+      - If bulky cervix is present:
+          * Elongated is dropped from body.
+          * Sentence: "Cervix appears bulky(xxmm) with <other findings>."
+      - If bulky cervix is absent:
+          * Elongated is a standalone sentence: "Cervix appears elongated."
+          * Nabothian / collection are collected as their own sentence(s).
+
+    Connector rule (global):
+      - 2 findings -> "with"
+      - 3 findings -> "with" then "&"
+      - 4+ findings -> first three via "with" / "&", then ". Also <last>."
+    """
+    bulky = bool(d.get("cervix_bulky"))
+    elongated = bool(d.get("cervix_elongated"))
+    nab = d.get("nabothian", "none")
+    coll = d.get("cervix_collection", "none")
+
+    nab_txt = None
+    if nab != "none":
+        word = {"one": "A", "few": "Few", "multiple": "Multiple"}.get(nab, "Few")
+        nab_txt = f"{word.lower()} nabothian cysts"
+
+    coll_txt = None
+    if coll != "none":
+        coll_txt = f"{coll} collection in the cervical canal"
+
+    out = []
+
+    if bulky:
+        bulky_size = d.get("cervix_bulky_size_mm", "")
+        size_txt = f"({bulky_size}mm)" if bulky_size else ""
+        extras = [t for t in (nab_txt, coll_txt) if t]
+        head = f"Cervix appears bulky{size_txt}"
+        if not extras:
+            out.append(seg(f"{head}."))
+        elif len(extras) == 1:
+            out.append(seg(f"{head} with {extras[0]}."))
+        elif len(extras) == 2:
+            out.append(seg(f"{head} with {extras[0]} & {extras[1]}."))
+        else:
+            head_line = f"{head} with {extras[0]} & {extras[1]}."
+            tail_line = "Also " + " & ".join(extras[2:]) + " seen."
+            out.append(seg(head_line))
+            out.append(seg(" " + tail_line))
+    else:
+        if elongated:
+            out.append(seg("Cervix appears elongated."))
+        extras = [t for t in (nab_txt, coll_txt) if t]
+        if extras:
+            if len(extras) == 1:
+                out.append(seg(f"{extras[0].capitalize()} seen in the cervix."))
+            elif len(extras) == 2:
+                out.append(seg(
+                    f"{extras[0].capitalize()} seen in the cervix with "
+                    f"{extras[1]}."))
+            else:
+                head_line = (f"{extras[0].capitalize()} seen in the cervix with "
+                             f"{extras[1]} & {extras[2]}.")
+                tail_line = "Also " + " & ".join(extras[3:]) + " seen."
+                out.append(seg(head_line))
+                out.append(seg(" " + tail_line))
+
+    return out
 
 
 def uterus_sentence(d, pediatric=False, age_years=None):
@@ -2323,7 +2413,7 @@ def uterus_sentence(d, pediatric=False, age_years=None):
     s = [seg("UTERUS", True, True)]
     size = d.get("size", "")
     cls = _uterus_size_class(d)
-    size_word = UTERUS_SIZE_BODY_WORD.get(cls)  # None for normal
+    size_word = UTERUS_SIZE_BODY_WORD.get(cls)
     globular = bool(d.get("globular_shape"))
     retroflexed = d.get("retroflexed", False)
     gravid = d.get("gravid", False)
@@ -2345,7 +2435,6 @@ def uterus_sentence(d, pediatric=False, age_years=None):
             s += [seg(" is "), seg(orientation, True)]
 
         if size_word:
-            # bulky / moderately bulky / grossly bulky
             s += [seg(" and "), seg(f"{size_word} in size", True)]
             if size:
                 s.append(seg(f"({size}mm)"))
@@ -2354,7 +2443,6 @@ def uterus_sentence(d, pediatric=False, age_years=None):
             else:
                 s.append(seg(" with normal shape."))
         else:
-            # normal size
             if size:
                 s.append(seg(f" and normal in size({size}mm)"))
             else:
@@ -2378,7 +2466,7 @@ def uterus_sentence(d, pediatric=False, age_years=None):
     # Myometrium clause
     s += [seg(" ")] + _myometrium_body_clause(d)
 
-    # Adenomyosis (kept as a separate parenthetical fragment)
+    # Adenomyosis
     aden_segs = _adenomyosis_body_segments(d)
     if aden_segs:
         s.extend(aden_segs)
@@ -2422,6 +2510,7 @@ def uterus_sentence(d, pediatric=False, age_years=None):
         else:
             s.append(seg(" " + ENDOMETRIAL_COLLECTION_LABELS[coll]))
 
+    # RPOC
     if d.get("rpoc"):
         size_txt = d.get("rpoc_size", "")
         echo = d.get("rpoc_echo", "hypo")
@@ -2438,25 +2527,15 @@ def uterus_sentence(d, pediatric=False, age_years=None):
                       f"the fundal endometrium showing color flow & aliasing on "
                       f"CD study.", True)]
 
-    if d.get("cervix_elongated"):
-        s += [seg(" "), seg("Cervix appears elongated.", True)]
-    if d.get("cervix_bulky"):
-        sz = d.get("cervix_bulky_size_mm", "")
-        sz_txt = f"({sz}mm)" if sz else ""
-        s += [seg(" "), seg(f"Cervix appears bulky{sz_txt}.", True)]
-    nab = d.get("nabothian", "none")
-    if nab != "none":
-        word = {"one": "A", "few": "Few", "multiple": "Multiple"}.get(nab, "Few")
-        s += [seg(" "), seg(f"{word} nabothian cysts seen in the cervix.", True)]
-    cx_coll = d.get("cervix_collection", "none")
-    if cx_coll != "none":
-        s += [seg(" "), seg(f"{cx_coll.title()} collection seen in the cervix.", True)]
+    # Cervix findings — always LAST in the uterus section.
+    # RPOC takes precedence; when present, cervix findings are suppressed.
+    if not d.get("rpoc"):
+        cervix_frags = _cervix_body_fragments(d)
+        if cervix_frags:
+            s += [seg(" ")]
+            s.extend(cervix_frags)
 
     return s
-
-
-def _fibroid_lesion_sort_key(lesion):
-    return -(_first_number(lesion.get("size", "")) or 0)
 
 
 def _fibroid_impression_fragment(d):
@@ -2509,53 +2588,6 @@ def _fibroid_impression_fragment(d):
                 f"ABOVE({figo})")
 
 
-def _adenomyosis_features_body(d):
-    feats = d.get("adenomyosis_features", []) or []
-    frags = []
-    for f in ADENOMYOSIS_FEATURES:
-        if f not in feats:
-            continue
-        if f == "globular_shape":
-            frags.append("with globular shape")
-        elif f == "asymmetric_posterior":
-            frags.append("with asymmetrically bulky posterior myometrium")
-        elif f == "venetian_blind_sign":
-            frags.append("diffusely heterogeneous echo pattern(venetian blind sign "
-                         "is positive) of myometrium")
-        elif f == "interface_indistinct":
-            frags.append("with indistinct endo-myometrial interface")
-        elif f == "interface_barely_perceptible_fundus":
-            frags.append("endo-myometrial interface is indistinct and barely "
-                         "perceptible at fundus level")
-        elif f == "interface_lost":
-            frags.append("loss of endo-myometrial interface")
-        elif f == "subendometrial_cysts":
-            frags.append("with few subendometrial cysts abutting the endometrium")
-    return frags
-
-
-def _adenomyosis_confidence(d):
-    conf = d.get("adenomyosis_confidence", "auto")
-    if conf in ("likely", "early"):
-        return conf
-    feats = d.get("adenomyosis_features", []) or []
-    return "likely" if len(feats) >= 2 else "early"
-
-
-def _adenomyosis_body_segments(d):
-    if not d.get("adenomyosis"):
-        return []
-    frags = _adenomyosis_features_body(d)
-    conf = _adenomyosis_confidence(d)
-    qualifier = "likely adenomyosis" if conf == "likely" else "?early adenomyosis"
-    body = " ".join(frags)
-    out = []
-    if body:
-        out += [seg(" "), seg(body, True)]
-    out += [seg(f" -- {qualifier}.", True)]
-    return out
-
-
 def _adenomyosis_impression_fragment(d):
     if not d.get("adenomyosis"):
         return None
@@ -2590,9 +2622,75 @@ def _adenomyomas_impression_fragment(d):
     return frag
 
 
+def _cervix_impression_line(d):
+    """Return the cervix impression line, or None."""
+    if d.get("rpoc"):
+        return None  # RPOC takes precedence
+    bulky = bool(d.get("cervix_bulky"))
+    elongated = bool(d.get("cervix_elongated"))
+    nab = d.get("nabothian", "none")
+    coll = d.get("cervix_collection", "none")
+    cervicitis_radio = bool(d.get("cervicitis_suspected"))
+
+    nab_txt = None
+    if nab != "none":
+        word = {"one": "A", "few": "FEW", "multiple": "MULTIPLE"}.get(nab, "FEW")
+        nab_txt = f"{word} NABOTHIAN CYSTS"
+    coll_txt = None
+    if coll != "none":
+        coll_txt = f"{coll.upper()} COLLECTION IN THE CERVICAL CANAL"
+
+    extras = [t for t in (nab_txt, coll_txt) if t]
+
+    if not bulky:
+        if not extras:
+            return None
+        if len(extras) == 1:
+            line = extras[0] + "."
+        elif len(extras) == 2:
+            line = f"{extras[0]} WITH {extras[1]}."
+        else:
+            line = (f"{extras[0]} WITH {extras[1]} & {extras[2]}.")
+        if cervicitis_radio and extras:
+            line = line.rstrip(".") + " - ?CERVICITIS. Adv - PAP Smear."
+        return line
+
+    bulky_size = d.get("cervix_bulky_size_mm", "")
+    size_txt = f"({bulky_size}MM)" if bulky_size else ""
+    head = f"BULKY CERVIX{size_txt}"
+    if not extras:
+        line = head + "."
+    elif len(extras) == 1:
+        line = f"{head} WITH {extras[0]}."
+    elif len(extras) == 2:
+        line = f"{head} WITH {extras[0]} & {extras[1]}."
+    else:
+        line = f"{head} WITH {extras[0]} & {extras[1]}."
+        tail = "ALSO " + " & ".join(extras[2:]) + " SEEN."
+        line = line + " " + tail
+
+    line = line.rstrip(".") + " - ?CERVICITIS. Adv - PAP Smear."
+    return line
+
+
+def _rpoc_impression_line(d):
+    """Return the RPOC impression line, or None."""
+    if not d.get("rpoc"):
+        return None
+    size_txt = d.get("rpoc_size", "")
+    echo = d.get("rpoc_echo", "hypo")
+    echo_word = "HYPOECHOIC" if echo == "hypo" else "HYPERECHOIC"
+    first_dim = _first_number(size_txt.split("x")[0] if size_txt else "")
+    if first_dim is not None and first_dim > 15:
+        size_desc = "A MODERATE SIZED"
+    else:
+        size_desc = "A SMALL"
+    return (f"{size_desc} {echo_word} SOL IN THE FUNDAL ENDOMETRIUM SHOWING "
+            f"COLOR FLOW & ALIASING - FEATURES SUGGESTIVE OF ?RETAINED "
+            f"PRODUCTS OF CONCEPTION. Adv- Clinical Correlation.")
+
+
 def _uterus_has_any_other_finding_for_congestion(d):
-    """True if the uterus panel has any finding besides prominent vascular
-    channels (i.e. we should NOT fold congestion into the bulky-uterus prefix)."""
     if d.get("myometrium") in ("mildly_heterogeneous", "heterogeneous"):
         return True
     if d.get("fibroid"):
@@ -2640,6 +2738,15 @@ def _uterus_impression_lines(d, age_years):
     if d.get("status") in ("not_visualized", "operated"):
         return lines
 
+    # Pre-lines: RPOC (precedence) OR cervix line, both go BEFORE uterus line.
+    rpoc_line = _rpoc_impression_line(d)
+    cervix_line = _cervix_impression_line(d) if not rpoc_line else None
+    pre_lines = []
+    if rpoc_line:
+        pre_lines.append(rpoc_line)
+    elif cervix_line:
+        pre_lines.append(cervix_line)
+
     cls = _uterus_size_class(d)
     leading = UTERUS_SIZE_IMPRESSION.get(cls, "")
     globular = bool(d.get("globular_shape"))
@@ -2650,9 +2757,9 @@ def _uterus_impression_lines(d, age_years):
     has_adenomyosis = bool(d.get("adenomyosis"))
     has_adenomyomas = bool(d.get("adenomyomas"))
     has_congestion = bool(d.get("prominent_vascular_channels"))
-    has_any_other = _uterus_has_any_other_finding_for_congestion(d)
 
-    # Gravid overrides everything
+    # Gravid overrides everything else in the uterus block (but pre_lines still
+    # carry RPOC / cervix per the user's rules — RPOC wins).
     if d.get("gravid"):
         gravid_type = d.get("gravid_type", "CRL")
         length_v = d.get("gravid_length", "")
@@ -2660,7 +2767,7 @@ def _uterus_impression_lines(d, age_years):
         dy = d.get("gravid_days", "")
         lines.append(f"GRAVID UTERUS (SINGLE & ALIVE: {gravid_type}={length_v} MM; "
                      f"GA={wk} WEEKS {dy} DAYS).")
-        return lines
+        return pre_lines + lines
 
     # Low-lying path
     if d.get("low_lying"):
@@ -2675,7 +2782,6 @@ def _uterus_impression_lines(d, age_years):
                     f"LIKELY {grade_word} UTERINE PROLAPSE.")
         lines.append(base_low)
 
-        # Additional fragments after low-lying
         if myo_hetero:
             lines.append(f"ALSO THERE IS {myo_word} UTERINE MYOMETRIUM.")
         if has_fibroid:
@@ -2692,10 +2798,9 @@ def _uterus_impression_lines(d, age_years):
                 lines.append(f"ALSO THERE IS {adenoma_frag}.")
         if has_congestion:
             lines.append(_congestion_impression_line(d))
-        return lines
+        return pre_lines + lines
 
     # Globular + hetero myometrium (auto-suggest adenomyosis)
-    # Only fires if adenomyosis NOT already ticked
     if globular and myo_hetero and not has_adenomyosis:
         if leading:
             lines.append(f"{leading} WITH GLOBULAR SHAPE AND {myo_word} "
@@ -2703,9 +2808,6 @@ def _uterus_impression_lines(d, age_years):
         else:
             lines.append(f"GLOBULAR UTERUS WITH {myo_word} MYOMETRIUM - "
                          f"?EARLY UTERINE ADENOMYOSIS.")
-        # If fibroid / adenomyomas are also present, they'd normally be folded in
-        # via "&", but since the auto-suggest line already exists, treat them as
-        # separate "ALSO THERE IS" fragments to keep the impression readable.
         if has_fibroid:
             fib_frag = _fibroid_impression_fragment(d)
             if fib_frag:
@@ -2716,12 +2818,15 @@ def _uterus_impression_lines(d, age_years):
                 lines.append(f"ALSO THERE IS {adenoma_frag}.")
         if has_congestion:
             lines.append(_congestion_impression_line(d))
-        return lines
+        return pre_lines + lines
 
     # Standard assembly
-    base_prefix = leading  # e.g. "BULKY UTERUS" or "" if normal size
+    base_prefix = leading
 
-    # Myometrium prefix
+    # Bulky uterus + elongated cervix (and cervix is not bulky) → merge
+    if base_prefix and d.get("cervix_elongated") and not d.get("cervix_bulky"):
+        base_prefix = base_prefix + " WITH ELONGATED CERVIX"
+
     myo_prefix = ""
     if myo_hetero:
         if base_prefix:
@@ -2729,9 +2834,8 @@ def _uterus_impression_lines(d, age_years):
         else:
             myo_prefix = f"{myo_word} UTERINE MYOMETRIUM"
     else:
-        myo_prefix = base_prefix  # may be ""
+        myo_prefix = base_prefix
 
-    # Fibroid / adenomyosis / adenomyomas attach
     fragments_to_attach = []
     if has_adenomyosis:
         frag = _adenomyosis_impression_fragment(d)
@@ -2746,19 +2850,6 @@ def _uterus_impression_lines(d, age_years):
         if frag:
             fragments_to_attach.append(frag)
 
-    # Congestion: fold into prefix only if no other finding; else separate line
-    congestion_line = None
-    if has_congestion:
-        # Fold only when: bulky uterus present AND no other uterus finding
-        if base_prefix and not myo_hetero and not fragments_to_attach and not globular:
-            cong = _congestion_impression_line(d)
-            if cong:
-                congestion_line = (f"{base_prefix} WITH "
-                                   + cong.replace("PROMINENT VASCULAR CHANNELS",
-                                                  "PROMINENT VASCULAR CHANNELS", 1))
-        else:
-            congestion_line = None  # emit separately below
-
     assembled = myo_prefix
     for frag in fragments_to_attach:
         if assembled:
@@ -2771,26 +2862,21 @@ def _uterus_impression_lines(d, age_years):
         if not assembled.endswith("."):
             assembled += "."
         lines.append(assembled)
-    elif congestion_line:
-        # Only congestion present, and it was folded
-        lines.append(congestion_line)
     elif has_congestion:
-        # Congestion but no bulky uterus prefix, no other fragments
         cl = _congestion_impression_line(d)
         if cl:
             lines.append(cl)
 
-    # If congestion was NOT folded (because other findings exist), emit
-    # separately after the main line.
+    # Congestion — fold into bulky uterus only when nothing else is present
     if has_congestion:
         if base_prefix and not myo_hetero and not fragments_to_attach and not globular:
-            pass  # already folded above
+            pass
         else:
             cl = _congestion_impression_line(d)
-            if cl:
+            if cl and (not lines or lines[-1] != cl):
                 lines.append(cl)
 
-    return lines
+    return pre_lines + lines
 
 
 # ============================================================
@@ -3763,8 +3849,9 @@ def generate_impression(d, sex, age):
     if combined:
         lines.append(combined)
     else:
-        lines.extend(_liver_impression_line(liver))
+        # v3.3.1: splenomegaly line ABOVE hepatomegaly when both separate.
         lines.extend(_spleen_impression_line(spleen))
+        lines.extend(_liver_impression_line(liver))
 
     k = d["kidneys"]
     r = k["right"]
@@ -4087,7 +4174,6 @@ def _add_one_and_half_line(doc):
 
 
 def _add_trailing_stub(doc):
-    """Absorb the Word-required paragraph after a table into a 1 pt stub."""
     p = doc.add_paragraph()
     p.paragraph_format.space_after = Pt(0)
     p.paragraph_format.space_before = Pt(0)
@@ -4317,8 +4403,6 @@ def build_docx_bytes(data):
         para.paragraph_format.line_spacing = 1.0
         _add_impression_line_runs(para, line)
 
-    # 5.5 pt gap (half-line) between the last impression bullet and the
-    # disclaimer box.
     _add_half_line(doc)
 
     disc_table = doc.add_table(rows=1, cols=1)
@@ -4332,8 +4416,6 @@ def build_docx_bytes(data):
     para.paragraph_format.line_spacing = Pt(FONT_SIZE_DISCLAIMER)
     _add_run(para, DISCLAIMER_TEXT, bold=True, size=FONT_SIZE_DISCLAIMER)
 
-    # Absorb the Word-required trailing paragraph (schema requires a <w:p>
-    # after a table) into a 1 pt stub so the phantom page 2 never appears.
     _add_trailing_stub(doc)
 
     buf = io.BytesIO()
@@ -5816,6 +5898,10 @@ with col_find:
                              horizontal=True, key="ut_cx_coll",
                              format_func=lambda x: x.title())
                     wget("ut_cx_coll", "none")
+                    st.checkbox("Cervicitis suspected",
+                                key="ut_cervicitis",
+                                value=bool(_seed("ut_cervicitis", False)))
+                    wget("ut_cervicitis", False)
 
                     st.checkbox("Add: no RPOC/pregnancy line", key="ut_neg_rpoc",
                                 value=bool(_seed("ut_neg_rpoc", False)))
@@ -6351,6 +6437,7 @@ if p_sex == "F":
         "cervix_bulky_size_mm": ss("ut_cx_bulky_size", ""),
         "nabothian": ss("ut_nabothian", "none"),
         "cervix_collection": ss("ut_cx_coll", "none"),
+        "cervicitis_suspected": bool(ss("ut_cervicitis", False)),
         "fibroid": bool(ss("ut_fibroid", False)),
         "fibroid_count": ss("ut_fibroid_count", "single"),
         "fibroid_types": fib_types,
