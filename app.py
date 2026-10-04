@@ -6993,10 +6993,10 @@ with col_prev:
   st.caption("Edit any line. Auto-updates with findings unless you type here.")
   auto_imp_str = "\n".join(auto_impression)
 
-    if "_auto_imp_hash" not in st.session_state:
-        st.session_state["impression_box"] = auto_imp_str
-        st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
-        st.session_state["_last_set_content"] = auto_imp_str
+if "_auto_imp_hash" not in st.session_state:
+    st.session_state["impression_box"] = auto_imp_str
+    st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
+    st.session_state["_last_set_content"] = auto_imp_str
 
     new_auto_hash = _h(auto_imp_str)
     if new_auto_hash != st.session_state["_auto_imp_hash"]:
