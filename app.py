@@ -4798,12 +4798,12 @@ st.markdown(
         min-height: 44px !important;
         border-radius: 6px !important;
         border: 1px solid #cfd6dd !important;
-        background-color: #ffffff !important;
+        background-color: #2a2a2a !important;
         color: #111111 !important;
         letter-spacing: 0.3px !important;
     }
     div[class*="st-key-organ_btn_"] button[kind="primary"] {
-        background-color: #eef2f7 !important;
+        background-color: #2a2a2a !important;
         border-color: #305496 !important;
         color: #1F4E79 !important;
     }
