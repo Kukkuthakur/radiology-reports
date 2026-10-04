@@ -844,7 +844,9 @@ def new_report(sex="F"):
         "additional_body_findings": "",
         "impression": {"lines": []},
     }
-  # ============================================================
+
+  
+# ============================================================
 # SEGMENTS
 # ============================================================
 
@@ -6983,13 +6985,13 @@ with preview_placeholder:
     st.markdown(f'<div class="preview-box">{_safe}</div>', unsafe_allow_html=True)
 
 
+def _h(s):
+    return hashlib.md5(s.encode("utf-8")).hexdigest()
+  
 with col_prev:
-    st.subheader("✏️ Impression (editable)")
-    st.caption("Edit any line. Auto-updates with findings unless you type here.")
-    auto_imp_str = "\n".join(auto_impression)
-
-    def _h(s):
-        return hashlib.md5(s.encode("utf-8")).hexdigest()
+  st.subheader("✏️ Impression (editable)")
+  st.caption("Edit any line. Auto-updates with findings unless you type here.")
+  auto_imp_str = "\n".join(auto_impression)
 
     if "_auto_imp_hash" not in st.session_state:
         st.session_state["impression_box"] = auto_imp_str
@@ -7030,7 +7032,7 @@ with col_prev:
         st.download_button(
             "⬇️ Download .docx", docx_bytes, file_name=fname,
             mime="application/vnd.openxmlformats-officedocument."
-                 "wordprocessingml.document")
+           "wordprocessingml.document")
     with c_b:
         if st.button("💾 Save to Database", key="save_db_btn"):
             if not p_name.strip():
