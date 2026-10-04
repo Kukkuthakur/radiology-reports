@@ -4831,8 +4831,8 @@ st.markdown(
     }
     .st-key-impression_box textarea,
     div[class*="st-key-impression_box"] textarea {
-        background-color: #000000 !important;
-        color: #ffffff !important;
+        background-color: #ffffff !important;
+        color: #000000 !important;
         font-family: Consolas, Menlo, 'Courier New', monospace !important;
         font-size: 12.5px !important;
         line-height: 1.5 !important;
