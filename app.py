@@ -4815,7 +4815,7 @@ st.markdown(
         color: #ffffff !important;
     }
     .preview-box {
-        background-color: #000000 !important;
+        background-color: #2a2a2a !important;
         font-family: Consolas, Menlo, 'Courier New', monospace !important;
         font-size: 12.5px !important;
         line-height: 1.5 !important;
@@ -4857,14 +4857,14 @@ st.markdown(
     div[class*="st-key-organ_btn_LIVER"] button,
     div[class*="st-key-organ_btn_GALL_BLADDER"] button,
     div[class*="st-key-organ_btn_COMMON_BILE_DUCT"] button {
-        background-color: #000000 !important;
+        background-color: #2a2a2a !important;
         color: #22c55e !important;
         border: 2px solid #f97316 !important;
     }
     div[class*="st-key-organ_btn_LIVER"] button[kind="primary"],
     div[class*="st-key-organ_btn_GALL_BLADDER"] button[kind="primary"],
     div[class*="st-key-organ_btn_COMMON_BILE_DUCT"] button[kind="primary"] {
-        background-color: #000000 !important;
+        background-color: #2a2a2a !important;
         color: #22c55e !important;
         border: 2px solid #22c55e !important;
     }
