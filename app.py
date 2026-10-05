@@ -6993,59 +6993,59 @@ with col_prev:
   st.caption("Edit any line. Auto-updates with findings unless you type here.")
   auto_imp_str = "\n".join(auto_impression)
 
-if "_auto_imp_hash" not in st.session_state:
-    st.session_state["impression_box"] = auto_imp_str
-    st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
-    st.session_state["_last_set_content"] = auto_imp_str
-
-    new_auto_hash = _h(auto_imp_str)
-    if new_auto_hash != st.session_state["_auto_imp_hash"]:
-        cur_widget = st.session_state.get("impression_box", "")
-        if cur_widget == st.session_state["_last_set_content"]:
-            st.session_state["impression_box"] = auto_imp_str
-            st.session_state["_last_set_content"] = auto_imp_str
-        st.session_state["_auto_imp_hash"] = new_auto_hash
-
-    edited_imp = st.text_area("Impression lines (one per line)",
-                              height=200, label_visibility="collapsed",
-                              key="impression_box")
-
-    if st.button("↺ Reset to auto-generated impression", key="reset_imp_btn"):
-        st.session_state["impression_box"] = auto_imp_str
-        st.session_state["_last_set_content"] = auto_imp_str
-        st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
-        st.rerun()
-
-    st.markdown("---")
-    c_a, c_b = st.columns(2)
-    with c_a:
-        final_data = dict(data)
-        if edited_imp.strip():
-            final_data["impression"] = {
-                "lines": [ln.strip() for ln in edited_imp.splitlines()
-                          if ln.strip()]
-            }
-        final_data["additional_body_findings"] = addendum_text or ""
-        docx_bytes = build_docx_bytes(final_data)
-        fname = f"{p_name or 'report'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-        fname = "".join(ch for ch in fname if ch.isalnum() or ch in "._-")
-        st.download_button(
-            "⬇️ Download .docx", docx_bytes, file_name=fname,
-            mime="application/vnd.openxmlformats-officedocument."
-           "wordprocessingml.document")
-    with c_b:
-        if st.button("💾 Save to Database", key="save_db_btn"):
-            if not p_name.strip():
-                st.warning("Enter patient name first.")
-            else:
-                final_data = dict(data)
-                if edited_imp.strip():
-                    final_data["impression"] = {
-                        "lines": [ln.strip() for ln in edited_imp.splitlines()
-                                  if ln.strip()]
-                    }
-                final_data["additional_body_findings"] = addendum_text or ""
-                save_report(final_data)
-                if p_ref.strip():
-                    add_referrer(p_ref)
-                st.success("Saved to local database.")
+  if "_auto_imp_hash" not in st.session_state:
+      st.session_state["impression_box"] = auto_imp_str
+      st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
+      st.session_state["_last_set_content"] = auto_imp_str
+  
+      new_auto_hash = _h(auto_imp_str)
+      if new_auto_hash != st.session_state["_auto_imp_hash"]:
+          cur_widget = st.session_state.get("impression_box", "")
+          if cur_widget == st.session_state["_last_set_content"]:
+              st.session_state["impression_box"] = auto_imp_str
+              st.session_state["_last_set_content"] = auto_imp_str
+          st.session_state["_auto_imp_hash"] = new_auto_hash
+  
+      edited_imp = st.text_area("Impression lines (one per line)",
+                                height=200, label_visibility="collapsed",
+                                key="impression_box")
+  
+      if st.button("↺ Reset to auto-generated impression", key="reset_imp_btn"):
+          st.session_state["impression_box"] = auto_imp_str
+          st.session_state["_last_set_content"] = auto_imp_str
+          st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
+          st.rerun()
+  
+      st.markdown("---")
+      c_a, c_b = st.columns(2)
+      with c_a:
+          final_data = dict(data)
+          if edited_imp.strip():
+              final_data["impression"] = {
+                  "lines": [ln.strip() for ln in edited_imp.splitlines()
+                            if ln.strip()]
+              }
+          final_data["additional_body_findings"] = addendum_text or ""
+          docx_bytes = build_docx_bytes(final_data)
+          fname = f"{p_name or 'report'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+          fname = "".join(ch for ch in fname if ch.isalnum() or ch in "._-")
+          st.download_button(
+              "⬇️ Download .docx", docx_bytes, file_name=fname,
+              mime="application/vnd.openxmlformats-officedocument."
+             "wordprocessingml.document")
+      with c_b:
+          if st.button("💾 Save to Database", key="save_db_btn"):
+              if not p_name.strip():
+                  st.warning("Enter patient name first.")
+              else:
+                  final_data = dict(data)
+                  if edited_imp.strip():
+                      final_data["impression"] = {
+                          "lines": [ln.strip() for ln in edited_imp.splitlines()
+                                    if ln.strip()]
+                      }
+                  final_data["additional_body_findings"] = addendum_text or ""
+                  save_report(final_data)
+                  if p_ref.strip():
+                      add_referrer(p_ref)
+                  st.success("Saved to local database.")
