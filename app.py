@@ -1,6 +1,19 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v3.3.4-stable
+v3.3.5-stable
+
+v3.3.5 (MLN + fluid/effusion rework):
+  - NEW: Mesenteric Lymph Nodes block (significance / reactive / reactive-TB),
+    count, size, location, inflamed mesentery, lost hila, necrosis.
+  - NEW: Pleural effusion block (right / left / bilateral / bilateral asym,
+    3 grades each).
+  - NEW: Free fluid block (inter-bowel FF, peritoneal FF, ascites) with grades.
+  - NEW: fluid_mln_sentence unifies effusion + free fluid/ascites + MLN.
+  - Combined-tail upgrade: any 2+ of {effusion, ascites/FF, MLN} -> infective
+    process (?TB) tail. Adv- Mantoux/CBNAAT, Lab & Clinical Correlation.
+  - Ovary fix: split per-side sentences when one side has findings.
+  - Ovary cyst size: two size boxes for all multi-cyst counts except CL.
+  - Retired: bowel.mesenteric_ln, bowel.free_fluid, bowel.pleural_effusion.
 
 v3.3.4 (uterus + ovaries rework):
   - Global connector rule (uterus + ovaries only): WITH / & / ALSO THE …
@@ -8,20 +21,14 @@ v3.3.4 (uterus + ovaries rework):
     phrase uses STUDDING; line suppressed if no descriptor + no feature.
   - Interface: single radio (none / indistinct / barely_perceptible_fundus /
     lost).
-  - Myometrium auto-flips to heterogeneous when venetian blind sign ticked,
-    and appends "(venetian blind sign is positive)".
-  - Myometrium body: three variants (homogenous no-focal /
-    heterogeneous no-focal / heterogeneous with adenomyosis features).
-  - Fibroid: grammar fix ("ALSO THERE IS SUGGESTION OF …"); count gains
-    "couple"; gravid uterus retains fibroid; low-lying retains fibroid +
-    bulky.
+  - Myometrium auto-flips to heterogeneous when venetian blind sign ticked.
+  - Myometrium body: three variants.
+  - Fibroid: grammar fix; count gains "couple"; gravid uterus retains fibroid;
+    low-lying retains fibroid + bulky.
   - Uterus body size line: four standardized variants.
   - Endometrial suspicion: head noun derived from actual thickness table.
-  - Ovaries: single-side bracket shows size + volume; few / multiple gain
-    two size boxes (CL cyst excluded); impression bracket
-    "(LARGEST 44X32MM & 41X29MM)"; auto bulky callout when vol >= 10 cc;
-    PCOS-off bulky → partial PCOS tail; "BOTH OVARIES appear" grammar fix;
-    ovary findings form their own connector chain.
+  - Ovaries: single-side bracket; two size boxes; PCOS-off bulky partial tail;
+    "BOTH OVARIES appear" grammar fix.
 
 v3.3.3:
   - Single-side ovary size bracket; other ovary "not visualized" tail.
@@ -195,21 +202,6 @@ def _lower_mm_in_text(t):
 
 
 def join_findings(primary, findings):
-    """Global connector rule: WITH / & / . ALSO THE … IS SEEN.
-
-    primary  : string (uppercase, no trailing period) or "" if none.
-    findings : list of uppercase fragments (no trailing periods).
-
-    N=0 -> "<primary>"
-    N=1 -> "<primary> WITH <A>"
-    N=2 -> "<primary> WITH <A> & <B>"
-    N=3 -> "<primary> WITH <A> & <B>. ALSO THE <C> IS SEEN."
-    N=4 -> "<primary> WITH <A> & <B>. ALSO THE <C> & <D> ARE SEEN."
-    N=5 -> "<primary> WITH <A> & <B>. ALSO THE <C> & <D> ARE SEEN. ALSO THE <E> IS SEEN."
-
-    If primary is empty, drops "WITH" and starts directly with the first
-    finding, applying the same logic on the remaining findings.
-    """
     findings = [f for f in findings if f]
     if not findings:
         return primary.strip().rstrip(".") if primary else ""
@@ -677,12 +669,6 @@ PCOS_OUTCOME_PHRASES = {
 
 
 def _effective_ovary_type(finding):
-    """Return the effective type key after applying the <30mm rule.
-
-    simple_cyst (max <30mm)         -> follicular_cyst
-    hemorrhagic_cyst (max <30mm)    -> hemorrhagic_follicle
-    everything else passes through unchanged.
-    """
     ftype = finding.get("type", "")
     size = finding.get("size_mm", "")
     n = _first_number(size)
@@ -694,6 +680,76 @@ def _effective_ovary_type(finding):
         if ftype == "hemorrhagic_cyst":
             return "hemorrhagic_follicle"
     return ftype
+
+
+# ============================================================
+# MLN CONSTANTS (v3.3.5)
+# ============================================================
+
+MLN_COUNT_WORD = {
+    "few": "Few",
+    "multiple": "Multiple",
+    "innumerable": "Innumerable",
+}
+MLN_COUNT_WORD_UP = {
+    "few": "FEW",
+    "multiple": "MULTIPLE",
+    "innumerable": "INNUMERABLE",
+}
+MLN_SIZE_WORD = {
+    "small": "small (SAD<7mm)",
+    "enlarged": "enlarged (SAD>7mm)",
+    "mixed": "",
+}
+MLN_LOCATION_BODY = {
+    "bilateral": " in the bilateral pre & para-aortic peri-umbilical region",
+    "left": ", predominantly in the left para-aortic region",
+    "right": ", predominantly in the right para-aortic region",
+}
+MLN_LOCATION_IMP = {
+    "bilateral": " IN THE BILATERAL PRE & PARA-AORTIC PERI-UMBILICAL REGION",
+    "left": ", PREDOMINANTLY IN THE LEFT PARA-AORTIC REGION",
+    "right": ", PREDOMINANTLY IN THE RIGHT PARA-AORTIC REGION",
+}
+
+MLN_INFECTIVE_TAIL = (
+    " - LIKELY INFECTIVE PROCESS(TUBERCULAR). "
+    "Adv- Mantoux/CBNAAT, Lab & Clinical Correlation."
+)
+
+
+# ============================================================
+# FLUID / EFFUSION CONSTANTS (v3.3.5)
+# ============================================================
+
+EFF_LATERALITY_OPTS = ["right", "left", "bilateral", "bilateral_asym"]
+EFF_GRADE_OPTS = ["mild", "mild_to_moderate", "moderate_to_gross"]
+EFF_GRADE_BODY = {
+    "mild": "mild",
+    "mild_to_moderate": "mild to moderate",
+    "moderate_to_gross": "moderate to gross",
+}
+EFF_GRADE_UP = {
+    "mild": "MILD",
+    "mild_to_moderate": "MILD TO MODERATE",
+    "moderate_to_gross": "MODERATE TO GROSS",
+}
+
+FF_KIND_OPTS = ["none", "inter_bowel", "peritoneal", "ascites"]
+FF_GRADE_OPTS_PERITONEAL = ["mild", "mild_to_moderate", "moderate"]
+FF_GRADE_OPTS_ASCITES = ["mild", "mild_to_moderate", "moderate_to_gross"]
+FF_GRADE_BODY = {
+    "mild": "mild",
+    "mild_to_moderate": "mild to moderate",
+    "moderate": "moderate",
+    "moderate_to_gross": "moderate to gross",
+}
+FF_GRADE_UP = {
+    "mild": "MILD",
+    "mild_to_moderate": "MILD TO MODERATE",
+    "moderate": "MODERATE",
+    "moderate_to_gross": "MODERATE TO GROSS",
+}
 
 
 # ============================================================
@@ -839,12 +895,7 @@ def _new_uterus():
 
 
 def _new_ovary_side():
-    return {
-        "status": "normal",
-        "size_text": "",
-        "volume_cc": "",
-        "findings": [],
-    }
+    return {"status": "normal", "size_text": "", "volume_cc": "", "findings": []}
 
 
 def _new_ovaries():
@@ -860,6 +911,45 @@ def _new_ovaries():
         "pcos_feature4_random": False,
         "pcos_outcome": "",
         "afc": "normal",
+    }
+
+
+def _new_bowel():
+    return {"wall_thickening": False, "wall_thickening_grade": "none"}
+
+
+def _new_mln():
+    return {
+        "branch": "none",
+        "reactive_sub": "plain",
+        "sig_tail": "significance",
+        "count": "multiple",
+        "size": "small",
+        "location": "bilateral",
+        "inflamed": False,
+        "lost_hila": False,
+        "necrotic": False,
+        "largest": "",
+        "size2": "",
+    }
+
+
+def _new_pleural_effusion():
+    return {
+        "status": "none",
+        "laterality": "right",
+        "grade_right": "mild",
+        "grade_left": "mild",
+        "bilateral_asym_predom": "r_gt_l",
+        "append_no_ascites": False,
+    }
+
+
+def _new_free_fluid():
+    return {
+        "kind": "none",
+        "grade": "mild",
+        "append_no_effusion": False,
     }
 
 
@@ -921,10 +1011,10 @@ def new_report(sex="F"):
         "uterus": _new_uterus(),
         "ovaries": _new_ovaries(),
         "prostate": _new_prostate(),
-        "bowel": {"wall_thickening": False, "free_fluid": "none",
-                  "mesenteric_ln": "none", "ln_size_category": "sad_lt_7",
-                  "ln_location": "bilateral", "ln_largest": "",
-                  "ln_character": "discrete", "pleural_effusion": "none"},
+        "bowel": _new_bowel(),
+        "mln": _new_mln(),
+        "pleural_effusion": _new_pleural_effusion(),
+        "free_fluid": _new_free_fluid(),
         "appendix": {"status": "not_assessed", "diameter_mm": ""},
         "additional_body_findings": "",
         "impression": {"lines": []},
@@ -2426,11 +2516,6 @@ def _adenomyosis_confidence(d):
 
 
 def _myometrium_body_clause(d):
-    """Myometrium body clause with three variants (U5).
-
-    Also auto-flips descriptor to heterogeneous when venetian blind sign
-    is ticked, appending "(venetian blind sign is positive)".
-    """
     has_fibroid = bool(d.get("fibroid"))
     has_adenomyomas = bool(d.get("adenomyomas"))
     has_adenomyosis = bool(d.get("adenomyosis"))
@@ -2466,7 +2551,6 @@ def _myometrium_body_clause(d):
 
 
 def _cervix_body_fragments(d):
-    """Build the cervix body sentence(s) per the locked rules."""
     bulky = bool(d.get("cervix_bulky"))
     elongated = bool(d.get("cervix_elongated"))
     nab = d.get("nabothian", "none")
@@ -2521,7 +2605,6 @@ def _cervix_body_fragments(d):
 
 
 def _endometrial_body_segments(d):
-    """Build the endometrial body sentence per the v3.3.2 locked spec."""
     endo_mm = d.get("endometrial_thickness_mm", "")
     if not endo_mm:
         return None
@@ -2730,7 +2813,7 @@ def uterus_sentence(d, pediatric=False, age_years=None):
             s.extend(cervix_frags)
 
     return s
-  
+
 
 def _fibroid_impression_fragment(d):
     if not d.get("fibroid"):
@@ -2785,11 +2868,6 @@ def _fibroid_impression_fragment(d):
 
 
 def _adenomyosis_impression_fragment(d):
-    """Return the adenomyosis fragment without any 'THERE IS' prefix.
-
-    If no descriptor (bulky/globular/hetero) AND no adenomyosis feature is
-    present, returns None so the parent caller can suppress the line.
-    """
     if not d.get("adenomyosis"):
         return None
     frags = [f.upper().replace("ABUTTING THE ENDOMETRIUM",
@@ -2826,9 +2904,8 @@ def _adenomyomas_impression_fragment(d):
 
 
 def _cervix_impression_line(d):
-    """Return the cervix impression line, or None."""
     if d.get("rpoc"):
-        return None  # RPOC takes precedence
+        return None
     bulky = bool(d.get("cervix_bulky"))
     elongated = bool(d.get("cervix_elongated"))
     nab = d.get("nabothian", "none")
@@ -2877,7 +2954,6 @@ def _cervix_impression_line(d):
 
 
 def _rpoc_impression_line(d):
-    """Return the RPOC impression line, or None."""
     if not d.get("rpoc"):
         return None
     size_txt = d.get("rpoc_size", "")
@@ -2936,7 +3012,6 @@ def _congestion_impression_line(d):
 
 
 def _ovary_has_corpus_luteum(d):
-    """Return side (right/left) if a CL cyst is present, else None."""
     for side_key in ("right", "left"):
         for f in d[side_key].get("findings", []):
             if f.get("type") == "corpus_luteum":
@@ -2945,8 +3020,6 @@ def _ovary_has_corpus_luteum(d):
 
 
 def _endometrial_head_noun(endo_cls, endo_mm):
-    """Return the head noun for the endometrial impression line based on
-    the classified thickness (QU1)."""
     if endo_cls == "thinned_out":
         return f"THINNED OUT ENDOMETRIUM({endo_mm}MM)"
     if endo_cls == "thickened":
@@ -2957,11 +3030,6 @@ def _endometrial_head_noun(endo_cls, endo_mm):
 
 
 def _endometrial_impression_pathways(d, ovaries):
-    """Return the single endometrial impression line per spec.
-
-    Precedence C > B > A. Manual Suspicion radio overrides auto entirely.
-    Head noun derived from actual thickness table.
-    """
     endo_mm_str = d.get("endometrial_thickness_mm", "")
     if not endo_mm_str:
         return None
@@ -2980,7 +3048,6 @@ def _endometrial_impression_pathways(d, ovaries):
 
     head = _endometrial_head_noun(endo_cls, endo_mm_str)
 
-    # Manual override
     if suspicion != "none":
         if suspicion == "very_early_pregnancy":
             cl_side = _ovary_has_corpus_luteum(ovaries)
@@ -3003,7 +3070,6 @@ def _endometrial_impression_pathways(d, ovaries):
                 "Adv- CA 125, HE4, Endometrial Biopsy & Clinical Correlation."
             )
 
-    # Auto-detection
     auto_lines = {}
 
     if (endo_cls == "significantly_thickened" and hetero and vasc):
@@ -3038,12 +3104,10 @@ def _endometrial_impression_pathways(d, ovaries):
 
 
 def _uterus_impression_lines(d, age_years, ovaries=None):
-    """Return list of impression strings for the uterus."""
     lines = []
     if d.get("status") in ("not_visualized", "operated"):
         return lines
 
-    # Pre-lines: RPOC (precedence) OR cervix line, both go BEFORE uterus line.
     rpoc_line = _rpoc_impression_line(d)
     cervix_line = _cervix_impression_line(d) if not rpoc_line else None
     pre_lines = []
@@ -3052,7 +3116,6 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
     elif cervix_line:
         pre_lines.append(cervix_line)
 
-    # Gravid uterus: uterus line only + fibroid slot
     if d.get("gravid"):
         gravid_type = d.get("gravid_type", "CRL")
         length_v = d.get("gravid_length", "")
@@ -3073,7 +3136,6 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
             lines.append(join_findings(head, findings))
         return pre_lines + lines
 
-    # Low-lying uterus: uterus line + fibroid / bulky / adenomyosis / etc.
     if d.get("low_lying"):
         cervix_state = d.get("cervix_visualized", "partially")
         cervix_word = ("PARTIALLY VISUALIZED" if cervix_state == "partially"
@@ -3110,7 +3172,6 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
         lines.append(join_findings(primary, findings))
         return pre_lines + lines
 
-    # Standard assembly with connector rule.
     cls = _uterus_size_class(d)
     leading = UTERUS_SIZE_IMPRESSION.get(cls, "")
     globular = bool(d.get("globular_shape"))
@@ -3158,7 +3219,6 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
         if adenoma_frag:
             findings_list.append(adenoma_frag)
 
-    # If no primary descriptor and no findings -> suppress line (per U2)
     if not myo_prefix and not findings_list:
         if has_congestion:
             cl = _congestion_impression_line(d)
@@ -3172,19 +3232,16 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
         if assembled:
             lines.append(assembled)
 
-    # Congestion — standalone
     if has_congestion:
         cl = _congestion_impression_line(d)
         if cl and (not lines or lines[-1] != cl):
             lines.append(cl)
 
-    # Endometrial impression pathway
     if ovaries is not None:
         endo_line = _endometrial_impression_pathways(d, ovaries)
         if endo_line:
             lines.append(endo_line)
 
-    # "no focal SOL or RPOC" sub-checkbox variants
     if d.get("neg_sol"):
         irr = bool(d.get("neg_sol_irregular"))
         coll = bool(d.get("neg_sol_collection"))
@@ -3256,7 +3313,6 @@ def _ovary_finding_phrase(finding, side_low, up=False):
         side_up = _ovary_side_label(side_low)
         if count == "single":
             return f"{lead} {side_up} OVARIAN {large_word}{type_word}({size}MM)"
-        # couple / few / multiple
         if size and size2:
             return (f"{lead} {side_up} OVARIAN {type_word}"
                     f"(LARGEST {size}MM & {size2}MM)")
@@ -3316,7 +3372,6 @@ def _ovary_grouped_impression_lines(d, up_ctx=None):
         lines.append(f"BILATERAL OVARIAN {type_up_plural}({r_size}MM IN RIGHT "
                      f"OVARY & {l_size}MM IN LEFT OVARY).")
 
-    # Remaining findings → own connector chain
     fragments = []
     for side_key, findings in (("right", r_findings), ("left", l_findings)):
         for f in findings:
@@ -3456,7 +3511,6 @@ def _pcos_impression_line(d):
 
 
 def _bulky_impression_line(d):
-    """Standalone bulky line when PCOS is off. Uses PCOS partial tail."""
     if d.get("pcos"):
         return None
     pattern = _pcos_volume_pattern(d)
@@ -3469,86 +3523,6 @@ def _bulky_impression_line(d):
     else:
         return None
     return head + ". " + PCOS_OUTCOME_PHRASES[PCOS_OUTCOME_PARTIAL]
-
-
-def ovaries_sentence(d, age_years=None, uterus_operated=False,
-                     uterus_not_visualized=False):
-    s = []
-    r = d["right"]
-    l = d["left"]
-    r_present = _ovary_present(r)
-    l_present = _ovary_present(l)
-
-    postmeno = (age_years is not None and age_years >= 48)
-
-    if not r_present and not l_present:
-        if uterus_not_visualized:
-            return []
-        if postmeno and not uterus_operated:
-            return [seg("BOTH OVARIES", True, True),
-                    seg(" are not visualized(likely atrophic).")]
-        return [seg("BOTH OVARIES", True, True), seg(" are not visualized.")]
-
-    pcos_body = _pcos_body_sentence(d) if d.get("pcos") else []
-
-    if r_present and l_present:
-        both_r_findings = r.get("findings", [])
-        both_l_findings = l.get("findings", [])
-        size_bracket = _ovary_size_bracket(r, l)
-        r_bulky = _ovary_is_bulky(r)
-        l_bulky = _ovary_is_bulky(l)
-
-        if pcos_body:
-            s.extend(pcos_body)
-        elif r_bulky and l_bulky:
-            s += [seg("BOTH OVARIES", True, True),
-                  seg(" appear "), seg("bulky in size", True),
-                  seg(" with normal echo pattern")]
-            if size_bracket:
-                s += [seg(" "), seg(size_bracket, True)]
-            else:
-                s += [seg(".")]
-        elif r_bulky and not l_bulky:
-            r_vol = str(r.get("volume_cc", "") or "").strip()
-            s += [seg("BULKY RIGHT OVARY", True, True),
-                  seg(f"({r_vol}cc)" if r_vol else ""),
-                  seg(" while left ovary is normal in size and echo pattern")]
-            if size_bracket:
-                s += [seg(" "), seg(size_bracket, True)]
-            else:
-                s += [seg(".")]
-        elif l_bulky and not r_bulky:
-            l_vol = str(l.get("volume_cc", "") or "").strip()
-            s += [seg("BULKY LEFT OVARY", True, True),
-                  seg(f"({l_vol}cc)" if l_vol else ""),
-                  seg(" while right ovary is normal in size and echo pattern")]
-            if size_bracket:
-                s += [seg(" "), seg(size_bracket, True)]
-            else:
-                s += [seg(".")]
-        else:
-            s += [seg("BOTH OVARIES", True, True),
-                  seg(" appear normal in size and echo pattern")]
-            if size_bracket:
-                s += [seg(" "), seg(size_bracket, True)]
-            else:
-                s += [seg(".")]
-
-        for side_key, findings in (("right", both_r_findings),
-                                    ("left", both_l_findings)):
-            for f in findings:
-                phrase = _ovary_finding_phrase(f, side_key, up=False)
-                if phrase:
-                    s += [seg(" "), seg(phrase, True)]
-        return s
-
-    if r_present:
-        s += _ovary_single_side_block(r, "right", pcos_body,
-                                      other_present=l_present)
-    if l_present:
-        s += _ovary_single_side_block(l, "left", pcos_body,
-                                      other_present=r_present)
-    return s
 
 
 def _ovary_size_bracket(r, l):
@@ -3570,6 +3544,19 @@ def _ovary_size_bracket(r, l):
     if not parts:
         return ""
     return "[" + " & ".join(parts) + "]."
+
+
+def _ovary_side_size_bracket(side):
+    size_txt = (side.get("size_text", "") or "").strip()
+    vol = str(side.get("volume_cc", "") or "").strip()
+    parts = []
+    if size_txt:
+        parts.append(f"{size_txt}mm")
+    if vol:
+        parts.append(f"VOL={vol}cc")
+    if not parts:
+        return ""
+    return "[" + ", ".join(parts) + "]"
 
 
 def _ovary_single_side_block(side, side_key, pcos_body, other_present=False):
@@ -3617,60 +3604,142 @@ def _ovary_single_side_block(side, side_key, pcos_body, other_present=False):
     return out
 
 
+def ovaries_sentence(d, age_years=None, uterus_operated=False,
+                     uterus_not_visualized=False):
+    s = []
+    r = d["right"]
+    l = d["left"]
+    r_present = _ovary_present(r)
+    l_present = _ovary_present(l)
+
+    postmeno = (age_years is not None and age_years >= 48)
+
+    if not r_present and not l_present:
+        if uterus_not_visualized:
+            return []
+        if postmeno and not uterus_operated:
+            return [seg("BOTH OVARIES", True, True),
+                    seg(" are not visualized(likely atrophic).")]
+        return [seg("BOTH OVARIES", True, True), seg(" are not visualized.")]
+
+    pcos_body = _pcos_body_sentence(d) if d.get("pcos") else []
+
+    if r_present and l_present:
+        both_r_findings = r.get("findings", [])
+        both_l_findings = l.get("findings", [])
+        size_bracket = _ovary_size_bracket(r, l)
+        r_bulky = _ovary_is_bulky(r)
+        l_bulky = _ovary_is_bulky(l)
+
+        r_eff_bulky = r_bulky and not bool(both_r_findings)
+        l_eff_bulky = l_bulky and not bool(both_l_findings)
+
+        def _append_findings():
+            for side_key, findings in (("right", both_r_findings),
+                                        ("left", both_l_findings)):
+                for f in findings:
+                    phrase = _ovary_finding_phrase(f, side_key, up=False)
+                    if phrase:
+                        s.append(seg(" "))
+                        s.append(seg(phrase, True))
+
+        if pcos_body:
+            s.extend(pcos_body)
+            _append_findings()
+        elif r_eff_bulky and l_eff_bulky:
+            s += [seg("BOTH OVARIES", True, True),
+                  seg(" appear "), seg("bulky in size", True),
+                  seg(" with normal echo pattern")]
+            if size_bracket:
+                s += [seg(" "), seg(size_bracket, True)]
+            else:
+                s += [seg(".")]
+            _append_findings()
+        elif r_eff_bulky and not l_eff_bulky:
+            r_vol = str(r.get("volume_cc", "") or "").strip()
+            s += [seg("BULKY RIGHT OVARY", True, True),
+                  seg(f"({r_vol}cc)" if r_vol else ""),
+                  seg(" while left ovary is normal in size and echo pattern")]
+            if size_bracket:
+                s += [seg(" "), seg(size_bracket, True)]
+            else:
+                s += [seg(".")]
+            _append_findings()
+        elif l_eff_bulky and not r_eff_bulky:
+            l_vol = str(l.get("volume_cc", "") or "").strip()
+            s += [seg("BULKY LEFT OVARY", True, True),
+                  seg(f"({l_vol}cc)" if l_vol else ""),
+                  seg(" while right ovary is normal in size and echo pattern")]
+            if size_bracket:
+                s += [seg(" "), seg(size_bracket, True)]
+            else:
+                s += [seg(".")]
+            _append_findings()
+        else:
+            r_has_findings = bool(both_r_findings)
+            l_has_findings = bool(both_l_findings)
+            if not r_has_findings and not l_has_findings:
+                s += [seg("BOTH OVARIES", True, True),
+                      seg(" appear normal in size and echo pattern")]
+                if size_bracket:
+                    s += [seg(" "), seg(size_bracket, True)]
+                else:
+                    s += [seg(".")]
+            else:
+                for side_key, side, findings in (
+                        ("right", r, both_r_findings),
+                        ("left", l, both_l_findings)):
+                    if findings:
+                        for f in findings:
+                            phrase = _ovary_finding_phrase(f, side_key, up=False)
+                            if phrase:
+                                s += [seg(" "), seg(phrase, True)]
+                    else:
+                        side_bracket = _ovary_side_size_bracket(side)
+                        s += [seg(f"{side_key.upper()} OVARY", True, True),
+                              seg(" appears normal in size and echopattern")]
+                        if side_bracket:
+                            s += [seg(side_bracket, True)]
+                        s += [seg(".")]
+        return s
+
+    if r_present:
+        s += _ovary_single_side_block(r, "right", pcos_body,
+                                      other_present=l_present)
+    if l_present:
+        s += _ovary_single_side_block(l, "left", pcos_body,
+                                      other_present=r_present)
+    return s
+
+
 # ============================================================
-# BOWEL / APPENDIX
+# BOWEL (wall thickening + pancreas-acute ascites append only)
 # ============================================================
 
 def bowel_sentence(d, sex, pancreas_status="normal"):
+    """Bowel wall thickening + pancreas-acute ascites append.
+
+    Free fluid, pleural effusion and MLN are now handled by
+    fluid_mln_sentence(); this function only retains the wall thickening
+    line and the hard-coded mild ascites that the pancreas-acute module
+    appends.
+    """
     acute = (pancreas_status == "acute")
     s = []
-    if sex == "F":
-        if not d["wall_thickening"]:
-            s.append(seg("No obvious bowel wall thickening or lymphadenitis "
-                         "appreciated.", True))
-        else:
-            s.append(seg("Bowel wall thickening seen.", True))
-        if not acute:
-            s.append(seg(" "))
-            if d["free_fluid"] == "none":
-                s.append(seg("No free fluid seen in the peritoneal cavity."))
-            else:
-                s.append(seg(f"{d['free_fluid'].replace('_', ' ').title()} free "
-                             f"fluid seen.", True))
+    wall = bool(d.get("wall_thickening"))
+    if not wall:
+        s.append(seg("No obvious bowel wall thickening or lymphadenitis "
+                     "appreciated.", True))
     else:
-        if not acute:
-            if d["free_fluid"] == "none":
-                s.append(seg("No free fluid is seen in the peritoneal cavity."))
-            else:
-                s.append(seg(f"{d['free_fluid'].replace('_', ' ').title()} free "
-                             f"fluid seen.", True))
-            s.append(seg(" "))
-        if not d["wall_thickening"]:
-            s.append(seg("No obvious bowel wall thickening or lymphadenitis "
-                         "appreciated.", True))
-        else:
-            s.append(seg("Bowel wall thickening seen.", True))
-    if d["mesenteric_ln"] == "present":
-        cat = {"sad_lt_7": "Small(SAD<7mm)", "sad_gt_7": "Enlarged(SAD>7mm)",
-               "sad_gt_10": "Enlarged(SAD>10mm)"}.get(d["ln_size_category"],
-                                                       "Mesenteric")
-        loc = d["ln_location"].replace("_", " ").title()
-        largest = (f" with largest of these measuring {d['ln_largest']}"
-                   if d["ln_largest"] else "")
-        s += [seg(" "), seg(f"{cat} mesenteric lymph nodes are seen in the "
-                             f"{loc} region{largest}", True), seg(".", True)]
-    pe = d["pleural_effusion"]
-    if pe != "none":
-        text = {"trace_right": "Trace right pleural effusion is seen",
-                "trace_left": "Trace left pleural effusion is seen",
-                "mild_right": "Mild right pleural effusion is seen",
-                "mild_bilateral": "Trace left & mild right pleural effusion seen"
-                }.get(pe, "")
-        s += [seg(" "), seg(text, True), seg(".", True)]
+        s.append(seg("Bowel wall thickening seen.", True))
     if acute:
-        s.append(seg("\nMild ascites is seen.", True))
+        s.append(seg(" Mild ascites is seen.", True))
     return s
 
+
+# ============================================================
+# APPENDIX
+# ============================================================
 
 def appendix_sentence(d):
     if d["status"] == "not_assessed":
@@ -3691,114 +3760,201 @@ def appendix_sentence(d):
 
 
 # ============================================================
-# IMPRESSION HELPERS
+# MLN BODY
 # ============================================================
 
-def _ureter_impression_term(level):
-    return URETER_LEVELS[level][1]
+def mln_sentence(d):
+    """Mesenteric lymph node body sentence. Returns [] if branch = none."""
+    if d.get("branch", "none") == "none":
+        return []
+
+    count = d.get("count", "multiple")
+    size = d.get("size", "small")
+    loc = d.get("location", "bilateral")
+    inflamed = bool(d.get("inflamed", False))
+    largest = (d.get("largest", "") or "").strip()
+    size2 = (d.get("size2", "") or "").strip()
+
+    branch = d.get("branch")
+    is_reactive = (branch == "reactive")
+    lost_hila = is_reactive and bool(d.get("lost_hila", False))
+    necrotic = is_reactive and bool(d.get("necrotic", False))
+    if necrotic:
+        lost_hila = False
+
+    count_word = MLN_COUNT_WORD.get(count, "Multiple")
+    loc_phrase = MLN_LOCATION_BODY.get(loc, MLN_LOCATION_BODY["bilateral"])
+
+    if size == "mixed":
+        size_descriptor = ""
+        mixed_tail = ", few small (SAD<7mm) & few enlarged (SAD>7mm)"
+    else:
+        size_descriptor = " " + MLN_SIZE_WORD.get(size, "small (SAD<7mm)")
+        mixed_tail = ""
+
+    body = (f"{count_word}{size_descriptor} mesenteric lymph nodes are "
+            f"seen{loc_phrase}")
+
+    if inflamed:
+        body += " with focally hyperechoic surrounding mesentery"
+    if size == "mixed":
+        body += mixed_tail
+
+    if largest and size2:
+        body += f", largest of these measuring {largest}mm & {size2}mm"
+    elif largest:
+        body += f", largest of these measuring {largest}mm"
+
+    if necrotic:
+        body += ", few of these showing partial necrosis"
+    elif lost_hila:
+        body += ", few of these with lost fatty hila"
+
+    if not body.endswith("."):
+        body += "."
+    return [seg(body, True)]
 
 
-def _ureter_impression_consequence(uc, side_up):
-    grade = uc["grade"]
-    term = _ureter_impression_term(uc["level"])
-    if grade == "none":
-        return ""
-    if grade == "no_significant":
-        return f" HOWEVER CAUSING NO SIGNIFICANT {term}"
-    g = URETER_GRADES[grade]
-    return f" CAUSING {side_up} SIDED {g} {term}"
+# ============================================================
+# PLEURAL EFFUSION BODY PHRASE
+# ============================================================
 
-
-def _ureter_calculus_impression_single(side_up, uc):
-    adj = URETER_LEVELS[uc["level"]][2]
-    sz = uc["sizes"][0] if uc["sizes"] else ""
-    return f"A {side_up} {adj} CALCULUS({sz}MM){_ureter_impression_consequence(uc, side_up)}"
-
-
-def _ureter_calculus_impression_couple(side_up, uc):
-    a = uc["sizes"][0] if len(uc["sizes"]) > 0 else ""
-    b = uc["sizes"][1] if len(uc["sizes"]) > 1 else ""
-    place = {
-        "renal_pelvis": f"IN THE {side_up} RENAL PELVIS",
-        "puj": f"AT THE {side_up} PELVI-URETERIC JUNCTION",
-        "proximal_ureter": f"IN THE {side_up} PROXIMAL URETER",
-        "mid_ureter": f"IN THE {side_up} MID-URETER",
-        "distal_ureter": f"IN THE {side_up} DISTAL URETER",
-        "vuj": f"AT THE {side_up} VESICO-URETERIC JUNCTION",
-    }[uc["level"]]
-    return f"A COUPLE OF CALCULI({a}MM & {b}MM) {place}{_ureter_impression_consequence(uc, side_up)}"
-
-
-def _ureter_calculus_impression_few(side_up, uc):
-    word = "FEW" if uc["count"] == "few" else "MULTIPLE"
-    sz = uc["sizes"][0] if uc["sizes"] else ""
-    place = {
-        "renal_pelvis": f"IN THE {side_up} RENAL PELVIS",
-        "puj": f"AT THE {side_up} PELVI-URETERIC JUNCTION",
-        "proximal_ureter": f"IN THE {side_up} PROXIMAL URETER",
-        "mid_ureter": f"IN THE {side_up} MID-URETER",
-        "distal_ureter": f"IN THE {side_up} DISTAL URETER",
-        "vuj": f"AT THE {side_up} VESICO-URETERIC JUNCTION",
-    }[uc["level"]]
-    return f"{word} CALCULI, LARGEST MEASURING {sz}MM, {place}{_ureter_impression_consequence(uc, side_up)}"
-
-
-def _ureter_calculus_impression_line(side_key, uc):
-    if uc["count"] == "none":
+def _pleural_effusion_body_phrase(d):
+    """Return the body phrase for the effusion, e.g.
+    'Mild right pleural effusion'. Returns None if status = none."""
+    status = d.get("status", "none")
+    if status == "none":
         return None
-    side_up = _ureter_side_label(side_key)
-    if uc["count"] == "single":
-        return _ureter_calculus_impression_single(side_up, uc) + "."
-    if uc["count"] == "couple":
-        return _ureter_calculus_impression_couple(side_up, uc) + "."
-    if uc["count"] in ("few", "multiple"):
-        return _ureter_calculus_impression_few(side_up, uc) + "."
+    laterality = d.get("laterality", "right")
+    gr = EFF_GRADE_BODY.get(d.get("grade_right", "mild"), "mild")
+    gl = EFF_GRADE_BODY.get(d.get("grade_left", "mild"), "mild")
+    predom = d.get("bilateral_asym_predom", "r_gt_l")
+
+    if laterality == "right":
+        return f"{gr.capitalize()} right pleural effusion"
+    if laterality == "left":
+        return f"{gl.capitalize()} left pleural effusion"
+    if laterality == "bilateral":
+        return f"Bilateral {gr} pleural effusion"
+    if laterality == "bilateral_asym":
+        if predom == "r_gt_l":
+            return (f"{gl.capitalize()} left & {gr} right pleural effusion "
+                    f"(R>L)")
+        else:
+            return (f"{gr.capitalize()} right & {gl} left pleural effusion "
+                    f"(L>R)")
     return None
 
 
-def _renal_calculi_clause(k, side_key):
-    calcs = k["calculi"]
-    if not calcs:
+# ============================================================
+# FREE FLUID BODY PHRASE
+# ============================================================
+
+def _free_fluid_body_phrase(d):
+    """Return the body phrase for the free fluid, e.g.
+    'moderate ascites' or 'mild free fluid in the peritoneal cavity'.
+    Returns None if kind = none."""
+    kind = d.get("kind", "none")
+    if kind == "none":
         return None
-    side_up = _ureter_side_label(side_key)
-    n = len(calcs)
-    if n == 1:
-        return f"A {side_up} RENAL CALCULUS"
-    if n == 2:
-        return f"A COUPLE OF {side_up} RENAL CALCULI"
-    return f"FEW {side_up} RENAL CALCULI"
+    if kind == "inter_bowel":
+        return "mild inter-bowel free fluid"
+    grade = d.get("grade", "mild")
+    grade_word = FF_GRADE_BODY.get(grade, "mild")
+    if kind == "peritoneal":
+        return f"{grade_word} free fluid in the peritoneal cavity"
+    if kind == "ascites":
+        return f"{grade_word} ascites"
+    return None
 
 
-def _renal_calculi_standalone(k, side_key):
-    return _renal_calculi_clause(k, side_key)
-
-
-def _cyst_impression_clause(k, side_key, small_prefix=False):
-    ctype = k.get("cyst_type", "none")
-    if ctype == "none":
+def _free_fluid_standalone_sentence(d):
+    """Standalone body sentence for free fluid only (no effusion)."""
+    kind = d.get("kind", "none")
+    if kind == "none":
         return None
-    side_up = _ureter_side_label(side_key)
-    count = k.get("cyst_count", "single")
-    lead = _cyst_impression_count_word(count)
-    bosniak = _cyst_bosniak(k)
-    if ctype == "simple":
-        core = (f"{lead} SIMPLE {side_up} RENAL CORTICAL CYST"
-                if count == "single"
-                else f"{lead} SIMPLE {side_up} RENAL CORTICAL CYSTS")
-    else:
-        core = (f"{lead} COMPLEX {side_up} RENAL CORTICAL CYST"
-                if count == "single"
-                else f"{lead} COMPLEX {side_up} RENAL CORTICAL CYSTS")
-    bosniak_txt = f" (BOSNIAK CAT-{bosniak})"
-    if small_prefix:
-        core_no_article = core
-        for art in ("A ", "FEW ", "MULTIPLE "):
-            if core_no_article.startswith(art):
-                core_no_article = core_no_article[len(art):]
-                break
-        return f"RELATIVELY SMALL {side_up} KIDNEY WITH {core_no_article}{bosniak_txt}"
-    return core + bosniak_txt
+    if kind == "inter_bowel":
+        return "Mild inter-bowel free fluid is seen."
+    grade = d.get("grade", "mild")
+    grade_word = FF_GRADE_BODY.get(grade, "mild")
+    if kind == "peritoneal":
+        return f"{grade_word.capitalize()} free fluid seen in the peritoneal cavity."
+    if kind == "ascites":
+        return f"{grade_word.capitalize()} ascites is present."
+    return None
 
+
+# ============================================================
+# UNIFIED FLUID + MLN BODY BUILDER
+# ============================================================
+
+def fluid_mln_sentence(data):
+    """Unified body builder for pleural effusion + free fluid/ascites + MLN.
+
+    Ordering: effusion -> free fluid -> MLN.
+    Effusion and free fluid may share a sentence joined by 'with'; the MLN
+    body sentence is separated by a full stop and bridged with 'Also'.
+
+    Returns [] only when nothing is present.
+    """
+    eff = data.get("pleural_effusion", {})
+    ff = data.get("free_fluid", {})
+    mln = data.get("mln", {})
+    pancreas = data.get("pancreas", {})
+    pancreas_acute = pancreas.get("status") == "acute"
+
+    eff_present = eff.get("status", "none") != "none"
+    ff_present = (ff.get("kind", "none") != "none") and not pancreas_acute
+    mln_present = mln.get("branch", "none") != "none"
+
+    # ---- All absent: negative line, unless pancreas-acute already covers it.
+    if not eff_present and not ff_present and not mln_present:
+        if pancreas_acute:
+            return []
+        return [seg("No free fluid seen in the peritoneal cavity.")]
+
+    eff_phrase = _pleural_effusion_body_phrase(eff) if eff_present else None
+    ff_phrase = _free_fluid_body_phrase(ff) if ff_present else None
+    mln_segs = mln_sentence(mln) if mln_present else []
+
+    # ---- Build the fluid sentence.
+    fluid_sentence = None
+    if eff_present and ff_present:
+        fluid_sentence = f"{eff_phrase} with {ff_phrase} is noted."
+        # "however" appendages only apply when one of the pair is absent,
+        # so they are ignored here.
+    elif eff_present:
+        fluid_sentence = f"{eff_phrase} is noted."
+        if eff.get("append_no_ascites", False) and not ff_present:
+            fluid_sentence = (f"{eff_phrase} is noted, however no ascites "
+                              f"is seen.")
+    elif ff_present:
+        fluid_sentence = _free_fluid_standalone_sentence(ff)
+        if (ff.get("append_no_effusion", False) and not eff_present
+                and fluid_sentence):
+            fluid_sentence = (fluid_sentence.rstrip(".")
+                              + ", however no pleural effusion is seen.")
+
+    out = []
+
+    if fluid_sentence:
+        out.append(seg(" "))
+        out.append(seg(fluid_sentence, True))
+
+    if mln_segs:
+        if fluid_sentence:
+            out.append(seg(" Also "))
+            out.append(seg(mln_segs[0][0], True))
+        else:
+            out.append(seg(" "))
+            out.append(seg(mln_segs[0][0], True))
+
+    return out
+
+
+# ============================================================
+# IMPRESSION HELPERS
+# ============================================================
 
 def _spleen_impression_line(spleen):
     desc = spleen["size_descriptor"]
@@ -4043,6 +4199,155 @@ def _echogenicity_impression_lines(k):
             f"CORTICOMEDULLARY DIFFERENTIATION - ?MEDICAL RENAL DISEASE "
             f"GRADE-III/IV vs AKI. Adv- KFT Correlation."]
 
+
+# ============================================================
+# MLN + FLUID IMPRESSION
+# ============================================================
+
+def _mln_impression_head(d):
+    """The MLN impression head without the branch/combination tail."""
+    if d.get("branch", "none") == "none":
+        return None
+    count = d.get("count", "multiple")
+    loc = d.get("location", "bilateral")
+    inflamed = bool(d.get("inflamed", False))
+    necrotic = (d.get("branch") == "reactive"
+                and bool(d.get("necrotic", False)))
+
+    count_up = MLN_COUNT_WORD_UP.get(count, "MULTIPLE")
+    loc_up = MLN_LOCATION_IMP.get(loc, MLN_LOCATION_IMP["bilateral"])
+    head = f"{count_up} MESENTERIC LYMPH NODES{loc_up}"
+    if necrotic:
+        head += " WITH PARTIAL NECROSIS"
+    if inflamed:
+        head += " WITH FOCI OF HYPERECHOIC SURROUNDING MESENTERY"
+    return head
+
+
+def _eff_impression_phrase(d):
+    """E.g. 'MILD RIGHT PLEURAL EFFUSION'. None if status = none."""
+    status = d.get("status", "none")
+    if status == "none":
+        return None
+    laterality = d.get("laterality", "right")
+    gr = EFF_GRADE_UP.get(d.get("grade_right", "mild"), "MILD")
+    gl = EFF_GRADE_UP.get(d.get("grade_left", "mild"), "MILD")
+    predom = d.get("bilateral_asym_predom", "r_gt_l")
+    if laterality == "right":
+        return f"{gr} RIGHT PLEURAL EFFUSION"
+    if laterality == "left":
+        return f"{gl} LEFT PLEURAL EFFUSION"
+    if laterality == "bilateral":
+        return f"BILATERAL {gr} PLEURAL EFFUSION"
+    if laterality == "bilateral_asym":
+        if predom == "r_gt_l":
+            return f"{gl} LEFT & {gr} RIGHT PLEURAL EFFUSION (R>L)"
+        else:
+            return f"{gr} RIGHT & {gl} LEFT PLEURAL EFFUSION (L>R)"
+    return None
+
+
+def _ff_impression_phrase(d):
+    """E.g. 'MODERATE ASCITES'. None if kind = none."""
+    kind = d.get("kind", "none")
+    if kind == "none":
+        return None
+    grade = d.get("grade", "mild")
+    gu = FF_GRADE_UP.get(grade, "MILD")
+    if kind == "inter_bowel":
+        return "MILD INTER-BOWEL FREE FLUID"
+    if kind == "peritoneal":
+        return f"{gu} FREE FLUID IN THE PERITONEAL CAVITY"
+    if kind == "ascites":
+        return f"{gu} ASCITES"
+    return None
+
+
+def mln_impression_line(d):
+    """Standalone MLN impression line (branch tail). None if branch = none."""
+    head = _mln_impression_head(d)
+    if head is None:
+        return None
+    branch = d.get("branch")
+    inflamed = bool(d.get("inflamed", False))
+    if inflamed:
+        return (f"{head} -?INFLAMMATORY PROCESS. "
+                f"Adv- Lab & Clinical Correlation.")
+    if branch == "significance":
+        tail = d.get("sig_tail", "significance")
+        if tail == "lymphadenopathy":
+            query = "-?MESENTERIC LYMPHADENOPATHY"
+        else:
+            query = "-?SIGNIFICANCE"
+        return f"{head} {query}. Adv- Lab & Clinical Correlation."
+    if branch == "reactive":
+        sub = d.get("reactive_sub", "plain")
+        if sub == "tb":
+            return (f"{head} -REACTIVE LYMPHADENITIS (?TUBERCULAR). "
+                    f"Adv- ?Mantoux / CBNAAT & Clinical Correlation.")
+        return (f"{head} -?REACTIVE LYMPHADENITIS. "
+                f"Adv- Lab & Clinical Correlation.")
+    return None
+
+
+def fluid_mln_impression_lines(data):
+    """Unified impression lines for effusion + free fluid/ascites + MLN.
+
+    Ordering rules (locked):
+      - 1 present     : its own line, branch tail for MLN.
+      - eff + ff      : 'EFF WITH FF.'
+      - eff + mln     : 'EFF. MLN HEAD{infective_tail}'
+      - ff  + mln     : 'FF. MLN HEAD{infective_tail}'
+      - all three     : 'EFF WITH FF. MLN HEAD{infective_tail}'
+    """
+    eff = data.get("pleural_effusion", {})
+    ff = data.get("free_fluid", {})
+    mln = data.get("mln", {})
+    pancreas = data.get("pancreas", {})
+    pancreas_acute = pancreas.get("status") == "acute"
+
+    eff_present = eff.get("status", "none") != "none"
+    ff_present = (ff.get("kind", "none") != "none") and not pancreas_acute
+    mln_present = mln.get("branch", "none") != "none"
+
+    present_count = sum([eff_present, ff_present, mln_present])
+    if present_count == 0:
+        return []
+
+    eff_phrase = _eff_impression_phrase(eff) if eff_present else None
+    ff_phrase = _ff_impression_phrase(ff) if ff_present else None
+    mln_head = _mln_impression_head(mln) if mln_present else None
+
+    infective_tail = (
+        " - LIKELY INFECTIVE PROCESS(TUBERCULAR). "
+        "Adv- Mantoux/CBNAAT, Lab & Clinical Correlation."
+    )
+
+    lines = []
+
+    if present_count == 1:
+        if eff_present:
+            lines.append(f"{eff_phrase}.")
+        elif ff_present:
+            lines.append(f"{ff_phrase}.")
+        elif mln_present:
+            line = mln_impression_line(mln)
+            if line:
+                lines.append(line)
+        return lines
+
+    # 2+ combination
+    if eff_present and ff_present and mln_present:
+        lines.append(f"{eff_phrase} WITH {ff_phrase}. "
+                     f"{mln_head}{infective_tail}")
+    elif eff_present and ff_present:
+        lines.append(f"{eff_phrase} WITH {ff_phrase}.")
+    elif eff_present and mln_present:
+        lines.append(f"{eff_phrase}. {mln_head}{infective_tail}")
+    elif ff_present and mln_present:
+        lines.append(f"{ff_phrase}. {mln_head}{infective_tail}")
+    return lines
+  
 
 # ============================================================
 # IMPRESSION GENERATOR
@@ -4529,14 +4834,13 @@ def generate_impression(d, sex, age):
             lines.append(cl)
 
     b = d["bowel"]
-    if b["mesenteric_ln"] == "present":
-        loc = b["ln_location"].replace("_", " ").upper()
-        lines.append(f"MESENTERIC LYMPH NODES IN THE {loc} REGION - "
-                     f"?SIGNIFICANCE. Adv- Lab & Clinical Correlation.")
-    if p_status != "acute" and b["free_fluid"] not in ("none",):
-        lines.append(f"{b['free_fluid'].replace('_', ' ').upper()} FREE FLUID SEEN.")
-    if b["pleural_effusion"] != "none":
-        lines.append("PLEURAL EFFUSION SEEN - ?ETIOLOGY.")
+    if b.get("wall_thickening"):
+        lines.append("BOWEL WALL THICKENING SEEN - ?SIGNIFICANCE. "
+                     "Adv- Clinical Correlation.")
+
+    fluid_lines = fluid_mln_impression_lines(d)
+    for ln in fluid_lines:
+        lines.append(ln)
 
     if not lines:
         return (list(IMPRESSION_NORMAL_FEMALE) if (sex == "F" and not is_pediatric)
@@ -4808,6 +5112,7 @@ def build_docx_bytes(data):
     sections.append(bowel_sentence(data["bowel"], sex, pancreas_status=p_status))
     if data["appendix"]["status"] != "not_assessed":
         sections.append(appendix_sentence(data["appendix"]))
+    sections.append(fluid_mln_sentence(data))
 
     rendered_count = 0
     for segs in sections:
@@ -4926,14 +5231,6 @@ st.markdown(
             cursor: pointer !important;
             user-select: none !important;
         }
-        div[data-testid="stRadio"] label > div:first-child {
-            width: 22px !important; height: 22px !important;
-            min-width: 22px !important;
-            margin-right: 8px !important;
-        }
-        div[data-testid="stRadio"] label > div:first-child > div {
-            width: 22px !important; height: 22px !important;
-        }
         div[data-testid="stCheckbox"] label {
             min-height: 44px !important;
             padding: 6px 6px !important;
@@ -4960,24 +5257,11 @@ st.markdown(
         border-bottom: 1px solid #cfd6dd !important;
     }
     div[data-testid="stExpander"] summary,
-    div[data-testid="stExpander"] summary *,
-    div[data-testid="stExpander"] details[open] > summary,
-    div[data-testid="stExpander"] details[open] > summary * {
+    div[data-testid="stExpander"] summary * {
         color: #111111 !important; font-weight: 600 !important;
         font-size: 14px !important;
         white-space: nowrap !important; overflow: hidden !important;
         text-overflow: ellipsis !important;
-    }
-    div[data-testid="stExpander"] details[open] > summary svg,
-    div[data-testid="stExpander"] details[open] > summary svg path {
-        fill: #111111 !important; stroke: #111111 !important;
-    }
-    div[data-testid="stExpander"] div[data-testid="stExpanderDetails"],
-    div[data-testid="stExpander"] div[data-testid="stExpanderDetails"] * {
-        color: #111111 !important;
-    }
-    div[data-testid="stNumberInput"], div[data-testid="stNumberInput"] > div {
-        margin: 0 !important;
     }
     div[data-testid="stNumberInput"] input {
         background-color: #ffffff !important; color: #111111 !important;
@@ -4992,12 +5276,6 @@ st.markdown(
         background-color: #ffffff !important; color: #111111 !important;
         border: 1px solid #cfd6dd !important;
         min-height: 42px !important; box-sizing: border-box !important;
-    }
-    .stTextInput input::placeholder, .stTextArea textarea::placeholder {
-        color: #888 !important;
-    }
-    .stRadio label, .stRadio span, .stCheckbox label, .stCheckbox span {
-        color: #111111 !important;
     }
     .stButton button, .stDownloadButton button {
         background-color: #ffffff !important; color: #111111 !important;
@@ -5021,10 +5299,6 @@ st.markdown(
         border-color: #305496 !important;
         color: #1F4E79 !important;
     }
-    div[class*="st-key-organ_btn_"] button p {
-        text-align: left !important; width: 100% !important;
-        font-weight: 600 !important;
-    }
     .preview-box, .stApp .preview-box, .stApp .preview-box * {
         color: #ffffff !important;
     }
@@ -5043,7 +5317,6 @@ st.markdown(
         margin-bottom: 8px !important;
         display: block !important;
     }
-    .st-key-impression_box textarea,
     div[class*="st-key-impression_box"] textarea {
         background-color: #ffffff !important;
         color: #000000 !important;
@@ -5054,72 +5327,7 @@ st.markdown(
         white-space: pre-wrap !important;
         word-wrap: break-word !important;
         overflow-wrap: anywhere !important;
-        word-break: break-word !important;
     }
-
-    /* ---- THEME TRIAL START ----
-       Dark-gray page + black findings panels with green text for the first
-       three organs (Liver / Gall Bladder / CBD). Rollback = delete this
-       entire block between the START and END markers. */
-    .stApp, [data-testid="stAppViewContainer"], section.main {
-        background-color: #1e1e1e !important;
-    }
-    .stApp, .stApp p, .stApp label, .stApp span, .stApp div,
-    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
-    .stApp li { color: #22c55e !important; }
-    /* Organ button border: orange closed, green open for the trial organs */
-    div[class*="st-key-organ_btn_LIVER"] button,
-    div[class*="st-key-organ_btn_GALL_BLADDER"] button,
-    div[class*="st-key-organ_btn_COMMON_BILE_DUCT"] button {
-        background-color: #2a2a2a !important;
-        color: #22c55e !important;
-        border: 2px solid #f97316 !important;
-    }
-    div[class*="st-key-organ_btn_LIVER"] button[kind="primary"],
-    div[class*="st-key-organ_btn_GALL_BLADDER"] button[kind="primary"],
-    div[class*="st-key-organ_btn_COMMON_BILE_DUCT"] button[kind="primary"] {
-        background-color: #2a2a2a !important;
-        color: #22c55e !important;
-        border: 2px solid #22c55e !important;
-    }
-    /* Radio + checkbox text stays green; radios orange */
-    div[data-testid="stRadio"] label,
-    div[data-testid="stRadio"] label * {
-        color: #22c55e !important;
-    }
-    div[data-testid="stRadio"] label > div:first-child,
-    div[data-testid="stRadio"] label > div:first-child * {
-        border-color: #f97316 !important;
-        color: #f97316 !important;
-        fill: #f97316 !important;
-        stroke: #f97316 !important;
-    }
-    div[data-testid="stRadio"] label[data-checked="true"] > div:first-child,
-    div[data-testid="stRadio"] input:checked + div {
-        background-color: #f97316 !important;
-        border-color: #f97316 !important;
-    }
-    div[data-testid="stCheckbox"] label,
-    div[data-testid="stCheckbox"] label * {
-        color: #22c55e !important;
-    }
-    /* Findings-panel containers (bordered) inside open organs */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #000000 !important;
-        border-color: #22c55e !important;
-    }
-    /* Inputs inside dark theme — dark gray bg + green text */
-    div[data-testid="stNumberInput"] input,
-    .stTextInput input, .stTextArea textarea,
-    [data-baseweb="input"] input, [data-baseweb="base-input"] input {
-        background-color: #2a2a2a !important;
-        color: #22c55e !important;
-        border: 1px solid #22c55e !important;
-    }
-    .stTextInput input::placeholder, .stTextArea textarea::placeholder {
-        color: #4ade80 !important;
-    }
-    /* ---- THEME TRIAL END ---- */
     </style>
     """,
     unsafe_allow_html=True,
@@ -5132,20 +5340,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-with st.expander("🐞 Mirror debug (click to inspect)", expanded=False):
-    mirror_keys = sorted(k for k in st.session_state.keys()
-                         if k.startswith("_mirror_"))
-    if not mirror_keys:
-        st.caption("No mirrors populated yet. Fill in a finding and check again.")
-    else:
-        st.caption(f"{len(mirror_keys)} mirror key(s) populated:")
-        rows = []
-        for k in mirror_keys:
-            v = st.session_state[k]
-            rows.append({"key": k.replace("_mirror_", ""), "value": str(v)})
-        st.dataframe(rows, use_container_width=True, hide_index=True)
-
 
 with st.container():
     c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 2, 3],
@@ -6534,11 +6728,6 @@ with col_find:
                                             value=bool(_seed(_full_key, False)))
                                 wget(_full_key, False)
                                 if ss(_full_key, False):
-                                    st.text_input(f"{f_label} size",
-                                                  key=f"{_full_key}_size",
-                                                  value=_seed(
-                                                      f"{_full_key}_size", ""))
-                                    wget(f"{_full_key}_size", "")
                                     _cnt_key = f"{_full_key}_count"
                                     _cnt_opts = ["single", "couple", "few",
                                                  "multiple"]
@@ -6549,12 +6738,34 @@ with col_find:
                                              key=_cnt_key,
                                              format_func=lambda x: x.title())
                                     wget(_cnt_key, "single")
-                                    if ss(_cnt_key, "single") == "couple":
+                                    _cnt_val = ss(_cnt_key, "single")
+                                    _two_boxes = (f_key != "cl"
+                                                  and _cnt_val in ("couple",
+                                                                   "few",
+                                                                   "multiple"))
+                                    if _two_boxes:
+                                        c_s1, c_s2 = st.columns(2)
+                                        with c_s1:
+                                            st.text_input(
+                                                f"{f_label} — largest size (mm)",
+                                                key=f"{_full_key}_size",
+                                                value=_seed(
+                                                    f"{_full_key}_size", ""))
+                                            wget(f"{_full_key}_size", "")
+                                        with c_s2:
+                                            st.text_input(
+                                                f"{f_label} — 2nd largest (mm)",
+                                                key=f"{_full_key}_size2",
+                                                value=_seed(
+                                                    f"{_full_key}_size2", ""))
+                                            wget(f"{_full_key}_size2", "")
+                                    else:
                                         st.text_input(
-                                            f"{f_label} — size of largest",
-                                            key=f"{_full_key}_size2",
-                                            value=_seed(f"{_full_key}_size2", ""))
-                                        wget(f"{_full_key}_size2", "")
+                                            f"{f_label} size (mm)",
+                                            key=f"{_full_key}_size",
+                                            value=_seed(
+                                                f"{_full_key}_size", ""))
+                                        wget(f"{_full_key}_size", "")
 
                 st.markdown("---")
                 st.markdown("**PCOS spectrum**")
@@ -6564,7 +6775,8 @@ with col_find:
                 if ss("ov_pcos", False):
                     st.caption("If no sub-ticks are chosen, all three features "
                                "are assumed present (conclusive).")
-                    st.checkbox("Feature 2: multiple small follicles arranged peripherally",
+                    st.checkbox("Feature 2: multiple small follicles arranged "
+                                "peripherally",
                                 key="ov_pcos_f2",
                                 value=bool(_seed("ov_pcos_f2", False)))
                     wget("ov_pcos_f2", False)
@@ -6594,20 +6806,6 @@ with col_find:
                                      "random": "Random"}[x],
                                  key="ov_pcos_f4_dist")
                         wget("ov_pcos_f4_dist", "peripheral")
-
-                st.markdown("---")
-                st.markdown("**Manual advices (ovary-related)**")
-                for _adv_key, _adv_label in [
-                    ("ov_adv_follicular_monitoring",
-                     "Adv- Follicular Monitoring for fertility work-up."),
-                    ("ov_adv_lh_fsh", "Adv- LH/FSH & AMH Correlation. (PCOS)"),
-                    ("ov_adv_clinico_lab",
-                     "Adv- Clinico-Lab Correlation. (PCOS partial)"),
-                    ("ov_adv_followup", "Adv- Follow up."),
-                ]:
-                    st.checkbox(_adv_label, key=_adv_key,
-                                value=bool(_seed(_adv_key, False)))
-                    wget(_adv_key, False)
     else:
         pr_open = organ_button("PROSTATE", "PROSTATE")
         if pr_open:
@@ -6669,20 +6867,254 @@ with col_find:
                                                 "pr_cyst_right_hemi", False)))
                                 wget("pr_cyst_right_hemi", False)
 
-    # ------- BOWEL -------
-    bowel_open = organ_button("BOWEL / FREE FLUID", "BOWEL / FREE FLUID")
-    if bowel_open:
+    # ------- MESENTERIC LYMPH NODES -------
+    mln_open = organ_button("MESENTERIC LYMPH NODES", "MESENTERIC LYMPH NODES")
+    if mln_open:
         with st.container(border=True):
-            _ff_opts = ["none", "minimal", "mild", "moderate"]
-            st.radio("Free fluid", _ff_opts,
-                     index=_idx("bw_ff", _ff_opts, "none"),
-                     horizontal=True, key="bw_ff")
-            wget("bw_ff", "none")
-            _ln_opts = ["none", "present"]
-            st.radio("Mesenteric LN", _ln_opts,
-                     index=_idx("bw_ln", _ln_opts, "none"),
-                     horizontal=True, key="bw_ln")
-            wget("bw_ln", "none")
+            _mln_branch_opts = ["none", "significance", "reactive"]
+            st.radio(
+                "Branch", _mln_branch_opts,
+                index=_idx("mln_branch", _mln_branch_opts, "none"),
+                horizontal=True,
+                format_func=lambda x: {
+                    "none": "None",
+                    "significance": "Significance / Lymphadenopathy",
+                    "reactive": "Reactive Lymphadenitis"}[x],
+                key="mln_branch")
+            wget("mln_branch", "none")
+            _mlnb = ss("mln_branch", "none")
+
+            if _mlnb != "none":
+                _mln_cnt_opts = ["few", "multiple", "innumerable"]
+                st.radio("Count", _mln_cnt_opts,
+                         index=_idx("mln_count", _mln_cnt_opts, "multiple"),
+                         horizontal=True, key="mln_count",
+                         format_func=lambda x: x.title())
+                wget("mln_count", "multiple")
+
+                _mln_size_opts = ["small", "enlarged", "mixed"]
+                st.radio("Size", _mln_size_opts,
+                         index=_idx("mln_size", _mln_size_opts, "small"),
+                         horizontal=True, key="mln_size",
+                         format_func=lambda x: {
+                             "small": "Small (SAD<7mm)",
+                             "enlarged": "Enlarged (SAD>7mm)",
+                             "mixed": "Small & Enlarged"}[x])
+                wget("mln_size", "small")
+
+                _mln_loc_opts = ["bilateral", "left", "right"]
+                st.radio("Location", _mln_loc_opts,
+                         index=_idx("mln_location", _mln_loc_opts, "bilateral"),
+                         horizontal=True, key="mln_location",
+                         format_func=lambda x: {
+                             "bilateral":
+                                 "Bilateral pre & para-aortic peri-umbilical",
+                             "left": "Predominantly left para-aortic",
+                             "right": "Predominantly right para-aortic"}[x])
+                wget("mln_location", "bilateral")
+
+                c_a, c_b = st.columns(2)
+                with c_a:
+                    st.text_input("Largest (mm, e.g. 16x08)",
+                                  key="mln_largest",
+                                  value=_seed("mln_largest", ""))
+                    wget("mln_largest", "")
+                with c_b:
+                    st.text_input("2nd largest (mm, optional)",
+                                  key="mln_size2",
+                                  value=_seed("mln_size2", ""))
+                    wget("mln_size2", "")
+
+                st.checkbox("Surrounding mesentery hyperechoic (inflamed)",
+                            key="mln_inflamed",
+                            value=bool(_seed("mln_inflamed", False)))
+                wget("mln_inflamed", False)
+
+                if _mlnb == "reactive":
+                    _mln_react_opts = ["plain", "tb"]
+                    st.radio("Sub-type", _mln_react_opts,
+                             index=_idx("mln_reactive_sub",
+                                        _mln_react_opts, "plain"),
+                             horizontal=True, key="mln_reactive_sub",
+                             format_func=lambda x: {
+                                 "plain": "Reactive Lymphadenitis",
+                                 "tb": "Reactive Lymphadenitis (?Tubercular)"}[x])
+                    wget("mln_reactive_sub", "plain")
+
+                    st.checkbox("Lost hila", key="mln_lost_hila",
+                                value=bool(_seed("mln_lost_hila", False)))
+                    wget("mln_lost_hila", False)
+                    st.checkbox("Partially necrotic", key="mln_necrotic",
+                                value=bool(_seed("mln_necrotic", False)))
+                    wget("mln_necrotic", False)
+                    if ss("mln_necrotic", False):
+                        st.caption("Necrotic supersedes Lost hila in body.")
+
+                if _mlnb == "significance":
+                    _mln_sig_opts = ["significance", "lymphadenopathy"]
+                    st.radio("Query tail", _mln_sig_opts,
+                             index=_idx("mln_sig_tail", _mln_sig_opts,
+                                        "significance"),
+                             horizontal=True, key="mln_sig_tail",
+                             format_func=lambda x: {
+                                 "significance": "-?Significance",
+                                 "lymphadenopathy":
+                                     "-?Mesenteric Lymphadenopathy"}[x])
+                    wget("mln_sig_tail", "significance")
+
+    # ------- FREE FLUID -------
+    ff_open = organ_button("FREE FLUID", "FREE FLUID")
+    if ff_open:
+        with st.container(border=True):
+            _ff_kind_opts = ["none", "inter_bowel", "peritoneal", "ascites"]
+            st.radio(
+                "Free fluid", _ff_kind_opts,
+                index=_idx("ff_kind", _ff_kind_opts, "none"),
+                horizontal=True,
+                format_func=lambda x: {
+                    "none": "None",
+                    "inter_bowel": "Mild inter-bowel free fluid",
+                    "peritoneal": "Mild free fluid in the peritoneal cavity",
+                    "ascites": "Ascites"}[x],
+                key="ff_kind")
+            wget("ff_kind", "none")
+            _ffk = ss("ff_kind", "none")
+            if _ffk == "peritoneal":
+                _ffg_opts = FF_GRADE_OPTS_PERITONEAL
+                st.radio("Grade", _ffg_opts,
+                         index=_idx("ff_grade", _ffg_opts, "mild"),
+                         horizontal=True, key="ff_grade",
+                         format_func=lambda x: {
+                             "mild": "Mild",
+                             "mild_to_moderate": "Mild to Moderate",
+                             "moderate": "Moderate"}[x])
+                wget("ff_grade", "mild")
+            elif _ffk == "ascites":
+                _ffg_opts = FF_GRADE_OPTS_ASCITES
+                st.radio("Grade", _ffg_opts,
+                         index=_idx("ff_grade", _ffg_opts, "mild"),
+                         horizontal=True, key="ff_grade",
+                         format_func=lambda x: {
+                             "mild": "Mild",
+                             "mild_to_moderate": "Mild to Moderate",
+                             "moderate_to_gross": "Moderate to Gross"}[x])
+                wget("ff_grade", "mild")
+
+            if _ffk != "none":
+                _eff_status_now = ss("pe_status", "none")
+                if _eff_status_now == "none":
+                    st.checkbox(
+                        "Append: 'however no pleural effusion is seen'",
+                        key="ff_append_no_effusion",
+                        value=bool(_seed("ff_append_no_effusion", False)))
+                    wget("ff_append_no_effusion", False)
+
+    # ------- PLEURAL EFFUSION -------
+    pe_open = organ_button("PLEURAL EFFUSION", "PLEURAL EFFUSION")
+    if pe_open:
+        with st.container(border=True):
+            _pe_status_opts = ["none", "present"]
+            st.radio("Status", _pe_status_opts,
+                     index=_idx("pe_status", _pe_status_opts, "none"),
+                     horizontal=True, key="pe_status",
+                     format_func=lambda x: {"none": "None",
+                                            "present": "Present"}[x])
+            wget("pe_status", "none")
+            if ss("pe_status", "none") == "present":
+                _pe_lat_opts = EFF_LATERALITY_OPTS
+                st.radio("Laterality", _pe_lat_opts,
+                         index=_idx("pe_laterality", _pe_lat_opts, "right"),
+                         horizontal=True, key="pe_laterality",
+                         format_func=lambda x: {
+                             "right": "Right",
+                             "left": "Left",
+                             "bilateral": "Bilateral (symmetric)",
+                             "bilateral_asym": "Bilateral asymmetric"}[x])
+                wget("pe_laterality", "right")
+                _pel = ss("pe_laterality", "right")
+
+                if _pel == "right":
+                    _g_opts = EFF_GRADE_OPTS
+                    st.radio("Grade (right)", _g_opts,
+                             index=_idx("pe_grade_right", _g_opts, "mild"),
+                             horizontal=True, key="pe_grade_right",
+                             format_func=lambda x: {
+                                 "mild": "Mild",
+                                 "mild_to_moderate": "Mild to Moderate",
+                                 "moderate_to_gross":
+                                     "Moderate to Gross"}[x])
+                    wget("pe_grade_right", "mild")
+                elif _pel == "left":
+                    _g_opts = EFF_GRADE_OPTS
+                    st.radio("Grade (left)", _g_opts,
+                             index=_idx("pe_grade_left", _g_opts, "mild"),
+                             horizontal=True, key="pe_grade_left",
+                             format_func=lambda x: {
+                                 "mild": "Mild",
+                                 "mild_to_moderate": "Mild to Moderate",
+                                 "moderate_to_gross":
+                                     "Moderate to Gross"}[x])
+                    wget("pe_grade_left", "mild")
+                elif _pel == "bilateral":
+                    _g_opts = EFF_GRADE_OPTS
+                    st.radio("Grade (bilateral)", _g_opts,
+                             index=_idx("pe_grade_right", _g_opts, "mild"),
+                             horizontal=True, key="pe_grade_right",
+                             format_func=lambda x: {
+                                 "mild": "Mild",
+                                 "mild_to_moderate": "Mild to Moderate",
+                                 "moderate_to_gross":
+                                     "Moderate to Gross"}[x])
+                    wget("pe_grade_right", "mild")
+                elif _pel == "bilateral_asym":
+                    c_a, c_b = st.columns(2)
+                    with c_a:
+                        _g_opts = EFF_GRADE_OPTS
+                        st.radio("Grade right", _g_opts,
+                                 index=_idx("pe_grade_right", _g_opts, "mild"),
+                                 horizontal=True, key="pe_grade_right",
+                                 format_func=lambda x: {
+                                     "mild": "Mild",
+                                     "mild_to_moderate": "Mild to Mod",
+                                     "moderate_to_gross":
+                                         "Mod to Gross"}[x])
+                        wget("pe_grade_right", "mild")
+                    with c_b:
+                        _g_opts = EFF_GRADE_OPTS
+                        st.radio("Grade left", _g_opts,
+                                 index=_idx("pe_grade_left", _g_opts, "mild"),
+                                 horizontal=True, key="pe_grade_left",
+                                 format_func=lambda x: {
+                                     "mild": "Mild",
+                                     "mild_to_moderate": "Mild to Mod",
+                                     "moderate_to_gross":
+                                         "Mod to Gross"}[x])
+                        wget("pe_grade_left", "mild")
+                    _pred_opts = ["r_gt_l", "l_gt_r"]
+                    st.radio("Predominance", _pred_opts,
+                             index=_idx("pe_predom", _pred_opts, "r_gt_l"),
+                             horizontal=True, key="pe_predom",
+                             format_func=lambda x: {
+                                 "r_gt_l": "R > L",
+                                 "l_gt_r": "L > R"}[x])
+                    wget("pe_predom", "r_gt_l")
+
+                _ff_kind_now = ss("ff_kind", "none")
+                if _ff_kind_now == "none":
+                    st.checkbox(
+                        "Append: 'however no ascites is seen'",
+                        key="pe_append_no_ascites",
+                        value=bool(_seed("pe_append_no_ascites", False)))
+                    wget("pe_append_no_ascites", False)
+
+    # ------- BOWEL (wall thickening only) -------
+    bw_open = organ_button("BOWEL WALL", "BOWEL WALL")
+    if bw_open:
+        with st.container(border=True):
+            st.checkbox("Bowel wall thickening present",
+                        key="bw_wall_thick",
+                        value=bool(_seed("bw_wall_thick", False)))
+            wget("bw_wall_thick", False)
 
     # ------- APPENDIX -------
     ap_open = organ_button("APPENDIX", "APPENDIX")
@@ -7076,7 +7508,7 @@ if p_sex == "F":
                         "size_mm": ss(_sz_key, ""),
                         "count": cnt,
                     }
-                    if cnt == "couple":
+                    if cnt in ("couple", "few", "multiple"):
                         finding["size2_mm"] = ss(f"{_ck}_size2", "")
                     o["findings"].append(finding)
 
@@ -7086,8 +7518,10 @@ if p_sex == "F":
         "pcos_feature3": bool(ss("ov_pcos_f3", False)),
         "pcos_feature4": bool(ss("ov_pcos_f4", False)),
         "pcos_feature4_variable": bool(ss("ov_pcos_f4_var", False)),
-        "pcos_feature4_peripheral": (ss("ov_pcos_f4_dist", "peripheral") == "peripheral"),
-        "pcos_feature4_random": (ss("ov_pcos_f4_dist", "peripheral") == "random"),
+        "pcos_feature4_peripheral":
+            (ss("ov_pcos_f4_dist", "peripheral") == "peripheral"),
+        "pcos_feature4_random":
+            (ss("ov_pcos_f4_dist", "peripheral") == "random"),
     })
 else:
     ub_empty = (data["urinary_bladder"]["status"] in ("empty", "partially_empty"))
@@ -7113,20 +7547,42 @@ else:
     })
 
 data["bowel"].update({
-    "free_fluid": ss("bw_ff", "none"),
-    "mesenteric_ln": ss("bw_ln", "none"),
+    "wall_thickening": bool(ss("bw_wall_thick", False)),
 })
+
+data["mln"] = {
+    "branch": ss("mln_branch", "none"),
+    "reactive_sub": ss("mln_reactive_sub", "plain"),
+    "sig_tail": ss("mln_sig_tail", "significance"),
+    "count": ss("mln_count", "multiple"),
+    "size": ss("mln_size", "small"),
+    "location": ss("mln_location", "bilateral"),
+    "inflamed": bool(ss("mln_inflamed", False)),
+    "lost_hila": bool(ss("mln_lost_hila", False)),
+    "necrotic": bool(ss("mln_necrotic", False)),
+    "largest": ss("mln_largest", ""),
+    "size2": ss("mln_size2", ""),
+}
+
+data["pleural_effusion"] = {
+    "status": ss("pe_status", "none"),
+    "laterality": ss("pe_laterality", "right"),
+    "grade_right": ss("pe_grade_right", "mild"),
+    "grade_left": ss("pe_grade_left", "mild"),
+    "bilateral_asym_predom": ss("pe_predom", "r_gt_l"),
+    "append_no_ascites": bool(ss("pe_append_no_ascites", False)),
+}
+
+data["free_fluid"] = {
+    "kind": ss("ff_kind", "none"),
+    "grade": ss("ff_grade", "mild"),
+    "append_no_effusion": bool(ss("ff_append_no_effusion", False)),
+}
+
 data["appendix"].update({
     "status": ss("ap_status", "not_assessed"),
     "diameter_mm": ss("ap_d", ""),
 })
-
-data["ovary_manual_advices"] = {
-    "follicular_monitoring": bool(ss("ov_adv_follicular_monitoring", False)),
-    "lh_fsh": bool(ss("ov_adv_lh_fsh", False)),
-    "clinico_lab": bool(ss("ov_adv_clinico_lab", False)),
-    "followup": bool(ss("ov_adv_followup", False)),
-}
 
 
 # ============================================================
@@ -7197,6 +7653,7 @@ def render_preview_findings(data):
     secs.append(bowel_sentence(data["bowel"], sex, pancreas_status=p_status))
     if data["appendix"]["status"] != "not_assessed":
         secs.append(appendix_sentence(data["appendix"]))
+    secs.append(fluid_mln_sentence(data))
     for s in secs:
         if not s:
             continue
