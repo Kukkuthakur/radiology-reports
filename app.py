@@ -108,6 +108,72 @@ IMPRESSION_REST_UNREMARKABLE = "REST OF THE ABDOMEN SCAN IS UNREMARKABLE."
 
 
 # ============================================================
+# CLINICAL TEMPLATES FROM REPORTS
+# ============================================================
+
+TEMPLATES = {
+    "Chronic Liver Disease / Portal HTN": {
+        "liver_size_num": 158,
+        "liver_outline": "crenated",
+        "liver_echo": "coarse",
+        "liver_ihbr": "normal",
+        "liver_portal": "normal",
+        "sp_size_num": 127,
+        "sp_portal_mm": "16",
+        "sp_focal": "none",
+        "gb_status": "adequately_distended",
+        "gb_calculi": "none",
+        "gb_sludge": "none",
+        "cbd_status": "normal",
+        "ub_partially_empty": True,
+        "ff_kind": "ascites",
+        "ff_grade": "moderate",
+    },
+    "Post-Hysterectomy / Subacute Obstruction": {
+        "liver_size_num": 145,
+        "liver_outline": "normal",
+        "liver_echo": "normal",
+        "gb_status": "adequately_distended",
+        "gb_sludge": "significant",
+        "cbd_status": "normal",
+        "ut_status": "operated",
+        "ov_r_status": "not_visualized",
+        "ov_l_status": "not_visualized",
+        "ff_kind": "inter_bowel",
+        "ff_grade": "mild",
+        "bw_wall_thick": False, # Subacute obstruction, not a true wall thickening in the UI
+    },
+    "Reactive Mesenteric Lymphadenitis / ?Koch's": {
+        "liver_size_num": 149,
+        "liver_outline": "normal",
+        "liver_echo": "normal",
+        "gb_status": "adequately_distended",
+        "gb_calculi": "none",
+        "cbd_status": "normal",
+        "sp_size_num": 123,
+        "sp_portal_mm": "9.1",
+        "sp_focal": "none",
+        "ut_status": "anteverted",
+        "ut_size": "59x28",
+        "ut_endo_mm": "6.0",
+        "ut_myometrium": "homogenous",
+        "ov_r_status": "normal",
+        "ov_l_status": "normal",
+        "ov_l_f_hem": True,
+        "ov_l_f_hem_size": "25x11",
+        "ov_l_f_hem_count": "single",
+        "mln_branch": "reactive",
+        "mln_reactive_sub": "tb",
+        "mln_count": "few",
+        "mln_size": "enlarged",
+        "mln_location": "bilateral",
+        "mln_largest": "14x08",
+        "bw_wall_thick": True,
+    },
+}
+
+
+# ============================================================
 # SESSION-STATE MIRROR
 # ============================================================
 
