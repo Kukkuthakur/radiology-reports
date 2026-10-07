@@ -7191,9 +7191,9 @@ data = new_report(p_sex)
 data["patient"] = {"name": p_name, "age": p_age, "sex": p_sex,
                "date": p_date, "referred_by": p_ref}
 
-    _lf = ss("liver_focal", "none")
-    _abscess_lesions = []
-    if _lf == "abscess":
+_lf = ss("liver_focal", "none")
+_abscess_lesions = []
+if _lf == "abscess":
     _ac = ss("abscess_count", "single")
     n_abs = 1 if _ac == "single" else int(ss("abscess_n", 2) or 2)
     for i in range(n_abs):
