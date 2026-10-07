@@ -5239,16 +5239,35 @@ init_db()
 st.markdown(
     """
     <style>
-    :root { color-scheme: light !important; }
+    /* ---------- Force light scheme globally ---------- */
+    :root, html, body {
+        color-scheme: light !important;
+        background-color: #f4f6f9 !important;
+    }
+
+    /* ---------- Hide Streamlit chrome ---------- */
     #MainMenu {visibility: hidden;}
     header[data-testid="stHeader"] {visibility: hidden; height: 0;}
     footer {visibility: hidden;}
-    .stApp, [data-testid="stAppViewContainer"], section.main {
+    [data-testid="stToolbar"] {visibility: hidden;}
+
+    /* ---------- App background ---------- */
+    .stApp,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stAppViewContainer"] > .main,
+    section.main,
+    .main .block-container {
         background-color: #f4f6f9 !important;
     }
+
+    /* ---------- Global text ---------- */
     .stApp, .stApp p, .stApp label, .stApp span, .stApp div,
     .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
-    .stApp li { color: #111111; }
+    .stApp li, .stApp small, .stApp strong, .stApp em {
+        color: #111111 !important;
+    }
+
+    /* ---------- Titles ---------- */
     .pg-title {
         text-align: center; margin: 0 0 0.15rem 0; padding: 0;
         color: #1F4E79 !important; font-weight: 700; font-size: 2rem;
@@ -5258,10 +5277,14 @@ st.markdown(
         text-align: center; margin: 0 0 1.0rem 0; padding: 0;
         color: #555 !important; font-style: italic; font-size: 1.05rem;
     }
+
+    /* ---------- Column alignment ---------- */
     div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
         display: flex !important; flex-direction: column !important;
         justify-content: flex-end !important;
     }
+
+    /* ---------- Responsive ---------- */
     @media (max-width: 900px) {
         div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
         div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
@@ -5271,7 +5294,8 @@ st.markdown(
             flex-wrap: wrap !important;
             gap: 0.4rem 1rem !important;
         }
-        div[data-testid="stRadio"] label {
+        div[data-testid="stRadio"] label,
+        div[data-testid="stCheckbox"] label {
             min-height: 44px !important;
             padding: 6px 10px !important;
             display: flex !important;
@@ -5279,20 +5303,20 @@ st.markdown(
             cursor: pointer !important;
             user-select: none !important;
         }
-        div[data-testid="stCheckbox"] label {
-            min-height: 44px !important;
-            padding: 6px 6px !important;
-            cursor: pointer !important;
-            user-select: none !important;
-        }
     }
     div[data-testid="stRadio"] label,
     div[data-testid="stCheckbox"] label { cursor: pointer !important; }
+
+    /* ---------- Expander ---------- */
     div[data-testid="stExpander"] {
         background-color: #ffffff !important;
         border: 1px solid #cfd6dd !important;
         border-radius: 6px !important;
         margin-bottom: 4px !important;
+    }
+    div[data-testid="stExpander"] details,
+    div[data-testid="stExpander"] details > div {
+        background-color: #ffffff !important;
     }
     div[data-testid="stExpander"] details > summary {
         padding: 8px 12px !important; min-height: 42px !important;
@@ -5311,6 +5335,8 @@ st.markdown(
         white-space: nowrap !important; overflow: hidden !important;
         text-overflow: ellipsis !important;
     }
+
+    /* ---------- Number input ---------- */
     div[data-testid="stNumberInput"] input {
         background-color: #ffffff !important; color: #111111 !important;
         border: 1px solid #cfd6dd !important; border-radius: 6px !important;
@@ -5319,16 +5345,46 @@ st.markdown(
         padding: 0 6px !important;
     }
     div[data-testid="stNumberInput"] button { display: none !important; }
-    .stTextInput input, .stTextArea textarea,
-    [data-baseweb="input"] input, [data-baseweb="base-input"] input {
-        background-color: #ffffff !important; color: #111111 !important;
+
+    /* ---------- Text inputs / textareas ---------- */
+    .stTextInput input,
+    .stTextArea textarea,
+    div[data-testid="stTextInput"] input,
+    div[data-testid="stTextArea"] textarea,
+    [data-baseweb="input"] input,
+    [data-baseweb="base-input"] input,
+    [data-baseweb="textarea"] textarea {
+        background-color: #ffffff !important;
+        color: #111111 !important;
         border: 1px solid #cfd6dd !important;
-        min-height: 42px !important; box-sizing: border-box !important;
+        min-height: 42px !important;
+        box-sizing: border-box !important;
     }
-    .stButton button, .stDownloadButton button {
-        background-color: #ffffff !important; color: #111111 !important;
+
+    /* ---------- BaseWeb selects / dropdowns ---------- */
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="popover"] > div,
+    ul[data-baseweb="menu"] {
+        background-color: #ffffff !important;
+        color: #111111 !important;
+    }
+
+    /* ---------- Buttons ---------- */
+    .stButton button,
+    .stDownloadButton button,
+    div[data-testid="stButton"] button,
+    div[data-testid="stDownloadButton"] button {
+        background-color: #ffffff !important;
+        color: #111111 !important;
         border: 1px solid #cfd6dd !important;
     }
+    .stButton button:hover,
+    .stDownloadButton button:hover {
+        background-color: #eef2f7 !important;
+        border-color: #305496 !important;
+    }
+
+    /* ---------- Organ buttons ---------- */
     div[class*="st-key-organ_btn_"] button {
         justify-content: flex-start !important;
         text-align: left !important;
@@ -5338,16 +5394,24 @@ st.markdown(
         min-height: 44px !important;
         border-radius: 6px !important;
         border: 1px solid #cfd6dd !important;
-        background-color: #2a2a2a !important;
+        background-color: #ffffff !important;
         color: #111111 !important;
         letter-spacing: 0.3px !important;
     }
+    div[class*="st-key-organ_btn_"] button:hover {
+        background-color: #eef2f7 !important;
+        border-color: #305496 !important;
+    }
     div[class*="st-key-organ_btn_"] button[kind="primary"] {
-        background-color: #2a2a2a !important;
+        background-color: #eef2f7 !important;
         border-color: #305496 !important;
         color: #1F4E79 !important;
     }
-    .preview-box, .stApp .preview-box, .stApp .preview-box * {
+
+    /* ---------- Preview box ---------- */
+    .preview-box,
+    .stApp .preview-box,
+    .stApp .preview-box * {
         color: #ffffff !important;
     }
     .preview-box {
@@ -5365,6 +5429,8 @@ st.markdown(
         margin-bottom: 8px !important;
         display: block !important;
     }
+
+    /* ---------- Impression textarea ---------- */
     div[class*="st-key-impression_box"] textarea {
         background-color: #ffffff !important;
         color: #000000 !important;
@@ -5375,6 +5441,26 @@ st.markdown(
         white-space: pre-wrap !important;
         word-wrap: break-word !important;
         overflow-wrap: anywhere !important;
+    }
+
+    /* ---------- Alerts (success/info/warning) ---------- */
+    div[data-testid="stAlert"] {
+        background-color: #ffffff !important;
+        color: #111111 !important;
+    }
+
+    /* ---------- Captions ---------- */
+    div[data-testid="stCaptionContainer"],
+    div[data-testid="stCaptionContainer"] * {
+        color: #555555 !important;
+    }
+
+    /* ---------- Borders / dividers ---------- */
+    hr { border-color: #cfd6dd !important; }
+
+    /* ---------- Markdown containers ---------- */
+    div[data-testid="stMarkdownContainer"] * {
+        color: #111111;
     }
     </style>
     """,
