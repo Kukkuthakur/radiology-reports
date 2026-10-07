@@ -5581,6 +5581,36 @@ def organ_button(name, label):
 with col_find:
     st.subheader("Findings")
 
+    # ============================================================
+    # ⚡ TEMPLATE SELECTOR (PASTE THIS HERE)
+    # ============================================================
+    with st.expander("⚡ Load a Clinical Template", expanded=False):
+        st.caption("Select a common presentation from your reports to auto-fill typical findings.")
+        _template_opts = ["None"] + list(TEMPLATES.keys())
+        selected_template = st.selectbox(
+            "Choose template", _template_opts, key="template_selector"
+        )
+        
+        if st.button("Apply Template", use_container_width=True):
+            if selected_template != "None":
+                _tpl_data = TEMPLATES[selected_template]
+                for _k, _v in _tpl_data.items():
+                    # Set both widget state and custom mirror state
+                    st.session_state[_k] = _v
+                    st.session_state[f"_mirror_{_k}"] = _v
+                st.toast(f"Template '{selected_template}' applied successfully!")
+                st.rerun()
+            else:
+                st.warning("Please select a valid template.")
+    # ============================================================
+    # END OF TEMPLATE SELECTOR
+    # ============================================================
+
+    # ------- LIVER -------
+    col_liver_main, col_liver_sz = st.columns([5, 1],
+                                              vertical_alignment="bottom")
+    # ... the rest of your code continues unchanged ...
+
     # ------- LIVER -------
     col_liver_main, col_liver_sz = st.columns([5, 1],
                                               vertical_alignment="bottom")
