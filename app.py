@@ -5605,12 +5605,7 @@ with col_find:
     # ============================================================
     # END OF TEMPLATE SELECTOR
     # ============================================================
-
-    # ------- LIVER -------
-    col_liver_main, col_liver_sz = st.columns([5, 1],
-                                              vertical_alignment="bottom")
-    # ... the rest of your code continues unchanged ...
-
+    
     # ------- LIVER -------
     col_liver_main, col_liver_sz = st.columns([5, 1],
                                               vertical_alignment="bottom")
