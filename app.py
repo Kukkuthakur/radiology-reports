@@ -6296,890 +6296,891 @@ with col_find:
                         value=bool(_seed(f"kd_{side[0]}_contra", False)))
                     wget(f"kd_{side[0]}_contra", False)
 
-# ------- URINARY BLADDER -------
-ub_open = organ_button("URINARY BLADDER", "URINARY BLADDER")
-if ub_open:
-    with st.container(border=True):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.checkbox("Partially empty", key="ub_partially_empty",
-                        value=bool(_seed("ub_partially_empty", False)))
-            wget("ub_partially_empty", False)
-        with c2:
-            st.checkbox("Empty", key="ub_empty",
-                        value=bool(_seed("ub_empty", False)))
-            wget("ub_empty", False)
-        with c3:
-            st.checkbox("Over-distended", key="ub_over",
-                        value=bool(_seed("ub_over", False)))
-            wget("ub_over", False)
-        st.checkbox("Catheterized", key="ub_catheterized",
-                    value=bool(_seed("ub_catheterized", False)))
-        wget("ub_catheterized", False)
-
-        st.text_input("Pre-void volume (CC)", key="ub_pre_void",
-                      value=_seed("ub_pre_void", ""))
-        wget("ub_pre_void", "")
-
-        st.checkbox("No mass / calculus seen (default checked)",
-                    value=bool(_seed("ub_no_mass", True)),
-                    key="ub_no_mass")
-        wget("ub_no_mass", True)
-        st.checkbox("Wall thickening present", key="ub_wall_check",
-                    value=bool(_seed("ub_wall_check", False)))
-        wget("ub_wall_check", False)
-        if ss("ub_wall_check", False):
-            c_a, c_b = st.columns(2)
-            with c_a:
-                st.text_input("Wall thickness (mm)", key="ub_wall_mm",
-                              value=_seed("ub_wall_mm", ""))
-                wget("ub_wall_mm", "")
-            with c_b:
-                st.checkbox("Irregular wall", key="ub_wall_irregular",
-                            value=bool(_seed("ub_wall_irregular", False)))
-                wget("ub_wall_irregular", False)
-
-        st.markdown("**Sedimentation**")
-        st.checkbox("Trace sedimentation", key="ub_sed_trace",
-                    value=bool(_seed("ub_sed_trace", False)))
-        wget("ub_sed_trace", False)
-        st.checkbox("Free floating sedimentation",
-                    key="ub_sed_free_floating",
-                    value=bool(_seed("ub_sed_free_floating", False)))
-        wget("ub_sed_free_floating", False)
-        st.checkbox("Settled debris", key="ub_sed_settled_debris",
-                    value=bool(_seed("ub_sed_settled_debris", False)))
-        wget("ub_sed_settled_debris", False)
-        st.checkbox("Extensive sedimentation", key="ub_sed_extensive",
-                    value=bool(_seed("ub_sed_extensive", False)))
-        wget("ub_sed_extensive", False)
-        if (ss("ub_sed_trace", False) or ss("ub_sed_free_floating", False)
-                or ss("ub_sed_settled_debris", False)
-                or ss("ub_sed_extensive", False)):
-            st.checkbox("?UTI (append to advice)", key="ub_uti",
-                        value=bool(_seed("ub_uti", False)))
-            wget("ub_uti", False)
-
-        if str(ss("ub_pre_void", "") or "").strip():
-            st.text_input("Post-void residue (CC)", key="ub_post_void",
-                          value=_seed("ub_post_void", ""))
-            wget("ub_post_void", "")
-
-# ------- UTERUS / OVARIES (F) or PROSTATE (M) -------
-if p_sex == "F":
-    _age_years = parse_age(p_age)
-    _is_ped_female = (_age_years is not None and _age_years < 14)
-
-    ut_open = organ_button("UTERUS", "UTERUS")
-    if ut_open:
+  
+    # ------- URINARY BLADDER -------
+    ub_open = organ_button("URINARY BLADDER", "URINARY BLADDER")
+    if ub_open:
         with st.container(border=True):
-            _ut_status_opts = ["anteverted", "partially_visualized",
-                               "operated", "not_visualized"]
-            st.radio("Status", _ut_status_opts,
-                     index=_idx("ut_status", _ut_status_opts, "anteverted"),
-                     horizontal=True,
-                     format_func=lambda x: {
-                         "anteverted": "Anteverted",
-                         "partially_visualized": "Partially visualized",
-                         "operated": "Operated",
-                         "not_visualized": "Not visualized"}[x],
-                     key="ut_status")
-            wget("ut_status", "anteverted")
-            _uts = ss("ut_status", "anteverted")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.checkbox("Partially empty", key="ub_partially_empty",
+                            value=bool(_seed("ub_partially_empty", False)))
+                wget("ub_partially_empty", False)
+            with c2:
+                st.checkbox("Empty", key="ub_empty",
+                            value=bool(_seed("ub_empty", False)))
+                wget("ub_empty", False)
+            with c3:
+                st.checkbox("Over-distended", key="ub_over",
+                            value=bool(_seed("ub_over", False)))
+                wget("ub_over", False)
+            st.checkbox("Catheterized", key="ub_catheterized",
+                        value=bool(_seed("ub_catheterized", False)))
+            wget("ub_catheterized", False)
 
-            if _uts == "operated":
-                st.caption("Ovaries auto-fill as not visualized. "
-                           "Override below if needed.")
+            st.text_input("Pre-void volume (CC)", key="ub_pre_void",
+                          value=_seed("ub_pre_void", ""))
+            wget("ub_pre_void", "")
 
-            if _uts in ("anteverted", "partially_visualized"):
-                st.checkbox("Retro-flexed", key="ut_retroflexed",
-                            value=bool(_seed("ut_retroflexed", False)))
-                wget("ut_retroflexed", False)
-                st.checkbox("Gravid uterus", key="ut_gravid",
-                            value=bool(_seed("ut_gravid", False)))
-                wget("ut_gravid", False)
-                if ss("ut_gravid", False):
-                    c_a, c_b, c_c, c_d = st.columns([1, 1, 1, 1])
-                    with c_a:
-                        _gtype_opts = ["CRL", "GS"]
-                        st.radio("Type", _gtype_opts,
-                                 index=_idx("ut_gravid_type",
-                                            _gtype_opts, "CRL"),
+            st.checkbox("No mass / calculus seen (default checked)",
+                        value=bool(_seed("ub_no_mass", True)),
+                        key="ub_no_mass")
+            wget("ub_no_mass", True)
+            st.checkbox("Wall thickening present", key="ub_wall_check",
+                        value=bool(_seed("ub_wall_check", False)))
+            wget("ub_wall_check", False)
+            if ss("ub_wall_check", False):
+                c_a, c_b = st.columns(2)
+                with c_a:
+                    st.text_input("Wall thickness (mm)", key="ub_wall_mm",
+                                  value=_seed("ub_wall_mm", ""))
+                    wget("ub_wall_mm", "")
+                with c_b:
+                    st.checkbox("Irregular wall", key="ub_wall_irregular",
+                                value=bool(_seed("ub_wall_irregular", False)))
+                    wget("ub_wall_irregular", False)
+
+            st.markdown("**Sedimentation**")
+            st.checkbox("Trace sedimentation", key="ub_sed_trace",
+                        value=bool(_seed("ub_sed_trace", False)))
+            wget("ub_sed_trace", False)
+            st.checkbox("Free floating sedimentation",
+                        key="ub_sed_free_floating",
+                        value=bool(_seed("ub_sed_free_floating", False)))
+            wget("ub_sed_free_floating", False)
+            st.checkbox("Settled debris", key="ub_sed_settled_debris",
+                        value=bool(_seed("ub_sed_settled_debris", False)))
+            wget("ub_sed_settled_debris", False)
+            st.checkbox("Extensive sedimentation", key="ub_sed_extensive",
+                        value=bool(_seed("ub_sed_extensive", False)))
+            wget("ub_sed_extensive", False)
+            if (ss("ub_sed_trace", False) or ss("ub_sed_free_floating", False)
+                    or ss("ub_sed_settled_debris", False)
+                    or ss("ub_sed_extensive", False)):
+                st.checkbox("?UTI (append to advice)", key="ub_uti",
+                            value=bool(_seed("ub_uti", False)))
+                wget("ub_uti", False)
+
+            if str(ss("ub_pre_void", "") or "").strip():
+                st.text_input("Post-void residue (CC)", key="ub_post_void",
+                              value=_seed("ub_post_void", ""))
+                wget("ub_post_void", "")
+
+    # ------- UTERUS / OVARIES (F) or PROSTATE (M) -------
+    if p_sex == "F":
+        _age_years = parse_age(p_age)
+        _is_ped_female = (_age_years is not None and _age_years < 14)
+
+        ut_open = organ_button("UTERUS", "UTERUS")
+        if ut_open:
+            with st.container(border=True):
+                _ut_status_opts = ["anteverted", "partially_visualized",
+                                   "operated", "not_visualized"]
+                st.radio("Status", _ut_status_opts,
+                         index=_idx("ut_status", _ut_status_opts, "anteverted"),
+                         horizontal=True,
+                         format_func=lambda x: {
+                             "anteverted": "Anteverted",
+                             "partially_visualized": "Partially visualized",
+                             "operated": "Operated",
+                             "not_visualized": "Not visualized"}[x],
+                         key="ut_status")
+                wget("ut_status", "anteverted")
+                _uts = ss("ut_status", "anteverted")
+
+                if _uts == "operated":
+                    st.caption("Ovaries auto-fill as not visualized. "
+                               "Override below if needed.")
+
+                if _uts in ("anteverted", "partially_visualized"):
+                    st.checkbox("Retro-flexed", key="ut_retroflexed",
+                                value=bool(_seed("ut_retroflexed", False)))
+                    wget("ut_retroflexed", False)
+                    st.checkbox("Gravid uterus", key="ut_gravid",
+                                value=bool(_seed("ut_gravid", False)))
+                    wget("ut_gravid", False)
+                    if ss("ut_gravid", False):
+                        c_a, c_b, c_c, c_d = st.columns([1, 1, 1, 1])
+                        with c_a:
+                            _gtype_opts = ["CRL", "GS"]
+                            st.radio("Type", _gtype_opts,
+                                     index=_idx("ut_gravid_type",
+                                                _gtype_opts, "CRL"),
+                                     horizontal=True,
+                                     key="ut_gravid_type")
+                            wget("ut_gravid_type", "CRL")
+                        with c_b:
+                            st.text_input("Length (mm)", key="ut_gravid_length",
+                                          value=_seed("ut_gravid_length", ""))
+                            wget("ut_gravid_length", "")
+                        with c_c:
+                            st.text_input("GA weeks", key="ut_gravid_weeks",
+                                          value=_seed("ut_gravid_weeks", ""))
+                            wget("ut_gravid_weeks", "")
+                        with c_d:
+                            st.text_input("GA days", key="ut_gravid_days",
+                                          value=_seed("ut_gravid_days", ""))
+                            wget("ut_gravid_days", "")
+                    st.checkbox("Low-lying uterus", key="ut_low_lying",
+                                value=bool(_seed("ut_low_lying", False)))
+                    wget("ut_low_lying", False)
+                    if ss("ut_low_lying", False):
+                        _cx_vis_opts = ["partially", "not_visualized"]
+                        st.radio("Cervix", _cx_vis_opts,
+                                 index=_idx("ut_cervix_vis",
+                                            _cx_vis_opts, "partially"),
                                  horizontal=True,
-                                 key="ut_gravid_type")
-                        wget("ut_gravid_type", "CRL")
-                    with c_b:
-                        st.text_input("Length (mm)", key="ut_gravid_length",
-                                      value=_seed("ut_gravid_length", ""))
-                        wget("ut_gravid_length", "")
-                    with c_c:
-                        st.text_input("GA weeks", key="ut_gravid_weeks",
-                                      value=_seed("ut_gravid_weeks", ""))
-                        wget("ut_gravid_weeks", "")
-                    with c_d:
-                        st.text_input("GA days", key="ut_gravid_days",
-                                      value=_seed("ut_gravid_days", ""))
-                        wget("ut_gravid_days", "")
-                st.checkbox("Low-lying uterus", key="ut_low_lying",
-                            value=bool(_seed("ut_low_lying", False)))
-                wget("ut_low_lying", False)
-                if ss("ut_low_lying", False):
-                    _cx_vis_opts = ["partially", "not_visualized"]
-                    st.radio("Cervix", _cx_vis_opts,
-                             index=_idx("ut_cervix_vis",
-                                        _cx_vis_opts, "partially"),
+                                 format_func=lambda x: {
+                                     "partially": "Partially visualized",
+                                     "not_visualized": "Not visualized"}[x],
+                                 key="ut_cervix_vis")
+                        wget("ut_cervix_vis", "partially")
+
+                if _uts in ("anteverted", "partially_visualized"):
+                    st.text_input("Uterus size (mm) — e.g. 92x33",
+                                  key="ut_size",
+                                  value=_seed("ut_size", ""))
+                    wget("ut_size", "")
+
+                    _myo_opts = ["homogenous", "mildly_heterogeneous",
+                                 "heterogeneous"]
+                    st.radio("Myometrium", _myo_opts,
+                             index=_idx("ut_myometrium", _myo_opts, "homogenous"),
                              horizontal=True,
                              format_func=lambda x: {
-                                 "partially": "Partially visualized",
-                                 "not_visualized": "Not visualized"}[x],
-                             key="ut_cervix_vis")
-                    wget("ut_cervix_vis", "partially")
+                                 "homogenous": "Homogenous",
+                                 "mildly_heterogeneous": "Mildly heterogenous",
+                                 "heterogeneous": "Heterogenous"}[x],
+                             key="ut_myometrium")
+                    wget("ut_myometrium", "homogenous")
 
-            if _uts in ("anteverted", "partially_visualized"):
-                st.text_input("Uterus size (mm) — e.g. 92x33",
-                              key="ut_size",
-                              value=_seed("ut_size", ""))
-                wget("ut_size", "")
+                    st.checkbox("Globular shape of uterus",
+                                key="ut_globular_shape",
+                                value=bool(_seed("ut_globular_shape", False)))
+                    wget("ut_globular_shape", False)
 
-                _myo_opts = ["homogenous", "mildly_heterogeneous",
-                             "heterogeneous"]
-                st.radio("Myometrium", _myo_opts,
-                         index=_idx("ut_myometrium", _myo_opts, "homogenous"),
-                         horizontal=True,
-                         format_func=lambda x: {
-                             "homogenous": "Homogenous",
-                             "mildly_heterogeneous": "Mildly heterogenous",
-                             "heterogeneous": "Heterogenous"}[x],
-                         key="ut_myometrium")
-                wget("ut_myometrium", "homogenous")
+                    st.checkbox("Prominent vascular channels",
+                                key="ut_prom_vasc",
+                                value=bool(_seed("ut_prom_vasc", False)))
+                    wget("ut_prom_vasc", False)
+                    if ss("ut_prom_vasc", False):
+                        _pv_scope_opts = ["myometrium", "right", "left",
+                                          "bilateral"]
+                        st.radio("Adnexal involvement", _pv_scope_opts,
+                                 index=_idx("ut_prom_vasc_scope",
+                                            _pv_scope_opts, "myometrium"),
+                                 horizontal=True,
+                                 format_func=lambda x: {
+                                     "myometrium": "Myometrium only",
+                                     "right": "+ Right adnexa",
+                                     "left": "+ Left adnexa",
+                                     "bilateral": "+ Bilateral adnexae"}[x],
+                                 key="ut_prom_vasc_scope")
+                        wget("ut_prom_vasc_scope", "myometrium")
 
-                st.checkbox("Globular shape of uterus",
-                            key="ut_globular_shape",
-                            value=bool(_seed("ut_globular_shape", False)))
-                wget("ut_globular_shape", False)
-
-                st.checkbox("Prominent vascular channels",
-                            key="ut_prom_vasc",
-                            value=bool(_seed("ut_prom_vasc", False)))
-                wget("ut_prom_vasc", False)
-                if ss("ut_prom_vasc", False):
-                    _pv_scope_opts = ["myometrium", "right", "left",
-                                      "bilateral"]
-                    st.radio("Adnexal involvement", _pv_scope_opts,
-                             index=_idx("ut_prom_vasc_scope",
-                                        _pv_scope_opts, "myometrium"),
-                             horizontal=True,
-                             format_func=lambda x: {
-                                 "myometrium": "Myometrium only",
-                                 "right": "+ Right adnexa",
-                                 "left": "+ Left adnexa",
-                                 "bilateral": "+ Bilateral adnexae"}[x],
-                             key="ut_prom_vasc_scope")
-                    wget("ut_prom_vasc_scope", "myometrium")
-
-                st.checkbox("Adenomyosis features", key="ut_adenomyosis",
-                            value=bool(_seed("ut_adenomyosis", False)))
-                wget("ut_adenomyosis", False)
-                if ss("ut_adenomyosis", False):
-                    st.caption("Tick features. Interface is a single "
-                               "radio below. ≥2 features → 'likely "
-                               "adenomyosis'; 1 feature → '?early "
-                               "adenomyosis'.")
-                    for _aden_key, _aden_label in [
-                        ("ut_aden_globular", "Globular shape"),
-                        ("ut_aden_asymm",
-                         "Asymmetrically bulky posterior myometrium"),
-                        ("ut_aden_venetian", "Venetian blind sign"),
-                        ("ut_aden_cysts", "Subendometrial cysts"),
-                    ]:
-                        st.checkbox(_aden_label, key=_aden_key,
-                                    value=bool(_seed(_aden_key, False)))
-                        wget(_aden_key, False)
-                    _aden_iface_opts = ["none", "indistinct",
-                                        "barely_perceptible_fundus", "lost"]
-                    st.radio(
-                        "Endo-myometrial interface",
-                        _aden_iface_opts,
-                        index=_idx("ut_aden_interface",
-                                   _aden_iface_opts, "none"),
-                        horizontal=True,
-                        format_func=lambda x: {
-                            "none": "None",
-                            "indistinct": "Indistinct",
-                            "barely_perceptible_fundus":
-                                "Barely perceptible at fundus",
-                            "lost": "Lost"}[x],
-                        key="ut_aden_interface")
-                    wget("ut_aden_interface", "none")
-                    _aden_conf_opts = ["auto", "likely", "early"]
-                    st.radio("Confidence", _aden_conf_opts,
-                             index=_idx("ut_aden_conf",
-                                        _aden_conf_opts, "auto"),
-                             horizontal=True, key="ut_aden_conf")
-                    wget("ut_aden_conf", "auto")
-
-                st.checkbox("Fibroid", key="ut_fibroid",
-                            value=bool(_seed("ut_fibroid", False)))
-                wget("ut_fibroid", False)
-                if ss("ut_fibroid", False):
-                    _fib_cnt_opts = ["single", "couple", "few", "multiple"]
-                    st.radio("Count", _fib_cnt_opts,
-                             index=_idx("ut_fibroid_count",
-                                        _fib_cnt_opts, "single"),
-                             horizontal=True, key="ut_fibroid_count",
-                             format_func=lambda x: x.title())
-                    wget("ut_fibroid_count", "single")
-                    st.caption("Tick all applicable types.")
-                    _fib_type_keys = [
-                        ("ut_fib_type_intramural", "intramural",
-                         "Intramural"),
-                        ("ut_fib_type_intra_subser",
-                         "intramural_subserosal",
-                         "Intramural > subserosal"),
-                        ("ut_fib_type_intra_submuc",
-                         "intramural_submucosal",
-                         "Intramural > submucosal"),
-                        ("ut_fib_type_submuc_intra",
-                         "submucosal_intramural",
-                         "Submucosal > intramural"),
-                        ("ut_fib_type_subser_intra",
-                         "subserosal_intramural",
-                         "Subserosal > intramural"),
-                    ]
-                    for k, _, lbl in _fib_type_keys:
-                        st.checkbox(lbl, key=k,
-                                    value=bool(_seed(k, False)))
-                        wget(k, False)
-                    st.caption("Enter size and location per ticked type, "
-                               "largest first.")
-                    for k, _, lbl in _fib_type_keys:
-                        if ss(k, False):
-                            c_a, c_b = st.columns([1, 2])
-                            with c_a:
-                                st.text_input(f"{lbl} size",
-                                              key=f"{k}_size",
-                                              value=_seed(f"{k}_size", ""))
-                                wget(f"{k}_size", "")
-                            with c_b:
-                                st.selectbox(
-                                    f"{lbl} location",
-                                    FIBROID_LOC_OPTIONS,
-                                    index=_idx(f"{k}_loc",
-                                               FIBROID_LOC_OPTIONS, "fundal"),
-                                    key=f"{k}_loc",
-                                    format_func=lambda x: x.title())
-                                wget(f"{k}_loc", "fundal")
-                    _n_types = sum(1 for k, _, _ in _fib_type_keys
-                                    if ss(k, False))
-                    if _n_types > 1:
-                        st.text_input("FIGO range (manual, e.g. 3-5)",
-                                      key="ut_fib_figo_manual",
-                                      value=_seed("ut_fib_figo_manual", ""))
-                        wget("ut_fib_figo_manual", "")
-
-                st.checkbox("Adenomyomas", key="ut_adenomyomas",
-                            value=bool(_seed("ut_adenomyomas", False)))
-                wget("ut_adenomyomas", False)
-                if ss("ut_adenomyomas", False):
-                    _adn_cnt_opts = ["single", "couple", "few", "multiple"]
-                    st.radio("Count", _adn_cnt_opts,
-                             index=_idx("ut_adenoma_count",
-                                        _adn_cnt_opts, "couple"),
-                             horizontal=True, key="ut_adenoma_count",
-                             format_func=lambda x: x.title())
-                    wget("ut_adenoma_count", "couple")
-                    _adn_echo_opts = ["hyperechoic", "hypoechoic",
-                                      "hypo-isoechoic"]
-                    st.radio("Echo", _adn_echo_opts,
-                             index=_idx("ut_adenoma_echo",
-                                        _adn_echo_opts, "hyperechoic"),
-                             horizontal=True, key="ut_adenoma_echo",
-                             format_func=lambda x: x.title())
-                    wget("ut_adenoma_echo", "hyperechoic")
-                    _adn_loc_opts = ["anterior", "posterior", "fundal"]
-                    st.radio("Location", _adn_loc_opts,
-                             index=_idx("ut_adenoma_loc",
-                                        _adn_loc_opts, "posterior"),
-                             horizontal=True, key="ut_adenoma_loc",
-                             format_func=lambda x: x.title())
-                    wget("ut_adenoma_loc", "posterior")
-                    if ss("ut_adenoma_count", "couple") == "single":
-                        st.text_input("Size (mm, e.g. 15x12)",
-                                      key="ut_adenoma_size",
-                                      value=_seed("ut_adenoma_size", ""))
-                        wget("ut_adenoma_size", "")
-                    st.checkbox("Avascular (default on)",
-                                value=bool(_seed("ut_adenoma_avascular", True)),
-                                key="ut_adenoma_avascular")
-                    wget("ut_adenoma_avascular", True)
-
-                st.text_input("Endometrial thickness (mm)", key="ut_endo_mm",
-                              value=_seed("ut_endo_mm", ""))
-                wget("ut_endo_mm", "")
-
-                _endo_pat_opts = ["regular", "irregular"]
-                st.radio("Endometrial echo pattern", _endo_pat_opts,
-                         index=_idx("ut_endo_pattern",
-                                    _endo_pat_opts, "regular"),
-                         horizontal=True, key="ut_endo_pattern",
-                         format_func=lambda x: x.title())
-                wget("ut_endo_pattern", "regular")
-
-                _endo_tex_opts = ["homogeneous", "heterogeneous"]
-                st.radio("Endometrial echotexture", _endo_tex_opts,
-                         index=_idx("ut_endo_texture",
-                                    _endo_tex_opts, "homogeneous"),
-                         horizontal=True, key="ut_endo_texture",
-                         format_func=lambda x: x.title())
-                wget("ut_endo_texture", "homogeneous")
-
-                st.checkbox("Multiple subendometrial cystic spaces",
-                            key="ut_endo_subcysts",
-                            value=bool(_seed("ut_endo_subcysts", False)))
-                wget("ut_endo_subcysts", False)
-
-                st.checkbox("Increased vascularity (colour Doppler)",
-                            key="ut_endo_vascularity",
-                            value=bool(_seed("ut_endo_vascularity", False)))
-                wget("ut_endo_vascularity", False)
-
-                _endo_susp_opts = ["none", "very_early_pregnancy",
-                                   "cystic_hyperplasia", "ca_endometrium"]
-                st.radio("Suspicion (manual override)",
-                         _endo_susp_opts,
-                         index=_idx("ut_endo_suspicion",
-                                    _endo_susp_opts, "none"),
-                         horizontal=True,
-                         key="ut_endo_suspicion",
-                         format_func=lambda x: {
-                             "none": "None",
-                             "very_early_pregnancy":
-                                 "?Very early pregnancy",
-                             "cystic_hyperplasia":
-                                 "?Cystic endometrial hyperplasia",
-                             "ca_endometrium":
-                                 "?CA endometrium"}[x])
-                wget("ut_endo_suspicion", "none")
-
-                _endo_coll_opts = ["none", "mild", "moderate"]
-                st.radio("Endometrial collection", _endo_coll_opts,
-                         index=_idx("ut_endo_coll",
-                                    _endo_coll_opts, "none"),
-                         horizontal=True, key="ut_endo_coll",
-                         format_func=lambda x: x.title())
-                wget("ut_endo_coll", "none")
-                if ss("ut_endo_coll", "none") in ("mild", "moderate"):
-                    st.checkbox("Heterogeneous collection",
-                                key="ut_endo_het",
-                                value=bool(_seed("ut_endo_het", False)))
-                    wget("ut_endo_het", False)
-
-                st.checkbox("RPOC structure", key="ut_rpoc",
-                            value=bool(_seed("ut_rpoc", False)))
-                wget("ut_rpoc", False)
-                if ss("ut_rpoc", False):
-                    st.text_input("Size (mm, e.g. 15x12)", key="ut_rpoc_size",
-                                  value=_seed("ut_rpoc_size", ""))
-                    wget("ut_rpoc_size", "")
-                    _rpoc_echo_opts = ["hypo", "hyper"]
-                    st.radio("Echo", _rpoc_echo_opts,
-                             index=_idx("ut_rpoc_echo",
-                                        _rpoc_echo_opts, "hypo"),
-                             horizontal=True,
-                             format_func=lambda x: {
-                                 "hypo": "Hypo-echoic",
-                                 "hyper": "Hyper-echoic"}[x],
-                             key="ut_rpoc_echo")
-                    wget("ut_rpoc_echo", "hypo")
-
-                st.checkbox("Elongated cervix", key="ut_cx_elong",
-                            value=bool(_seed("ut_cx_elong", False)))
-                wget("ut_cx_elong", False)
-                st.checkbox("Bulky cervix", key="ut_cx_bulky",
-                            value=bool(_seed("ut_cx_bulky", False)))
-                wget("ut_cx_bulky", False)
-                if ss("ut_cx_bulky", False):
-                    st.text_input("Bulky cervix size (mm)",
-                                  key="ut_cx_bulky_size",
-                                  value=_seed("ut_cx_bulky_size", ""))
-                    wget("ut_cx_bulky_size", "")
-                _nab_opts = ["none", "one", "few", "multiple"]
-                st.radio("Nabothian cysts", _nab_opts,
-                         index=_idx("ut_nabothian", _nab_opts, "none"),
-                         horizontal=True, key="ut_nabothian",
-                         format_func=lambda x: x.title())
-                wget("ut_nabothian", "none")
-                _cx_coll_opts = ["none", "mild", "moderate"]
-                st.radio("Cervix collection", _cx_coll_opts,
-                         index=_idx("ut_cx_coll", _cx_coll_opts, "none"),
-                         horizontal=True, key="ut_cx_coll",
-                         format_func=lambda x: x.title())
-                wget("ut_cx_coll", "none")
-                st.checkbox("Cervicitis suspected",
-                            key="ut_cervicitis",
-                            value=bool(_seed("ut_cervicitis", False)))
-                wget("ut_cervicitis", False)
-
-                st.checkbox("Add: no RPOC/pregnancy line", key="ut_neg_rpoc",
-                            value=bool(_seed("ut_neg_rpoc", False)))
-                wget("ut_neg_rpoc", False)
-                st.checkbox("Add: no focal SOL/RPOC line", key="ut_neg_sol",
-                            value=bool(_seed("ut_neg_sol", False)))
-                wget("ut_neg_sol", False)
-                if ss("ut_neg_sol", False):
-                    st.checkbox("Mildly irregular endometrium",
-                                key="ut_neg_sol_irregular",
-                                value=bool(_seed("ut_neg_sol_irregular",
-                                                 False)))
-                    wget("ut_neg_sol_irregular", False)
-                    st.checkbox("Mild endometrial collection",
-                                key="ut_neg_sol_collection",
-                                value=bool(_seed("ut_neg_sol_collection",
-                                                 False)))
-                    wget("ut_neg_sol_collection", False)
-
-    ov_open = organ_button("OVARIES", "OVARIES")
-    if ov_open:
-        with st.container(border=True):
-            c1, c2 = st.columns(2)
-            for col, side in ((c1, "right"), (c2, "left")):
-                with col:
-                    st.markdown(f"**{side.title()} Ovary**")
-                    _sd = side[0]
-                    _ov_status_opts = ["normal", "not_visualized"]
-                    st.radio("Status", _ov_status_opts,
-                             index=_idx(f"ov_{_sd}_status",
-                                        _ov_status_opts, "normal"),
-                             horizontal=True,
-                             format_func=lambda x: {
-                                 "normal": "Present",
-                                 "not_visualized": "Not visualized"}[x],
-                             key=f"ov_{_sd}_status")
-                    wget(f"ov_{_sd}_status", "normal")
-                    if ss(f"ov_{_sd}_status", "normal") == "normal":
-                        st.text_input("Size (mm) — e.g. 42x26",
-                                      key=f"ov_{_sd}_size",
-                                      value=_seed(f"ov_{_sd}_size", ""))
-                        wget(f"ov_{_sd}_size", "")
-                        st.text_input("Volume (cc)",
-                                      key=f"ov_{_sd}_vol",
-                                      value=_seed(f"ov_{_sd}_vol", ""))
-                        wget(f"ov_{_sd}_vol", "")
-                        st.caption("Findings")
-                        for f_key, f_label in [
-                            ("simple", "Simple cyst"),
-                            ("hem", "Hemorrhagic cyst"),
-                            ("cl", "Corpus luteum cyst"),
+                    st.checkbox("Adenomyosis features", key="ut_adenomyosis",
+                                value=bool(_seed("ut_adenomyosis", False)))
+                    wget("ut_adenomyosis", False)
+                    if ss("ut_adenomyosis", False):
+                        st.caption("Tick features. Interface is a single "
+                                   "radio below. ≥2 features → 'likely "
+                                   "adenomyosis'; 1 feature → '?early "
+                                   "adenomyosis'.")
+                        for _aden_key, _aden_label in [
+                            ("ut_aden_globular", "Globular shape"),
+                            ("ut_aden_asymm",
+                             "Asymmetrically bulky posterior myometrium"),
+                            ("ut_aden_venetian", "Venetian blind sign"),
+                            ("ut_aden_cysts", "Subendometrial cysts"),
                         ]:
-                            _full_key = f"ov_{_sd}_f_{f_key}"
-                            st.checkbox(f_label, key=_full_key,
-                                        value=bool(_seed(_full_key, False)))
-                            wget(_full_key, False)
-                            if ss(_full_key, False):
-                                _cnt_key = f"{_full_key}_count"
-                                _cnt_opts = ["single", "couple", "few",
-                                             "multiple"]
-                                st.radio("Count", _cnt_opts,
-                                         index=_idx(_cnt_key,
-                                                    _cnt_opts, "single"),
-                                         horizontal=True,
-                                         key=_cnt_key,
-                                         format_func=lambda x: x.title())
-                                wget(_cnt_key, "single")
-                                _cnt_val = ss(_cnt_key, "single")
-                                _two_boxes = (f_key != "cl"
-                                              and _cnt_val in ("couple",
-                                                               "few",
-                                                               "multiple"))
-                                if _two_boxes:
-                                    c_s1, c_s2 = st.columns(2)
-                                    with c_s1:
+                            st.checkbox(_aden_label, key=_aden_key,
+                                        value=bool(_seed(_aden_key, False)))
+                            wget(_aden_key, False)
+                        _aden_iface_opts = ["none", "indistinct",
+                                            "barely_perceptible_fundus", "lost"]
+                        st.radio(
+                            "Endo-myometrial interface",
+                            _aden_iface_opts,
+                            index=_idx("ut_aden_interface",
+                                       _aden_iface_opts, "none"),
+                            horizontal=True,
+                            format_func=lambda x: {
+                                "none": "None",
+                                "indistinct": "Indistinct",
+                                "barely_perceptible_fundus":
+                                    "Barely perceptible at fundus",
+                                "lost": "Lost"}[x],
+                            key="ut_aden_interface")
+                        wget("ut_aden_interface", "none")
+                        _aden_conf_opts = ["auto", "likely", "early"]
+                        st.radio("Confidence", _aden_conf_opts,
+                                 index=_idx("ut_aden_conf",
+                                            _aden_conf_opts, "auto"),
+                                 horizontal=True, key="ut_aden_conf")
+                        wget("ut_aden_conf", "auto")
+
+                    st.checkbox("Fibroid", key="ut_fibroid",
+                                value=bool(_seed("ut_fibroid", False)))
+                    wget("ut_fibroid", False)
+                    if ss("ut_fibroid", False):
+                        _fib_cnt_opts = ["single", "couple", "few", "multiple"]
+                        st.radio("Count", _fib_cnt_opts,
+                                 index=_idx("ut_fibroid_count",
+                                            _fib_cnt_opts, "single"),
+                                 horizontal=True, key="ut_fibroid_count",
+                                 format_func=lambda x: x.title())
+                        wget("ut_fibroid_count", "single")
+                        st.caption("Tick all applicable types.")
+                        _fib_type_keys = [
+                            ("ut_fib_type_intramural", "intramural",
+                             "Intramural"),
+                            ("ut_fib_type_intra_subser",
+                             "intramural_subserosal",
+                             "Intramural > subserosal"),
+                            ("ut_fib_type_intra_submuc",
+                             "intramural_submucosal",
+                             "Intramural > submucosal"),
+                            ("ut_fib_type_submuc_intra",
+                             "submucosal_intramural",
+                             "Submucosal > intramural"),
+                            ("ut_fib_type_subser_intra",
+                             "subserosal_intramural",
+                             "Subserosal > intramural"),
+                        ]
+                        for k, _, lbl in _fib_type_keys:
+                            st.checkbox(lbl, key=k,
+                                        value=bool(_seed(k, False)))
+                            wget(k, False)
+                        st.caption("Enter size and location per ticked type, "
+                                   "largest first.")
+                        for k, _, lbl in _fib_type_keys:
+                            if ss(k, False):
+                                c_a, c_b = st.columns([1, 2])
+                                with c_a:
+                                    st.text_input(f"{lbl} size",
+                                                  key=f"{k}_size",
+                                                  value=_seed(f"{k}_size", ""))
+                                    wget(f"{k}_size", "")
+                                with c_b:
+                                    st.selectbox(
+                                        f"{lbl} location",
+                                        FIBROID_LOC_OPTIONS,
+                                        index=_idx(f"{k}_loc",
+                                                   FIBROID_LOC_OPTIONS, "fundal"),
+                                        key=f"{k}_loc",
+                                        format_func=lambda x: x.title())
+                                    wget(f"{k}_loc", "fundal")
+                        _n_types = sum(1 for k, _, _ in _fib_type_keys
+                                        if ss(k, False))
+                        if _n_types > 1:
+                            st.text_input("FIGO range (manual, e.g. 3-5)",
+                                          key="ut_fib_figo_manual",
+                                          value=_seed("ut_fib_figo_manual", ""))
+                            wget("ut_fib_figo_manual", "")
+
+                    st.checkbox("Adenomyomas", key="ut_adenomyomas",
+                                value=bool(_seed("ut_adenomyomas", False)))
+                    wget("ut_adenomyomas", False)
+                    if ss("ut_adenomyomas", False):
+                        _adn_cnt_opts = ["single", "couple", "few", "multiple"]
+                        st.radio("Count", _adn_cnt_opts,
+                                 index=_idx("ut_adenoma_count",
+                                            _adn_cnt_opts, "couple"),
+                                 horizontal=True, key="ut_adenoma_count",
+                                 format_func=lambda x: x.title())
+                        wget("ut_adenoma_count", "couple")
+                        _adn_echo_opts = ["hyperechoic", "hypoechoic",
+                                          "hypo-isoechoic"]
+                        st.radio("Echo", _adn_echo_opts,
+                                 index=_idx("ut_adenoma_echo",
+                                            _adn_echo_opts, "hyperechoic"),
+                                 horizontal=True, key="ut_adenoma_echo",
+                                 format_func=lambda x: x.title())
+                        wget("ut_adenoma_echo", "hyperechoic")
+                        _adn_loc_opts = ["anterior", "posterior", "fundal"]
+                        st.radio("Location", _adn_loc_opts,
+                                 index=_idx("ut_adenoma_loc",
+                                            _adn_loc_opts, "posterior"),
+                                 horizontal=True, key="ut_adenoma_loc",
+                                 format_func=lambda x: x.title())
+                        wget("ut_adenoma_loc", "posterior")
+                        if ss("ut_adenoma_count", "couple") == "single":
+                            st.text_input("Size (mm, e.g. 15x12)",
+                                          key="ut_adenoma_size",
+                                          value=_seed("ut_adenoma_size", ""))
+                            wget("ut_adenoma_size", "")
+                        st.checkbox("Avascular (default on)",
+                                    value=bool(_seed("ut_adenoma_avascular", True)),
+                                    key="ut_adenoma_avascular")
+                        wget("ut_adenoma_avascular", True)
+
+                    st.text_input("Endometrial thickness (mm)", key="ut_endo_mm",
+                                  value=_seed("ut_endo_mm", ""))
+                    wget("ut_endo_mm", "")
+
+                    _endo_pat_opts = ["regular", "irregular"]
+                    st.radio("Endometrial echo pattern", _endo_pat_opts,
+                             index=_idx("ut_endo_pattern",
+                                        _endo_pat_opts, "regular"),
+                             horizontal=True, key="ut_endo_pattern",
+                             format_func=lambda x: x.title())
+                    wget("ut_endo_pattern", "regular")
+
+                    _endo_tex_opts = ["homogeneous", "heterogeneous"]
+                    st.radio("Endometrial echotexture", _endo_tex_opts,
+                             index=_idx("ut_endo_texture",
+                                        _endo_tex_opts, "homogeneous"),
+                             horizontal=True, key="ut_endo_texture",
+                             format_func=lambda x: x.title())
+                    wget("ut_endo_texture", "homogeneous")
+
+                    st.checkbox("Multiple subendometrial cystic spaces",
+                                key="ut_endo_subcysts",
+                                value=bool(_seed("ut_endo_subcysts", False)))
+                    wget("ut_endo_subcysts", False)
+
+                    st.checkbox("Increased vascularity (colour Doppler)",
+                                key="ut_endo_vascularity",
+                                value=bool(_seed("ut_endo_vascularity", False)))
+                    wget("ut_endo_vascularity", False)
+
+                    _endo_susp_opts = ["none", "very_early_pregnancy",
+                                       "cystic_hyperplasia", "ca_endometrium"]
+                    st.radio("Suspicion (manual override)",
+                             _endo_susp_opts,
+                             index=_idx("ut_endo_suspicion",
+                                        _endo_susp_opts, "none"),
+                             horizontal=True,
+                             key="ut_endo_suspicion",
+                             format_func=lambda x: {
+                                 "none": "None",
+                                 "very_early_pregnancy":
+                                     "?Very early pregnancy",
+                                 "cystic_hyperplasia":
+                                     "?Cystic endometrial hyperplasia",
+                                 "ca_endometrium":
+                                     "?CA endometrium"}[x])
+                    wget("ut_endo_suspicion", "none")
+
+                    _endo_coll_opts = ["none", "mild", "moderate"]
+                    st.radio("Endometrial collection", _endo_coll_opts,
+                             index=_idx("ut_endo_coll",
+                                        _endo_coll_opts, "none"),
+                             horizontal=True, key="ut_endo_coll",
+                             format_func=lambda x: x.title())
+                    wget("ut_endo_coll", "none")
+                    if ss("ut_endo_coll", "none") in ("mild", "moderate"):
+                        st.checkbox("Heterogeneous collection",
+                                    key="ut_endo_het",
+                                    value=bool(_seed("ut_endo_het", False)))
+                        wget("ut_endo_het", False)
+
+                    st.checkbox("RPOC structure", key="ut_rpoc",
+                                value=bool(_seed("ut_rpoc", False)))
+                    wget("ut_rpoc", False)
+                    if ss("ut_rpoc", False):
+                        st.text_input("Size (mm, e.g. 15x12)", key="ut_rpoc_size",
+                                      value=_seed("ut_rpoc_size", ""))
+                        wget("ut_rpoc_size", "")
+                        _rpoc_echo_opts = ["hypo", "hyper"]
+                        st.radio("Echo", _rpoc_echo_opts,
+                                 index=_idx("ut_rpoc_echo",
+                                            _rpoc_echo_opts, "hypo"),
+                                 horizontal=True,
+                                 format_func=lambda x: {
+                                     "hypo": "Hypo-echoic",
+                                     "hyper": "Hyper-echoic"}[x],
+                                 key="ut_rpoc_echo")
+                        wget("ut_rpoc_echo", "hypo")
+
+                    st.checkbox("Elongated cervix", key="ut_cx_elong",
+                                value=bool(_seed("ut_cx_elong", False)))
+                    wget("ut_cx_elong", False)
+                    st.checkbox("Bulky cervix", key="ut_cx_bulky",
+                                value=bool(_seed("ut_cx_bulky", False)))
+                    wget("ut_cx_bulky", False)
+                    if ss("ut_cx_bulky", False):
+                        st.text_input("Bulky cervix size (mm)",
+                                      key="ut_cx_bulky_size",
+                                      value=_seed("ut_cx_bulky_size", ""))
+                        wget("ut_cx_bulky_size", "")
+                    _nab_opts = ["none", "one", "few", "multiple"]
+                    st.radio("Nabothian cysts", _nab_opts,
+                             index=_idx("ut_nabothian", _nab_opts, "none"),
+                             horizontal=True, key="ut_nabothian",
+                             format_func=lambda x: x.title())
+                    wget("ut_nabothian", "none")
+                    _cx_coll_opts = ["none", "mild", "moderate"]
+                    st.radio("Cervix collection", _cx_coll_opts,
+                             index=_idx("ut_cx_coll", _cx_coll_opts, "none"),
+                             horizontal=True, key="ut_cx_coll",
+                             format_func=lambda x: x.title())
+                    wget("ut_cx_coll", "none")
+                    st.checkbox("Cervicitis suspected",
+                                key="ut_cervicitis",
+                                value=bool(_seed("ut_cervicitis", False)))
+                    wget("ut_cervicitis", False)
+
+                    st.checkbox("Add: no RPOC/pregnancy line", key="ut_neg_rpoc",
+                                value=bool(_seed("ut_neg_rpoc", False)))
+                    wget("ut_neg_rpoc", False)
+                    st.checkbox("Add: no focal SOL/RPOC line", key="ut_neg_sol",
+                                value=bool(_seed("ut_neg_sol", False)))
+                    wget("ut_neg_sol", False)
+                    if ss("ut_neg_sol", False):
+                        st.checkbox("Mildly irregular endometrium",
+                                    key="ut_neg_sol_irregular",
+                                    value=bool(_seed("ut_neg_sol_irregular",
+                                                     False)))
+                        wget("ut_neg_sol_irregular", False)
+                        st.checkbox("Mild endometrial collection",
+                                    key="ut_neg_sol_collection",
+                                    value=bool(_seed("ut_neg_sol_collection",
+                                                     False)))
+                        wget("ut_neg_sol_collection", False)
+
+        ov_open = organ_button("OVARIES", "OVARIES")
+        if ov_open:
+            with st.container(border=True):
+                c1, c2 = st.columns(2)
+                for col, side in ((c1, "right"), (c2, "left")):
+                    with col:
+                        st.markdown(f"**{side.title()} Ovary**")
+                        _sd = side[0]
+                        _ov_status_opts = ["normal", "not_visualized"]
+                        st.radio("Status", _ov_status_opts,
+                                 index=_idx(f"ov_{_sd}_status",
+                                            _ov_status_opts, "normal"),
+                                 horizontal=True,
+                                 format_func=lambda x: {
+                                     "normal": "Present",
+                                     "not_visualized": "Not visualized"}[x],
+                                 key=f"ov_{_sd}_status")
+                        wget(f"ov_{_sd}_status", "normal")
+                        if ss(f"ov_{_sd}_status", "normal") == "normal":
+                            st.text_input("Size (mm) — e.g. 42x26",
+                                          key=f"ov_{_sd}_size",
+                                          value=_seed(f"ov_{_sd}_size", ""))
+                            wget(f"ov_{_sd}_size", "")
+                            st.text_input("Volume (cc)",
+                                          key=f"ov_{_sd}_vol",
+                                          value=_seed(f"ov_{_sd}_vol", ""))
+                            wget(f"ov_{_sd}_vol", "")
+                            st.caption("Findings")
+                            for f_key, f_label in [
+                                ("simple", "Simple cyst"),
+                                ("hem", "Hemorrhagic cyst"),
+                                ("cl", "Corpus luteum cyst"),
+                            ]:
+                                _full_key = f"ov_{_sd}_f_{f_key}"
+                                st.checkbox(f_label, key=_full_key,
+                                            value=bool(_seed(_full_key, False)))
+                                wget(_full_key, False)
+                                if ss(_full_key, False):
+                                    _cnt_key = f"{_full_key}_count"
+                                    _cnt_opts = ["single", "couple", "few",
+                                                 "multiple"]
+                                    st.radio("Count", _cnt_opts,
+                                             index=_idx(_cnt_key,
+                                                        _cnt_opts, "single"),
+                                             horizontal=True,
+                                             key=_cnt_key,
+                                             format_func=lambda x: x.title())
+                                    wget(_cnt_key, "single")
+                                    _cnt_val = ss(_cnt_key, "single")
+                                    _two_boxes = (f_key != "cl"
+                                                  and _cnt_val in ("couple",
+                                                                   "few",
+                                                                   "multiple"))
+                                    if _two_boxes:
+                                        c_s1, c_s2 = st.columns(2)
+                                        with c_s1:
+                                            st.text_input(
+                                                f"{f_label} — largest size (mm)",
+                                                key=f"{_full_key}_size",
+                                                value=_seed(
+                                                    f"{_full_key}_size", ""))
+                                            wget(f"{_full_key}_size", "")
+                                        with c_s2:
+                                            st.text_input(
+                                                f"{f_label} — 2nd largest (mm)",
+                                                key=f"{_full_key}_size2",
+                                                value=_seed(
+                                                    f"{_full_key}_size2", ""))
+                                            wget(f"{_full_key}_size2", "")
+                                    else:
                                         st.text_input(
-                                            f"{f_label} — largest size (mm)",
+                                            f"{f_label} size (mm)",
                                             key=f"{_full_key}_size",
                                             value=_seed(
                                                 f"{_full_key}_size", ""))
                                         wget(f"{_full_key}_size", "")
-                                    with c_s2:
-                                        st.text_input(
-                                            f"{f_label} — 2nd largest (mm)",
-                                            key=f"{_full_key}_size2",
-                                            value=_seed(
-                                                f"{_full_key}_size2", ""))
-                                        wget(f"{_full_key}_size2", "")
-                                else:
-                                    st.text_input(
-                                        f"{f_label} size (mm)",
-                                        key=f"{_full_key}_size",
-                                        value=_seed(
-                                            f"{_full_key}_size", ""))
-                                    wget(f"{_full_key}_size", "")
 
-            st.markdown("---")
-            st.markdown("**PCOS spectrum**")
-            st.checkbox("PCOS features present", key="ov_pcos",
-                        value=bool(_seed("ov_pcos", False)))
-            wget("ov_pcos", False)
-            if ss("ov_pcos", False):
-                st.caption("If no sub-ticks are chosen, all three features "
-                           "are assumed present (conclusive).")
-                st.checkbox("Feature 2: multiple small follicles arranged "
-                            "peripherally",
-                            key="ov_pcos_f2",
-                            value=bool(_seed("ov_pcos_f2", False)))
-                wget("ov_pcos_f2", False)
-                st.checkbox("Feature 3: centrally echogenic stroma",
-                            key="ov_pcos_f3",
-                            value=bool(_seed("ov_pcos_f3", False)))
-                wget("ov_pcos_f3", False)
-                st.checkbox("Feature 4: variable-sized follicles (variant)",
-                            key="ov_pcos_f4",
-                            value=bool(_seed("ov_pcos_f4", False)))
-                wget("ov_pcos_f4", False)
-                if ss("ov_pcos_f4", False):
-                    st.caption("Variable-sized may combine with either "
-                               "peripheral or random; peripheral and random "
-                               "are mutually exclusive.")
-                    st.checkbox("Variable size follicles",
-                                key="ov_pcos_f4_var",
-                                value=bool(_seed("ov_pcos_f4_var", False)))
-                    wget("ov_pcos_f4_var", False)
-                    _f4_dist_opts = ["peripheral", "random"]
-                    st.radio("Distribution", _f4_dist_opts,
-                             index=_idx("ov_pcos_f4_dist",
-                                        _f4_dist_opts, "peripheral"),
-                             horizontal=True,
-                             format_func=lambda x: {
-                                 "peripheral": "Predominantly peripheral",
-                                 "random": "Random"}[x],
-                             key="ov_pcos_f4_dist")
-                    wget("ov_pcos_f4_dist", "peripheral")
-else:
-    pr_open = organ_button("PROSTATE", "PROSTATE")
-    if pr_open:
+                st.markdown("---")
+                st.markdown("**PCOS spectrum**")
+                st.checkbox("PCOS features present", key="ov_pcos",
+                            value=bool(_seed("ov_pcos", False)))
+                wget("ov_pcos", False)
+                if ss("ov_pcos", False):
+                    st.caption("If no sub-ticks are chosen, all three features "
+                               "are assumed present (conclusive).")
+                    st.checkbox("Feature 2: multiple small follicles arranged "
+                                "peripherally",
+                                key="ov_pcos_f2",
+                                value=bool(_seed("ov_pcos_f2", False)))
+                    wget("ov_pcos_f2", False)
+                    st.checkbox("Feature 3: centrally echogenic stroma",
+                                key="ov_pcos_f3",
+                                value=bool(_seed("ov_pcos_f3", False)))
+                    wget("ov_pcos_f3", False)
+                    st.checkbox("Feature 4: variable-sized follicles (variant)",
+                                key="ov_pcos_f4",
+                                value=bool(_seed("ov_pcos_f4", False)))
+                    wget("ov_pcos_f4", False)
+                    if ss("ov_pcos_f4", False):
+                        st.caption("Variable-sized may combine with either "
+                                   "peripheral or random; peripheral and random "
+                                   "are mutually exclusive.")
+                        st.checkbox("Variable size follicles",
+                                    key="ov_pcos_f4_var",
+                                    value=bool(_seed("ov_pcos_f4_var", False)))
+                        wget("ov_pcos_f4_var", False)
+                        _f4_dist_opts = ["peripheral", "random"]
+                        st.radio("Distribution", _f4_dist_opts,
+                                 index=_idx("ov_pcos_f4_dist",
+                                            _f4_dist_opts, "peripheral"),
+                                 horizontal=True,
+                                 format_func=lambda x: {
+                                     "peripheral": "Predominantly peripheral",
+                                     "random": "Random"}[x],
+                                 key="ov_pcos_f4_dist")
+                        wget("ov_pcos_f4_dist", "peripheral")
+    else:
+        pr_open = organ_button("PROSTATE", "PROSTATE")
+        if pr_open:
+            with st.container(border=True):
+                st.checkbox("Not visualized", key="pr_not_visualized",
+                            value=bool(_seed("pr_not_visualized", False)))
+                wget("pr_not_visualized", False)
+                if not ss("pr_not_visualized", False):
+                    st.checkbox("Partially visualized",
+                                key="pr_partial_visualization",
+                                value=bool(_seed("pr_partial_visualization",
+                                                 False)))
+                    wget("pr_partial_visualization", False)
+                    if not ss("pr_partial_visualization", False):
+                        st.text_input("Prostate volume (cc)  —  auto-graded",
+                                      key="pr_cc",
+                                      value=_seed("pr_cc", ""))
+                        wget("pr_cc", "")
+                        _cc_val = ss("pr_cc", "")
+                        if _cc_val:
+                            _band = prostate_band_from_volume(_cc_val)
+                            if _band:
+                                st.info(f"→ Auto-grade: **{_band[1]}**")
+                        st.checkbox("Median lobe hypertrophy",
+                                    key="pr_median_lobe",
+                                    value=bool(_seed("pr_median_lobe", False)))
+                        wget("pr_median_lobe", False)
+                        if ss("pr_median_lobe", False):
+                            st.text_input("Median lobe size (mm)",
+                                          key="pr_median_lobe_size",
+                                          value=_seed(
+                                              "pr_median_lobe_size", ""))
+                            wget("pr_median_lobe_size", "")
+                            st.checkbox("Impinging upon bladder outlet",
+                                        key="pr_median_lobe_boo",
+                                        value=bool(_seed(
+                                            "pr_median_lobe_boo", False)))
+                            wget("pr_median_lobe_boo", False)
+                        st.checkbox("Prostatic cyst", key="pr_cyst",
+                                    value=bool(_seed("pr_cyst", False)))
+                        wget("pr_cyst", False)
+                        if ss("pr_cyst", False):
+                            c_a, c_b, c_c = st.columns(3)
+                            with c_a:
+                                st.text_input("Cyst size (mm, e.g. 12x10)",
+                                              key="pr_cyst_size",
+                                              value=_seed("pr_cyst_size", ""))
+                                wget("pr_cyst_size", "")
+                            with c_b:
+                                st.checkbox("Left hemi-prostate",
+                                            key="pr_cyst_left_hemi",
+                                            value=bool(_seed(
+                                                "pr_cyst_left_hemi", False)))
+                                wget("pr_cyst_left_hemi", False)
+                            with c_c:
+                                st.checkbox("Right hemi-prostate",
+                                            key="pr_cyst_right_hemi",
+                                            value=bool(_seed(
+                                                "pr_cyst_right_hemi", False)))
+                                wget("pr_cyst_right_hemi", False)
+
+    # ------- MESENTERIC LYMPH NODES -------
+    mln_open = organ_button("MESENTERIC LYMPH NODES", "MESENTERIC LYMPH NODES")
+    if mln_open:
         with st.container(border=True):
-            st.checkbox("Not visualized", key="pr_not_visualized",
-                        value=bool(_seed("pr_not_visualized", False)))
-            wget("pr_not_visualized", False)
-            if not ss("pr_not_visualized", False):
-                st.checkbox("Partially visualized",
-                            key="pr_partial_visualization",
-                            value=bool(_seed("pr_partial_visualization",
-                                             False)))
-                wget("pr_partial_visualization", False)
-                if not ss("pr_partial_visualization", False):
-                    st.text_input("Prostate volume (cc)  —  auto-graded",
-                                  key="pr_cc",
-                                  value=_seed("pr_cc", ""))
-                    wget("pr_cc", "")
-                    _cc_val = ss("pr_cc", "")
-                    if _cc_val:
-                        _band = prostate_band_from_volume(_cc_val)
-                        if _band:
-                            st.info(f"→ Auto-grade: **{_band[1]}**")
-                    st.checkbox("Median lobe hypertrophy",
-                                key="pr_median_lobe",
-                                value=bool(_seed("pr_median_lobe", False)))
-                    wget("pr_median_lobe", False)
-                    if ss("pr_median_lobe", False):
-                        st.text_input("Median lobe size (mm)",
-                                      key="pr_median_lobe_size",
-                                      value=_seed(
-                                          "pr_median_lobe_size", ""))
-                        wget("pr_median_lobe_size", "")
-                        st.checkbox("Impinging upon bladder outlet",
-                                    key="pr_median_lobe_boo",
-                                    value=bool(_seed(
-                                        "pr_median_lobe_boo", False)))
-                        wget("pr_median_lobe_boo", False)
-                    st.checkbox("Prostatic cyst", key="pr_cyst",
-                                value=bool(_seed("pr_cyst", False)))
-                    wget("pr_cyst", False)
-                    if ss("pr_cyst", False):
-                        c_a, c_b, c_c = st.columns(3)
-                        with c_a:
-                            st.text_input("Cyst size (mm, e.g. 12x10)",
-                                          key="pr_cyst_size",
-                                          value=_seed("pr_cyst_size", ""))
-                            wget("pr_cyst_size", "")
-                        with c_b:
-                            st.checkbox("Left hemi-prostate",
-                                        key="pr_cyst_left_hemi",
-                                        value=bool(_seed(
-                                            "pr_cyst_left_hemi", False)))
-                            wget("pr_cyst_left_hemi", False)
-                        with c_c:
-                            st.checkbox("Right hemi-prostate",
-                                        key="pr_cyst_right_hemi",
-                                        value=bool(_seed(
-                                            "pr_cyst_right_hemi", False)))
-                            wget("pr_cyst_right_hemi", False)
+            _mln_branch_opts = ["none", "significance", "reactive"]
+            st.radio(
+                "Branch", _mln_branch_opts,
+                index=_idx("mln_branch", _mln_branch_opts, "none"),
+                horizontal=True,
+                format_func=lambda x: {
+                    "none": "None",
+                    "significance": "Significance / Lymphadenopathy",
+                    "reactive": "Reactive Lymphadenitis"}[x],
+                key="mln_branch")
+            wget("mln_branch", "none")
+            _mlnb = ss("mln_branch", "none")
 
-# ------- MESENTERIC LYMPH NODES -------
-mln_open = organ_button("MESENTERIC LYMPH NODES", "MESENTERIC LYMPH NODES")
-if mln_open:
-    with st.container(border=True):
-        _mln_branch_opts = ["none", "significance", "reactive"]
-        st.radio(
-            "Branch", _mln_branch_opts,
-            index=_idx("mln_branch", _mln_branch_opts, "none"),
-            horizontal=True,
-            format_func=lambda x: {
-                "none": "None",
-                "significance": "Significance / Lymphadenopathy",
-                "reactive": "Reactive Lymphadenitis"}[x],
-            key="mln_branch")
-        wget("mln_branch", "none")
-        _mlnb = ss("mln_branch", "none")
+            if _mlnb != "none":
+                _mln_cnt_opts = ["few", "multiple", "innumerable"]
+                st.radio("Count", _mln_cnt_opts,
+                         index=_idx("mln_count", _mln_cnt_opts, "multiple"),
+                         horizontal=True, key="mln_count",
+                         format_func=lambda x: x.title())
+                wget("mln_count", "multiple")
 
-        if _mlnb != "none":
-            _mln_cnt_opts = ["few", "multiple", "innumerable"]
-            st.radio("Count", _mln_cnt_opts,
-                     index=_idx("mln_count", _mln_cnt_opts, "multiple"),
-                     horizontal=True, key="mln_count",
-                     format_func=lambda x: x.title())
-            wget("mln_count", "multiple")
-
-            _mln_size_opts = ["small", "enlarged", "mixed"]
-            st.radio("Size", _mln_size_opts,
-                     index=_idx("mln_size", _mln_size_opts, "small"),
-                     horizontal=True, key="mln_size",
-                     format_func=lambda x: {
-                         "small": "Small (SAD<7mm)",
-                         "enlarged": "Enlarged (SAD>7mm)",
-                         "mixed": "Small & Enlarged"}[x])
-            wget("mln_size", "small")
-
-            _mln_loc_opts = ["bilateral", "left", "right"]
-            st.radio("Location", _mln_loc_opts,
-                     index=_idx("mln_location", _mln_loc_opts, "bilateral"),
-                     horizontal=True, key="mln_location",
-                     format_func=lambda x: {
-                         "bilateral":
-                             "Bilateral pre & para-aortic peri-umbilical",
-                         "left": "Predominantly left para-aortic",
-                         "right": "Predominantly right para-aortic"}[x])
-            wget("mln_location", "bilateral")
-
-            c_a, c_b = st.columns(2)
-            with c_a:
-                st.text_input("Largest (mm, e.g. 16x08)",
-                              key="mln_largest",
-                              value=_seed("mln_largest", ""))
-                wget("mln_largest", "")
-            with c_b:
-                st.text_input("2nd largest (mm, optional)",
-                              key="mln_size2",
-                              value=_seed("mln_size2", ""))
-                wget("mln_size2", "")
-
-            st.checkbox("Surrounding mesentery hyperechoic (inflamed)",
-                        key="mln_inflamed",
-                        value=bool(_seed("mln_inflamed", False)))
-            wget("mln_inflamed", False)
-
-            if _mlnb == "reactive":
-                _mln_react_opts = ["plain", "tb"]
-                st.radio("Sub-type", _mln_react_opts,
-                         index=_idx("mln_reactive_sub",
-                                    _mln_react_opts, "plain"),
-                         horizontal=True, key="mln_reactive_sub",
+                _mln_size_opts = ["small", "enlarged", "mixed"]
+                st.radio("Size", _mln_size_opts,
+                         index=_idx("mln_size", _mln_size_opts, "small"),
+                         horizontal=True, key="mln_size",
                          format_func=lambda x: {
-                             "plain": "Reactive Lymphadenitis",
-                             "tb": "Reactive Lymphadenitis (?Tubercular)"}[x])
-                wget("mln_reactive_sub", "plain")
+                             "small": "Small (SAD<7mm)",
+                             "enlarged": "Enlarged (SAD>7mm)",
+                             "mixed": "Small & Enlarged"}[x])
+                wget("mln_size", "small")
 
-                st.checkbox("Lost hila", key="mln_lost_hila",
-                            value=bool(_seed("mln_lost_hila", False)))
-                wget("mln_lost_hila", False)
-                st.checkbox("Partially necrotic", key="mln_necrotic",
-                            value=bool(_seed("mln_necrotic", False)))
-                wget("mln_necrotic", False)
-                if ss("mln_necrotic", False):
-                    st.caption("Necrotic supersedes Lost hila in body.")
-
-            if _mlnb == "significance":
-                _mln_sig_opts = ["significance", "lymphadenopathy"]
-                st.radio("Query tail", _mln_sig_opts,
-                         index=_idx("mln_sig_tail", _mln_sig_opts,
-                                    "significance"),
-                         horizontal=True, key="mln_sig_tail",
+                _mln_loc_opts = ["bilateral", "left", "right"]
+                st.radio("Location", _mln_loc_opts,
+                         index=_idx("mln_location", _mln_loc_opts, "bilateral"),
+                         horizontal=True, key="mln_location",
                          format_func=lambda x: {
-                             "significance": "-?Significance",
-                             "lymphadenopathy":
-                                 "-?Mesenteric Lymphadenopathy"}[x])
-                wget("mln_sig_tail", "significance")
+                             "bilateral":
+                                 "Bilateral pre & para-aortic peri-umbilical",
+                             "left": "Predominantly left para-aortic",
+                             "right": "Predominantly right para-aortic"}[x])
+                wget("mln_location", "bilateral")
 
-# ------- FREE FLUID -------
-ff_open = organ_button("FREE FLUID", "FREE FLUID")
-if ff_open:
-    with st.container(border=True):
-        _ff_kind_opts = ["none", "inter_bowel", "peritoneal", "ascites"]
-        st.radio(
-            "Free fluid", _ff_kind_opts,
-            index=_idx("ff_kind", _ff_kind_opts, "none"),
-            horizontal=True,
-            format_func=lambda x: {
-                "none": "None",
-                "inter_bowel": "Mild inter-bowel free fluid",
-                "peritoneal": "Mild free fluid in the peritoneal cavity",
-                "ascites": "Ascites"}[x],
-            key="ff_kind")
-        wget("ff_kind", "none")
-        _ffk = ss("ff_kind", "none")
-        if _ffk == "peritoneal":
-            _ffg_opts = FF_GRADE_OPTS_PERITONEAL
-            st.radio("Grade", _ffg_opts,
-                     index=_idx("ff_grade", _ffg_opts, "mild"),
-                     horizontal=True, key="ff_grade",
-                     format_func=lambda x: {
-                         "mild": "Mild",
-                         "mild_to_moderate": "Mild to Moderate",
-                         "moderate": "Moderate"}[x])
-            wget("ff_grade", "mild")
-        elif _ffk == "ascites":
-            _ffg_opts = FF_GRADE_OPTS_ASCITES
-            st.radio("Grade", _ffg_opts,
-                     index=_idx("ff_grade", _ffg_opts, "mild"),
-                     horizontal=True, key="ff_grade",
-                     format_func=lambda x: {
-                         "mild": "Mild",
-                         "mild_to_moderate": "Mild to Moderate",
-                         "moderate_to_gross": "Moderate to Gross"}[x])
-            wget("ff_grade", "mild")
-
-        if _ffk != "none":
-            _eff_status_now = ss("pe_status", "none")
-            if _eff_status_now == "none":
-                st.checkbox(
-                    "Append: 'however no pleural effusion is seen'",
-                    key="ff_append_no_effusion",
-                    value=bool(_seed("ff_append_no_effusion", False)))
-                wget("ff_append_no_effusion", False)
-
-# ------- PLEURAL EFFUSION -------
-pe_open = organ_button("PLEURAL EFFUSION", "PLEURAL EFFUSION")
-if pe_open:
-    with st.container(border=True):
-        _pe_status_opts = ["none", "present"]
-        st.radio("Status", _pe_status_opts,
-                 index=_idx("pe_status", _pe_status_opts, "none"),
-                 horizontal=True, key="pe_status",
-                 format_func=lambda x: {"none": "None",
-                                        "present": "Present"}[x])
-        wget("pe_status", "none")
-        if ss("pe_status", "none") == "present":
-            _pe_lat_opts = EFF_LATERALITY_OPTS
-            st.radio("Laterality", _pe_lat_opts,
-                     index=_idx("pe_laterality", _pe_lat_opts, "right"),
-                     horizontal=True, key="pe_laterality",
-                     format_func=lambda x: {
-                         "right": "Right",
-                         "left": "Left",
-                         "bilateral": "Bilateral (symmetric)",
-                         "bilateral_asym": "Bilateral asymmetric"}[x])
-            wget("pe_laterality", "right")
-            _pel = ss("pe_laterality", "right")
-
-            if _pel == "right":
-                _g_opts = EFF_GRADE_OPTS
-                st.radio("Grade (right)", _g_opts,
-                         index=_idx("pe_grade_right", _g_opts, "mild"),
-                         horizontal=True, key="pe_grade_right",
-                         format_func=lambda x: {
-                             "mild": "Mild",
-                             "mild_to_moderate": "Mild to Moderate",
-                             "moderate_to_gross":
-                                 "Moderate to Gross"}[x])
-                wget("pe_grade_right", "mild")
-            elif _pel == "left":
-                _g_opts = EFF_GRADE_OPTS
-                st.radio("Grade (left)", _g_opts,
-                         index=_idx("pe_grade_left", _g_opts, "mild"),
-                         horizontal=True, key="pe_grade_left",
-                         format_func=lambda x: {
-                             "mild": "Mild",
-                             "mild_to_moderate": "Mild to Moderate",
-                             "moderate_to_gross":
-                                 "Moderate to Gross"}[x])
-                wget("pe_grade_left", "mild")
-            elif _pel == "bilateral":
-                _g_opts = EFF_GRADE_OPTS
-                st.radio("Grade (bilateral)", _g_opts,
-                         index=_idx("pe_grade_right", _g_opts, "mild"),
-                         horizontal=True, key="pe_grade_right",
-                         format_func=lambda x: {
-                             "mild": "Mild",
-                             "mild_to_moderate": "Mild to Moderate",
-                             "moderate_to_gross":
-                                 "Moderate to Gross"}[x])
-                wget("pe_grade_right", "mild")
-            elif _pel == "bilateral_asym":
                 c_a, c_b = st.columns(2)
                 with c_a:
+                    st.text_input("Largest (mm, e.g. 16x08)",
+                                  key="mln_largest",
+                                  value=_seed("mln_largest", ""))
+                    wget("mln_largest", "")
+                with c_b:
+                    st.text_input("2nd largest (mm, optional)",
+                                  key="mln_size2",
+                                  value=_seed("mln_size2", ""))
+                    wget("mln_size2", "")
+
+                st.checkbox("Surrounding mesentery hyperechoic (inflamed)",
+                            key="mln_inflamed",
+                            value=bool(_seed("mln_inflamed", False)))
+                wget("mln_inflamed", False)
+
+                if _mlnb == "reactive":
+                    _mln_react_opts = ["plain", "tb"]
+                    st.radio("Sub-type", _mln_react_opts,
+                             index=_idx("mln_reactive_sub",
+                                        _mln_react_opts, "plain"),
+                             horizontal=True, key="mln_reactive_sub",
+                             format_func=lambda x: {
+                                 "plain": "Reactive Lymphadenitis",
+                                 "tb": "Reactive Lymphadenitis (?Tubercular)"}[x])
+                    wget("mln_reactive_sub", "plain")
+
+                    st.checkbox("Lost hila", key="mln_lost_hila",
+                                value=bool(_seed("mln_lost_hila", False)))
+                    wget("mln_lost_hila", False)
+                    st.checkbox("Partially necrotic", key="mln_necrotic",
+                                value=bool(_seed("mln_necrotic", False)))
+                    wget("mln_necrotic", False)
+                    if ss("mln_necrotic", False):
+                        st.caption("Necrotic supersedes Lost hila in body.")
+
+                if _mlnb == "significance":
+                    _mln_sig_opts = ["significance", "lymphadenopathy"]
+                    st.radio("Query tail", _mln_sig_opts,
+                             index=_idx("mln_sig_tail", _mln_sig_opts,
+                                        "significance"),
+                             horizontal=True, key="mln_sig_tail",
+                             format_func=lambda x: {
+                                 "significance": "-?Significance",
+                                 "lymphadenopathy":
+                                     "-?Mesenteric Lymphadenopathy"}[x])
+                    wget("mln_sig_tail", "significance")
+
+    # ------- FREE FLUID -------
+    ff_open = organ_button("FREE FLUID", "FREE FLUID")
+    if ff_open:
+        with st.container(border=True):
+            _ff_kind_opts = ["none", "inter_bowel", "peritoneal", "ascites"]
+            st.radio(
+                "Free fluid", _ff_kind_opts,
+                index=_idx("ff_kind", _ff_kind_opts, "none"),
+                horizontal=True,
+                format_func=lambda x: {
+                    "none": "None",
+                    "inter_bowel": "Mild inter-bowel free fluid",
+                    "peritoneal": "Mild free fluid in the peritoneal cavity",
+                    "ascites": "Ascites"}[x],
+                key="ff_kind")
+            wget("ff_kind", "none")
+            _ffk = ss("ff_kind", "none")
+            if _ffk == "peritoneal":
+                _ffg_opts = FF_GRADE_OPTS_PERITONEAL
+                st.radio("Grade", _ffg_opts,
+                         index=_idx("ff_grade", _ffg_opts, "mild"),
+                         horizontal=True, key="ff_grade",
+                         format_func=lambda x: {
+                             "mild": "Mild",
+                             "mild_to_moderate": "Mild to Moderate",
+                             "moderate": "Moderate"}[x])
+                wget("ff_grade", "mild")
+            elif _ffk == "ascites":
+                _ffg_opts = FF_GRADE_OPTS_ASCITES
+                st.radio("Grade", _ffg_opts,
+                         index=_idx("ff_grade", _ffg_opts, "mild"),
+                         horizontal=True, key="ff_grade",
+                         format_func=lambda x: {
+                             "mild": "Mild",
+                             "mild_to_moderate": "Mild to Moderate",
+                             "moderate_to_gross": "Moderate to Gross"}[x])
+                wget("ff_grade", "mild")
+
+            if _ffk != "none":
+                _eff_status_now = ss("pe_status", "none")
+                if _eff_status_now == "none":
+                    st.checkbox(
+                        "Append: 'however no pleural effusion is seen'",
+                        key="ff_append_no_effusion",
+                        value=bool(_seed("ff_append_no_effusion", False)))
+                    wget("ff_append_no_effusion", False)
+
+    # ------- PLEURAL EFFUSION -------
+    pe_open = organ_button("PLEURAL EFFUSION", "PLEURAL EFFUSION")
+    if pe_open:
+        with st.container(border=True):
+            _pe_status_opts = ["none", "present"]
+            st.radio("Status", _pe_status_opts,
+                     index=_idx("pe_status", _pe_status_opts, "none"),
+                     horizontal=True, key="pe_status",
+                     format_func=lambda x: {"none": "None",
+                                            "present": "Present"}[x])
+            wget("pe_status", "none")
+            if ss("pe_status", "none") == "present":
+                _pe_lat_opts = EFF_LATERALITY_OPTS
+                st.radio("Laterality", _pe_lat_opts,
+                         index=_idx("pe_laterality", _pe_lat_opts, "right"),
+                         horizontal=True, key="pe_laterality",
+                         format_func=lambda x: {
+                             "right": "Right",
+                             "left": "Left",
+                             "bilateral": "Bilateral (symmetric)",
+                             "bilateral_asym": "Bilateral asymmetric"}[x])
+                wget("pe_laterality", "right")
+                _pel = ss("pe_laterality", "right")
+
+                if _pel == "right":
                     _g_opts = EFF_GRADE_OPTS
-                    st.radio("Grade right", _g_opts,
+                    st.radio("Grade (right)", _g_opts,
                              index=_idx("pe_grade_right", _g_opts, "mild"),
                              horizontal=True, key="pe_grade_right",
                              format_func=lambda x: {
                                  "mild": "Mild",
-                                 "mild_to_moderate": "Mild to Mod",
+                                 "mild_to_moderate": "Mild to Moderate",
                                  "moderate_to_gross":
-                                     "Mod to Gross"}[x])
+                                     "Moderate to Gross"}[x])
                     wget("pe_grade_right", "mild")
-                with c_b:
+                elif _pel == "left":
                     _g_opts = EFF_GRADE_OPTS
-                    st.radio("Grade left", _g_opts,
+                    st.radio("Grade (left)", _g_opts,
                              index=_idx("pe_grade_left", _g_opts, "mild"),
                              horizontal=True, key="pe_grade_left",
                              format_func=lambda x: {
                                  "mild": "Mild",
-                                 "mild_to_moderate": "Mild to Mod",
+                                 "mild_to_moderate": "Mild to Moderate",
                                  "moderate_to_gross":
-                                     "Mod to Gross"}[x])
+                                     "Moderate to Gross"}[x])
                     wget("pe_grade_left", "mild")
-                _pred_opts = ["r_gt_l", "l_gt_r"]
-                st.radio("Predominance", _pred_opts,
-                         index=_idx("pe_predom", _pred_opts, "r_gt_l"),
-                         horizontal=True, key="pe_predom",
-                         format_func=lambda x: {
-                             "r_gt_l": "R > L",
-                             "l_gt_r": "L > R"}[x])
-                wget("pe_predom", "r_gt_l")
+                elif _pel == "bilateral":
+                    _g_opts = EFF_GRADE_OPTS
+                    st.radio("Grade (bilateral)", _g_opts,
+                             index=_idx("pe_grade_right", _g_opts, "mild"),
+                             horizontal=True, key="pe_grade_right",
+                             format_func=lambda x: {
+                                 "mild": "Mild",
+                                 "mild_to_moderate": "Mild to Moderate",
+                                 "moderate_to_gross":
+                                     "Moderate to Gross"}[x])
+                    wget("pe_grade_right", "mild")
+                elif _pel == "bilateral_asym":
+                    c_a, c_b = st.columns(2)
+                    with c_a:
+                        _g_opts = EFF_GRADE_OPTS
+                        st.radio("Grade right", _g_opts,
+                                 index=_idx("pe_grade_right", _g_opts, "mild"),
+                                 horizontal=True, key="pe_grade_right",
+                                 format_func=lambda x: {
+                                     "mild": "Mild",
+                                     "mild_to_moderate": "Mild to Mod",
+                                     "moderate_to_gross":
+                                         "Mod to Gross"}[x])
+                        wget("pe_grade_right", "mild")
+                    with c_b:
+                        _g_opts = EFF_GRADE_OPTS
+                        st.radio("Grade left", _g_opts,
+                                 index=_idx("pe_grade_left", _g_opts, "mild"),
+                                 horizontal=True, key="pe_grade_left",
+                                 format_func=lambda x: {
+                                     "mild": "Mild",
+                                     "mild_to_moderate": "Mild to Mod",
+                                     "moderate_to_gross":
+                                         "Mod to Gross"}[x])
+                        wget("pe_grade_left", "mild")
+                    _pred_opts = ["r_gt_l", "l_gt_r"]
+                    st.radio("Predominance", _pred_opts,
+                             index=_idx("pe_predom", _pred_opts, "r_gt_l"),
+                             horizontal=True, key="pe_predom",
+                             format_func=lambda x: {
+                                 "r_gt_l": "R > L",
+                                 "l_gt_r": "L > R"}[x])
+                    wget("pe_predom", "r_gt_l")
 
-            _ff_kind_now = ss("ff_kind", "none")
-            if _ff_kind_now == "none":
-                st.checkbox(
-                    "Append: 'however no ascites is seen'",
-                    key="pe_append_no_ascites",
-                    value=bool(_seed("pe_append_no_ascites", False)))
-                wget("pe_append_no_ascites", False)
+                _ff_kind_now = ss("ff_kind", "none")
+                if _ff_kind_now == "none":
+                    st.checkbox(
+                        "Append: 'however no ascites is seen'",
+                        key="pe_append_no_ascites",
+                        value=bool(_seed("pe_append_no_ascites", False)))
+                    wget("pe_append_no_ascites", False)
 
-# ------- BOWEL (wall thickening only) -------
-bw_open = organ_button("BOWEL WALL", "BOWEL WALL")
-if bw_open:
-    with st.container(border=True):
-        st.checkbox("Bowel wall thickening present",
-                    key="bw_wall_thick",
-                    value=bool(_seed("bw_wall_thick", False)))
-        wget("bw_wall_thick", False)
+    # ------- BOWEL (wall thickening only) -------
+    bw_open = organ_button("BOWEL WALL", "BOWEL WALL")
+    if bw_open:
+        with st.container(border=True):
+            st.checkbox("Bowel wall thickening present",
+                        key="bw_wall_thick",
+                        value=bool(_seed("bw_wall_thick", False)))
+            wget("bw_wall_thick", False)
 
-# ------- APPENDIX -------
-ap_open = organ_button("APPENDIX", "APPENDIX")
-if ap_open:
-    with st.container(border=True):
-        _ap_status_opts = ["not_assessed", "not_visualized", "normal",
-                           "dilated"]
-        st.radio("Status", _ap_status_opts,
-                 index=_idx("ap_status", _ap_status_opts, "not_assessed"),
-                 horizontal=True,
-                 format_func=lambda x: x.replace("_", " ").title(),
-                 key="ap_status")
-        wget("ap_status", "not_assessed")
-        if ss("ap_status", "not_assessed") in ("normal", "dilated"):
-            st.text_input("Diameter (mm)", key="ap_d",
-                          value=_seed("ap_d", ""))
-            wget("ap_d", "")
+    # ------- APPENDIX -------
+    ap_open = organ_button("APPENDIX", "APPENDIX")
+    if ap_open:
+        with st.container(border=True):
+            _ap_status_opts = ["not_assessed", "not_visualized", "normal",
+                               "dilated"]
+            st.radio("Status", _ap_status_opts,
+                     index=_idx("ap_status", _ap_status_opts, "not_assessed"),
+                     horizontal=True,
+                     format_func=lambda x: x.replace("_", " ").title(),
+                     key="ap_status")
+            wget("ap_status", "not_assessed")
+            if ss("ap_status", "not_assessed") in ("normal", "dilated"):
+                st.text_input("Diameter (mm)", key="ap_d",
+                              value=_seed("ap_d", ""))
+                wget("ap_d", "")
 
 
 # ============================================================
@@ -7188,455 +7189,455 @@ if ap_open:
 
 data = new_report(p_sex)
 data["patient"] = {"name": p_name, "age": p_age, "sex": p_sex,
-               "date": p_date, "referred_by": p_ref}
+                   "date": p_date, "referred_by": p_ref}
 
 _lf = ss("liver_focal", "none")
 _abscess_lesions = []
 if _lf == "abscess":
-  _ac = ss("abscess_count", "single")
-  n_abs = 1 if _ac == "single" else int(ss("abscess_n", 2) or 2)
-  for i in range(n_abs):
-      _abscess_lesions.append({
-          "segment": ss(f"abs_seg_{i}", "I"),
-          "dim": ss(f"abs_dim_{i}", ""),
-          "vol": ss(f"abs_vol_{i}", ""),
-      })
+    _ac = ss("abscess_count", "single")
+    n_abs = 1 if _ac == "single" else int(ss("abscess_n", 2) or 2)
+    for i in range(n_abs):
+        _abscess_lesions.append({
+            "segment": ss(f"abs_seg_{i}", "I"),
+            "dim": ss(f"abs_dim_{i}", ""),
+            "vol": ss(f"abs_vol_{i}", ""),
+        })
 
 data["liver"].update({
-"size_mm": liver_size,
-"size_descriptor": liver_status,
-"outline": ss("liver_outline", "normal"),
-"echotexture": ss("liver_echo", "normal"),
-"steatosis_grade": ss("liver_steatosis", None),
-"focal_lesion": _lf,
-"focal_lesion_text": ss("liver_focal_text", ""),
-"cyst_count": ss("cyst_count", "single"),
-"cyst_single_lobe": ss("cyst_single_lobe", "right"),
-"cyst_single_size_mm": ss("cyst_single_size", ""),
-"cyst_few_largest_mm": ss("cyst_few_largest", ""),
-"cyst_few_lobe": ss("cyst_few_lobe", "right"),
-"hemangioma_count": ss("hemangioma_count", "single"),
-"hemangioma_single_lobe": ss("hemangioma_single_lobe", "right"),
-"hemangioma_single_size_mm": ss("hemangioma_single_size", ""),
-"hemangioma_few_largest_mm": ss("hemangioma_few_largest", ""),
-"hemangioma_few_lobe": ss("hemangioma_few_lobe", "right"),
-"abscess_count": ss("abscess_count", "single"),
-"abscess_lesions": _abscess_lesions,
-"ihbr": ss("liver_ihbr", "normal"),
-"portal_vein": ss("liver_portal", "normal"),
-"portal_vein_mm": ss("liver_portal_mm", "")
-    if ss("liver_portal", "normal") == "dilated" else "",
+    "size_mm": liver_size,
+    "size_descriptor": liver_status,
+    "outline": ss("liver_outline", "normal"),
+    "echotexture": ss("liver_echo", "normal"),
+    "steatosis_grade": ss("liver_steatosis", None),
+    "focal_lesion": _lf,
+    "focal_lesion_text": ss("liver_focal_text", ""),
+    "cyst_count": ss("cyst_count", "single"),
+    "cyst_single_lobe": ss("cyst_single_lobe", "right"),
+    "cyst_single_size_mm": ss("cyst_single_size", ""),
+    "cyst_few_largest_mm": ss("cyst_few_largest", ""),
+    "cyst_few_lobe": ss("cyst_few_lobe", "right"),
+    "hemangioma_count": ss("hemangioma_count", "single"),
+    "hemangioma_single_lobe": ss("hemangioma_single_lobe", "right"),
+    "hemangioma_single_size_mm": ss("hemangioma_single_size", ""),
+    "hemangioma_few_largest_mm": ss("hemangioma_few_largest", ""),
+    "hemangioma_few_lobe": ss("hemangioma_few_lobe", "right"),
+    "abscess_count": ss("abscess_count", "single"),
+    "abscess_lesions": _abscess_lesions,
+    "ihbr": ss("liver_ihbr", "normal"),
+    "portal_vein": ss("liver_portal", "normal"),
+    "portal_vein_mm": ss("liver_portal_mm", "")
+        if ss("liver_portal", "normal") == "dilated" else "",
 })
 
 data["gall_bladder"].update({
-"status": ss("gb_status", "adequately_distended"),
-"wall_thickened": bool(ss("gb_wall_check", False)),
-"wall_mm": ss("gb_wall_mm", ""),
-"calculi": ss("gb_calculi", "none"),
-"calculi_count": ss("gb_calc_count", "single"),
-"calculi_size_cat": ss("gb_calc_size_cat", "small"),
-"calculi_size_mm": ss("gb_calc_size", ""),
-"calculi_neck": bool(ss("gb_calc_neck", False)),
-"calculi_neck_size_mm": ss("gb_neck_size", ""),
-"sludge": ss("gb_sludge", "none"),
-"sludge_ball": bool(ss("gb_sludge_ball", False)),
-"sludge_ball_count": ss("gb_sb_count", "single"),
-"sludge_ball_size_mm": ss("gb_sb_size", ""),
-"sludge_ball_wall": ss("gb_sb_wall", "anterior"),
-"comet_tail": bool(ss("gb_comet_tail", False)),
-"comet_tail_count": ss("gb_ct_count", "single"),
-"comet_tail_wall": ss("gb_ct_wall", "anterior"),
-"pericholecystic_fluid": bool(ss("gb_peri_fluid", False)),
+    "status": ss("gb_status", "adequately_distended"),
+    "wall_thickened": bool(ss("gb_wall_check", False)),
+    "wall_mm": ss("gb_wall_mm", ""),
+    "calculi": ss("gb_calculi", "none"),
+    "calculi_count": ss("gb_calc_count", "single"),
+    "calculi_size_cat": ss("gb_calc_size_cat", "small"),
+    "calculi_size_mm": ss("gb_calc_size", ""),
+    "calculi_neck": bool(ss("gb_calc_neck", False)),
+    "calculi_neck_size_mm": ss("gb_neck_size", ""),
+    "sludge": ss("gb_sludge", "none"),
+    "sludge_ball": bool(ss("gb_sludge_ball", False)),
+    "sludge_ball_count": ss("gb_sb_count", "single"),
+    "sludge_ball_size_mm": ss("gb_sb_size", ""),
+    "sludge_ball_wall": ss("gb_sb_wall", "anterior"),
+    "comet_tail": bool(ss("gb_comet_tail", False)),
+    "comet_tail_count": ss("gb_ct_count", "single"),
+    "comet_tail_wall": ss("gb_ct_wall", "anterior"),
+    "pericholecystic_fluid": bool(ss("gb_peri_fluid", False)),
 })
 
 data["cbd"].update({
-"size_mm": cbd_mm,
-"status": ss("cbd_status", "normal"),
-"calculi": bool(ss("cbd_calc", False)),
-"calculi_count": ss("cbd_calc_count", "single"),
-"calculi_size_mm": ss("cbd_calc_size", ""),
-"calculi_location": ss("cbd_calc_location", "distal"),
-"ihbr": ss("cbd_ihbr", "normal"),
+    "size_mm": cbd_mm,
+    "status": ss("cbd_status", "normal"),
+    "calculi": bool(ss("cbd_calc", False)),
+    "calculi_count": ss("cbd_calc_count", "single"),
+    "calculi_size_mm": ss("cbd_calc_size", ""),
+    "calculi_location": ss("cbd_calc_location", "distal"),
+    "ihbr": ss("cbd_ihbr", "normal"),
 })
 
 data["pancreas"].update({
-"status": ss("pn_status", None) or "normal",
-"ee_size": ss("pn_ee_size", "normal"),
-"ee_fat_stranding": bool(ss("pn_ee_fat", False)),
-"ee_fat_location": ss("pn_ee_fat_loc", "none"),
-"ee_free_fluid": bool(ss("pn_ee_fluid", False)),
-"ee_fluid_location": ss("pn_ee_fluid_loc", "none"),
-"ac_size": ss("pn_ac_size", "normal"),
-"ac_echo": ss("pn_ac_echo", "normal"),
-"ac_echo_location": ss("pn_ac_echo_loc", "none"),
-"ac_margins": ss("pn_ac_margins", "normal"),
-"wp_type": ss("pn_wp_type", "won"),
-"wp_dims": ss("pn_wp_dims", ""),
-"wp_vol": ss("pn_wp_vol", ""),
-"wp_location": ss("pn_wp_location", "lesser_sac"),
-"ch_foci": bool(ss("pn_ch_foci", False)),
-"ch_mpd": bool(ss("pn_ch_mpd", False)),
-"ch_mpd_size": ss("pn_ch_mpd_size", ""),
-"ch_fat": bool(ss("pn_ch_fat", False)),
+    "status": ss("pn_status", None) or "normal",
+    "ee_size": ss("pn_ee_size", "normal"),
+    "ee_fat_stranding": bool(ss("pn_ee_fat", False)),
+    "ee_fat_location": ss("pn_ee_fat_loc", "none"),
+    "ee_free_fluid": bool(ss("pn_ee_fluid", False)),
+    "ee_fluid_location": ss("pn_ee_fluid_loc", "none"),
+    "ac_size": ss("pn_ac_size", "normal"),
+    "ac_echo": ss("pn_ac_echo", "normal"),
+    "ac_echo_location": ss("pn_ac_echo_loc", "none"),
+    "ac_margins": ss("pn_ac_margins", "normal"),
+    "wp_type": ss("pn_wp_type", "won"),
+    "wp_dims": ss("pn_wp_dims", ""),
+    "wp_vol": ss("pn_wp_vol", ""),
+    "wp_location": ss("pn_wp_location", "lesser_sac"),
+    "ch_foci": bool(ss("pn_ch_foci", False)),
+    "ch_mpd": bool(ss("pn_ch_mpd", False)),
+    "ch_mpd_size": ss("pn_ch_mpd_size", ""),
+    "ch_fat": bool(ss("pn_ch_fat", False)),
 })
 
 data["spleen"].update({
-"size_mm": sp_size,
-"size_descriptor": sp_desc,
-"focal_lesion": ss("sp_focal", "none"),
-"focal_count": ss("sp_focal_count", "few"),
-"portal_vein_mm": ss("sp_portal_mm", "") if spleen_enlarged else "",
-"accessory_spleen": bool(ss("sp_acc", False)),
-"accessory_size_mm": ss("sp_acc_size", ""),
-"accessory_location": ss("sp_acc_loc", "hilum"),
+    "size_mm": sp_size,
+    "size_descriptor": sp_desc,
+    "focal_lesion": ss("sp_focal", "none"),
+    "focal_count": ss("sp_focal_count", "few"),
+    "portal_vein_mm": ss("sp_portal_mm", "") if spleen_enlarged else "",
+    "accessory_spleen": bool(ss("sp_acc", False)),
+    "accessory_size_mm": ss("sp_acc_size", ""),
+    "accessory_location": ss("sp_acc_loc", "hilum"),
 })
 
 for side in ("right", "left"):
-sd = side[0]
-calcs = []
-if ss(f"kd_{sd}_has_calc", False):
-    for i in range(ss(f"kd_{sd}_calc_count", 0)):
-        sz = ss(f"kd_{sd}_calc_size_{i}", "")
-        pole = ss(f"kd_{sd}_calc_pole_{i}", "mid")
-        if sz:
-            calcs.append({"size_mm": sz, "pole": pole})
-status = ss(f"kd_{sd}_status", "normal")
-if status == "normal":
-    has_uc = ss(f"kd_{sd}_has_uc", False)
-    if has_uc:
-        uc_count = ss(f"kd_{sd}_uc_count", "single")
-        if uc_count == "couple":
-            uc_sizes = [ss(f"kd_{sd}_uc_s1", ""), ss(f"kd_{sd}_uc_s2", "")]
+    sd = side[0]
+    calcs = []
+    if ss(f"kd_{sd}_has_calc", False):
+        for i in range(ss(f"kd_{sd}_calc_count", 0)):
+            sz = ss(f"kd_{sd}_calc_size_{i}", "")
+            pole = ss(f"kd_{sd}_calc_pole_{i}", "mid")
+            if sz:
+                calcs.append({"size_mm": sz, "pole": pole})
+    status = ss(f"kd_{sd}_status", "normal")
+    if status == "normal":
+        has_uc = ss(f"kd_{sd}_has_uc", False)
+        if has_uc:
+            uc_count = ss(f"kd_{sd}_uc_count", "single")
+            if uc_count == "couple":
+                uc_sizes = [ss(f"kd_{sd}_uc_s1", ""), ss(f"kd_{sd}_uc_s2", "")]
+            else:
+                uc_sizes = [ss(f"kd_{sd}_uc_size", "")]
+            uc_level = ss(f"kd_{sd}_uc_level", "distal_ureter")
+            uc_grade = ss(f"kd_{sd}_uc_grade", "none")
         else:
-            uc_sizes = [ss(f"kd_{sd}_uc_size", "")]
-        uc_level = ss(f"kd_{sd}_uc_level", "distal_ureter")
-        uc_grade = ss(f"kd_{sd}_uc_grade", "none")
-    else:
-        uc_count = "none"
-        uc_sizes = []
-        uc_level = "distal_ureter"
-        uc_grade = "none"
+            uc_count = "none"
+            uc_sizes = []
+            uc_level = "distal_ureter"
+            uc_grade = "none"
 
-    if ss(f"kd_{sd}_has_cyst", False):
-        cyst_type = ss(f"kd_{sd}_cyst_type", "simple")
-        cyst_count = ss(f"kd_{sd}_cyst_count", "single")
-        cyst_size = ss(f"kd_{sd}_cyst_size", "")
-        cyst_loc = ss(f"kd_{sd}_cyst_loc", "")
-        if cyst_type == "complex":
-            cyst_septa = ss(f"kd_{sd}_cyst_septa", "none")
-            cyst_calc = ss(f"kd_{sd}_cyst_calc", "none")
+        if ss(f"kd_{sd}_has_cyst", False):
+            cyst_type = ss(f"kd_{sd}_cyst_type", "simple")
+            cyst_count = ss(f"kd_{sd}_cyst_count", "single")
+            cyst_size = ss(f"kd_{sd}_cyst_size", "")
+            cyst_loc = ss(f"kd_{sd}_cyst_loc", "")
+            if cyst_type == "complex":
+                cyst_septa = ss(f"kd_{sd}_cyst_septa", "none")
+                cyst_calc = ss(f"kd_{sd}_cyst_calc", "none")
+            else:
+                cyst_septa = "none"
+                cyst_calc = "none"
         else:
+            cyst_type = "none"
+            cyst_count = "single"
+            cyst_size = ""
+            cyst_loc = ""
             cyst_septa = "none"
             cyst_calc = "none"
-    else:
-        cyst_type = "none"
-        cyst_count = "single"
-        cyst_size = ""
-        cyst_loc = ""
-        cyst_septa = "none"
-        cyst_calc = "none"
 
-    if ss(f"kd_{sd}_has_hydro", False):
-        hydro = ss(f"kd_{sd}_hydro", "mild")
-        hydro_nocalc = ss(f"kd_{sd}_hydro_nocalc", False)
-        hydro_rpc = ss(f"kd_{sd}_hydro_rpc", False)
-        uc_not_traced = ss(f"kd_{sd}_uc_not_traced", False)
-    else:
-        hydro = "none"
-        hydro_nocalc = False
-        hydro_rpc = False
-        uc_not_traced = False
+        if ss(f"kd_{sd}_has_hydro", False):
+            hydro = ss(f"kd_{sd}_hydro", "mild")
+            hydro_nocalc = ss(f"kd_{sd}_hydro_nocalc", False)
+            hydro_rpc = ss(f"kd_{sd}_hydro_rpc", False)
+            uc_not_traced = ss(f"kd_{sd}_uc_not_traced", False)
+        else:
+            hydro = "none"
+            hydro_nocalc = False
+            hydro_rpc = False
+            uc_not_traced = False
 
-    contra = ss(f"kd_{sd}_contra", False)
+        contra = ss(f"kd_{sd}_contra", False)
 
-    data["kidneys"][side].update({
-        "status": "normal",
-        "size_text": ss(f"kd_{sd}_size_text", ""),
-        "calculi": calcs,
-        "ureter_calculus": {
-            "count": uc_count,
-            "sizes": [s for s in uc_sizes if s],
-            "level": uc_level,
-            "grade": uc_grade,
-        },
-        "ureter_not_traced": uc_not_traced,
-        "cyst_type": cyst_type,
-        "cyst_count": cyst_count,
-        "cyst_size_mm": cyst_size,
-        "cyst_location": cyst_loc,
-        "cyst_septa": cyst_septa,
-        "cyst_calc": cyst_calc,
-        "cyst_bosniak": _cyst_bosniak({
+        data["kidneys"][side].update({
+            "status": "normal",
+            "size_text": ss(f"kd_{sd}_size_text", ""),
+            "calculi": calcs,
+            "ureter_calculus": {
+                "count": uc_count,
+                "sizes": [s for s in uc_sizes if s],
+                "level": uc_level,
+                "grade": uc_grade,
+            },
+            "ureter_not_traced": uc_not_traced,
             "cyst_type": cyst_type,
+            "cyst_count": cyst_count,
+            "cyst_size_mm": cyst_size,
+            "cyst_location": cyst_loc,
             "cyst_septa": cyst_septa,
             "cyst_calc": cyst_calc,
-        }) if cyst_type != "none" else "",
-        "hydronephrosis": hydro,
-        "hydronephrosis_no_obstructive_calculus": hydro_nocalc,
-        "recently_passed_calculus_suspected": hydro_rpc,
-        "contralateral_normal_clause": contra,
-    })
-else:
-    data["kidneys"][side].update({
-        "status": status,
-        "size_text": "",
-        "calculi": [],
-        "ureter_calculus": _new_ureter_calculus(),
-        "ureter_not_traced": False,
-        "cyst_type": "none",
-        "cyst_count": "single",
-        "cyst_size_mm": "",
-        "cyst_location": "",
-        "cyst_septa": "none",
-        "cyst_calc": "none",
-        "cyst_bosniak": "",
-        "hydronephrosis": "none",
-        "hydronephrosis_no_obstructive_calculus": False,
-        "recently_passed_calculus_suspected": False,
-        "contralateral_normal_clause": False,
-    })
+            "cyst_bosniak": _cyst_bosniak({
+                "cyst_type": cyst_type,
+                "cyst_septa": cyst_septa,
+                "cyst_calc": cyst_calc,
+            }) if cyst_type != "none" else "",
+            "hydronephrosis": hydro,
+            "hydronephrosis_no_obstructive_calculus": hydro_nocalc,
+            "recently_passed_calculus_suspected": hydro_rpc,
+            "contralateral_normal_clause": contra,
+        })
+    else:
+        data["kidneys"][side].update({
+            "status": status,
+            "size_text": "",
+            "calculi": [],
+            "ureter_calculus": _new_ureter_calculus(),
+            "ureter_not_traced": False,
+            "cyst_type": "none",
+            "cyst_count": "single",
+            "cyst_size_mm": "",
+            "cyst_location": "",
+            "cyst_septa": "none",
+            "cyst_calc": "none",
+            "cyst_bosniak": "",
+            "hydronephrosis": "none",
+            "hydronephrosis_no_obstructive_calculus": False,
+            "recently_passed_calculus_suspected": False,
+            "contralateral_normal_clause": False,
+        })
 
 data["kidneys"]["cortical_echogenicity"] = ss("kd_cort_echo", "normal")
 data["kidneys"]["cortical_echogenicity_laterality"] = ss("kd_cort_lat",
-                                                     "bilateral")
+                                                         "bilateral")
 _echo_val = ss("kd_cort_echo", "normal")
 if _echo_val == "mildly_raised":
-data["kidneys"]["cortical_cmd"] = "preserved"
+    data["kidneys"]["cortical_cmd"] = "preserved"
 elif _echo_val == "moderately_raised":
-data["kidneys"]["cortical_cmd"] = ss("kd_cort_cmd", "preserved")
+    data["kidneys"]["cortical_cmd"] = ss("kd_cort_cmd", "preserved")
 elif _echo_val == "significantly_raised":
-data["kidneys"]["cortical_cmd"] = ss("kd_cort_cmd", "hazy")
+    data["kidneys"]["cortical_cmd"] = ss("kd_cort_cmd", "hazy")
 else:
-data["kidneys"]["cortical_cmd"] = "preserved"
+    data["kidneys"]["cortical_cmd"] = "preserved"
 data["kidneys"]["age_related_echogenicity"] = bool(ss("kd_age_related", False))
 data["kidneys"]["negative_renal_line"] = (ss("kd_neg_renal", "no") == "yes")
 
 _r_uc = data["kidneys"]["right"]["ureter_calculus"]
 _l_uc = data["kidneys"]["left"]["ureter_calculus"]
 data["kidneys"]["bilateral_ureter_calculi"] = (
-data["kidneys"]["right"]["status"] == "normal"
-and data["kidneys"]["left"]["status"] == "normal"
-and _r_uc["count"] != "none"
-and _l_uc["count"] != "none"
+    data["kidneys"]["right"]["status"] == "normal"
+    and data["kidneys"]["left"]["status"] == "normal"
+    and _r_uc["count"] != "none"
+    and _l_uc["count"] != "none"
 )
 
 ub_status_val = None
 if ss("ub_partially_empty", False):
-ub_status_val = "partially_empty"
+    ub_status_val = "partially_empty"
 elif ss("ub_empty", False):
-ub_status_val = "empty"
+    ub_status_val = "empty"
 elif ss("ub_over", False):
-ub_status_val = "over"
+    ub_status_val = "over"
 
 data["urinary_bladder"].update({
-"status": ub_status_val,
-"catheterized": bool(ss("ub_catheterized", False)),
-"pre_void_cc": ss("ub_pre_void", ""),
-"post_void_cc": ss("ub_post_void", ""),
-"mass_calculus": not ss("ub_no_mass", True),
-"sedimentation_free_floating": bool(ss("ub_sed_free_floating", False)),
-"sedimentation_settled_debris": bool(ss("ub_sed_settled_debris", False)),
-"sedimentation_trace": bool(ss("ub_sed_trace", False)),
-"sedimentation_extensive": bool(ss("ub_sed_extensive", False)),
-"uti_suspected": bool(ss("ub_uti", False)),
-"wall_thickening": bool(ss("ub_wall_check", False)),
-"wall_irregular": bool(ss("ub_wall_irregular", False)),
-"wall_mm": ss("ub_wall_mm", ""),
-"force_empty_suboptimal": (data["kidneys"]["right"]["ureter_not_traced"]
-                            or data["kidneys"]["left"]["ureter_not_traced"]),
+    "status": ub_status_val,
+    "catheterized": bool(ss("ub_catheterized", False)),
+    "pre_void_cc": ss("ub_pre_void", ""),
+    "post_void_cc": ss("ub_post_void", ""),
+    "mass_calculus": not ss("ub_no_mass", True),
+    "sedimentation_free_floating": bool(ss("ub_sed_free_floating", False)),
+    "sedimentation_settled_debris": bool(ss("ub_sed_settled_debris", False)),
+    "sedimentation_trace": bool(ss("ub_sed_trace", False)),
+    "sedimentation_extensive": bool(ss("ub_sed_extensive", False)),
+    "uti_suspected": bool(ss("ub_uti", False)),
+    "wall_thickening": bool(ss("ub_wall_check", False)),
+    "wall_irregular": bool(ss("ub_wall_irregular", False)),
+    "wall_mm": ss("ub_wall_mm", ""),
+    "force_empty_suboptimal": (data["kidneys"]["right"]["ureter_not_traced"]
+                                or data["kidneys"]["left"]["ureter_not_traced"]),
 })
 
 if p_sex == "F":
-ut_status = ss("ut_status", "anteverted")
+    ut_status = ss("ut_status", "anteverted")
+    
+    # --- NEW AUTO-APPEND LOGIC FOR UTERUS ---
+    ub_status_val = data["urinary_bladder"]["status"]
+    if ub_status_val in ("empty", "partially_empty") and ut_status == "anteverted":
+        ut_status = "partially_visualized"
+    # ----------------------------------------
+    
+    adeno_feats = []
+    _aden_map = [
+        ("ut_aden_globular", "globular_shape"),
+        ("ut_aden_asymm", "asymmetric_posterior"),
+        ("ut_aden_venetian", "venetian_blind_sign"),
+        ("ut_aden_cysts", "subendometrial_cysts"),
+    ]
+    for _k, _v in _aden_map:
+        if ss(_k, False):
+            adeno_feats.append(_v)
 
-# --- NEW AUTO-APPEND LOGIC FOR UTERUS ---
-ub_status_val = data["urinary_bladder"]["status"]
-if ub_status_val in ("empty", "partially_empty") and ut_status == "anteverted":
-    ut_status = "partially_visualized"
-# ----------------------------------------
+    fib_types = []
+    fib_lesions = []
+    _fib_type_keys = [
+        ("ut_fib_type_intramural", "intramural", "ut_fib_type_intramural"),
+        ("ut_fib_type_intra_subser", "intramural_subserosal",
+         "ut_fib_type_intra_subser"),
+        ("ut_fib_type_intra_submuc", "intramural_submucosal",
+         "ut_fib_type_intra_submuc"),
+        ("ut_fib_type_submuc_intra", "submucosal_intramural",
+         "ut_fib_type_submuc_intra"),
+        ("ut_fib_type_subser_intra", "subserosal_intramural",
+         "ut_fib_type_subser_intra"),
+    ]
+    for k, type_key, prefix in _fib_type_keys:
+        if ss(k, False):
+            fib_types.append(type_key)
+            fib_lesions.append({
+                "location": ss(f"{prefix}_loc", "fundal"),
+                "size": ss(f"{prefix}_size", ""),
+            })
 
-adeno_feats = []
-_aden_map = [
-    ("ut_aden_globular", "globular_shape"),
-    ("ut_aden_asymm", "asymmetric_posterior"),
-    ("ut_aden_venetian", "venetian_blind_sign"),
-    ("ut_aden_cysts", "subendometrial_cysts"),
-]
-for _k, _v in _aden_map:
-    if ss(_k, False):
-        adeno_feats.append(_v)
+    data["uterus"].update({
+        "status": ut_status,
+        "size": ss("ut_size", ""),
+        "retroflexed": bool(ss("ut_retroflexed", False)),
+        "gravid": bool(ss("ut_gravid", False)),
+        "gravid_type": ss("ut_gravid_type", "CRL"),
+        "gravid_length": ss("ut_gravid_length", ""),
+        "gravid_weeks": ss("ut_gravid_weeks", ""),
+        "gravid_days": ss("ut_gravid_days", ""),
+        "low_lying": bool(ss("ut_low_lying", False)),
+        "cervix_visualized": ss("ut_cervix_vis", "partially"),
+        "myometrium": ss("ut_myometrium", "homogenous"),
+        "globular_shape": bool(ss("ut_globular_shape", False)),
+        "prominent_vascular_channels": bool(ss("ut_prom_vasc", False)),
+        "prominent_vascular_adnexa_scope": ss("ut_prom_vasc_scope", "myometrium"),
+        "endometrial_thickness_mm": ss("ut_endo_mm", ""),
+        "endometrial_pattern": ss("ut_endo_pattern", "regular"),
+        "endometrial_echotexture": ss("ut_endo_texture", "homogeneous"),
+        "endometrial_subcysts": bool(ss("ut_endo_subcysts", False)),
+        "endometrial_vascularity": bool(ss("ut_endo_vascularity", False)),
+        "endometrial_suspicion": ss("ut_endo_suspicion", "none"),
+        "endometrial_collection": ss("ut_endo_coll", "none"),
+        "endometrial_collection_het": bool(ss("ut_endo_het", False)),
+        "rpoc": bool(ss("ut_rpoc", False)),
+        "rpoc_size": ss("ut_rpoc_size", ""),
+        "rpoc_echo": ss("ut_rpoc_echo", "hypo"),
+        "cervix_elongated": bool(ss("ut_cx_elong", False)),
+        "cervix_bulky": bool(ss("ut_cx_bulky", False)),
+        "cervix_bulky_size_mm": ss("ut_cx_bulky_size", ""),
+        "nabothian": ss("ut_nabothian", "none"),
+        "cervix_collection": ss("ut_cx_coll", "none"),
+        "cervicitis_suspected": bool(ss("ut_cervicitis", False)),
+        "fibroid": bool(ss("ut_fibroid", False)),
+        "fibroid_count": ss("ut_fibroid_count", "single"),
+        "fibroid_types": fib_types,
+        "fibroid_lesions": fib_lesions,
+        "fibroid_figo_manual": ss("ut_fib_figo_manual", ""),
+        "adenomyosis": bool(ss("ut_adenomyosis", False)),
+        "adenomyosis_features": adeno_feats,
+        "adenomyosis_interface": ss("ut_aden_interface", "none"),
+        "adenomyosis_confidence": ss("ut_aden_conf", "auto"),
+        "adenomyomas": bool(ss("ut_adenomyomas", False)),
+        "adenomyomas_count": ss("ut_adenoma_count", "couple"),
+        "adenomyomas_echo": ss("ut_adenoma_echo", "hyperechoic"),
+        "adenomyomas_location": ss("ut_adenoma_loc", "posterior"),
+        "adenomyomas_size": ss("ut_adenoma_size", ""),
+        "adenomyomas_avascular": bool(ss("ut_adenoma_avascular", True)),
+        "neg_rpoc": bool(ss("ut_neg_rpoc", False)),
+        "neg_sol": bool(ss("ut_neg_sol", False)),
+        "neg_sol_irregular": bool(ss("ut_neg_sol_irregular", False)),
+        "neg_sol_collection": bool(ss("ut_neg_sol_collection", False)),
+    })
 
-fib_types = []
-fib_lesions = []
-_fib_type_keys = [
-    ("ut_fib_type_intramural", "intramural", "ut_fib_type_intramural"),
-    ("ut_fib_type_intra_subser", "intramural_subserosal",
-     "ut_fib_type_intra_subser"),
-    ("ut_fib_type_intra_submuc", "intramural_submucosal",
-     "ut_fib_type_intra_submuc"),
-    ("ut_fib_type_submuc_intra", "submucosal_intramural",
-     "ut_fib_type_submuc_intra"),
-    ("ut_fib_type_subser_intra", "subserosal_intramural",
-     "ut_fib_type_subser_intra"),
-]
-for k, type_key, prefix in _fib_type_keys:
-    if ss(k, False):
-        fib_types.append(type_key)
-        fib_lesions.append({
-            "location": ss(f"{prefix}_loc", "fundal"),
-            "size": ss(f"{prefix}_size", ""),
-        })
+    for side, sd in (("right", "r"), ("left", "l")):
+        o = data["ovaries"][side]
+        o["status"] = ss(f"ov_{sd}_status", "normal")
+        o["size_text"] = ss(f"ov_{sd}_size", "")
+        o["volume_cc"] = ss(f"ov_{sd}_vol", "")
+        o["findings"] = []
+        if o["status"] == "normal":
+            _finding_map = [
+                (f"ov_{sd}_f_simple", "simple_cyst",
+                 f"ov_{sd}_f_simple_size", f"ov_{sd}_f_simple_count"),
+                (f"ov_{sd}_f_hem", "hemorrhagic_cyst",
+                 f"ov_{sd}_f_hem_size", f"ov_{sd}_f_hem_count"),
+                (f"ov_{sd}_f_cl", "corpus_luteum",
+                 f"ov_{sd}_f_cl_size", f"ov_{sd}_f_cl_count"),
+            ]
+            for _ck, _ftype, _sz_key, _cnt_key in _finding_map:
+                if ss(_ck, False):
+                    cnt = ss(_cnt_key, "single")
+                    finding = {
+                        "type": _ftype,
+                        "size_mm": ss(_sz_key, ""),
+                        "count": cnt,
+                    }
+                    if cnt in ("couple", "few", "multiple"):
+                        finding["size2_mm"] = ss(f"{_ck}_size2", "")
+                    o["findings"].append(finding)
 
-data["uterus"].update({
-    "status": ut_status,
-    "size": ss("ut_size", ""),
-    "retroflexed": bool(ss("ut_retroflexed", False)),
-    "gravid": bool(ss("ut_gravid", False)),
-    "gravid_type": ss("ut_gravid_type", "CRL"),
-    "gravid_length": ss("ut_gravid_length", ""),
-    "gravid_weeks": ss("ut_gravid_weeks", ""),
-    "gravid_days": ss("ut_gravid_days", ""),
-    "low_lying": bool(ss("ut_low_lying", False)),
-    "cervix_visualized": ss("ut_cervix_vis", "partially"),
-    "myometrium": ss("ut_myometrium", "homogenous"),
-    "globular_shape": bool(ss("ut_globular_shape", False)),
-    "prominent_vascular_channels": bool(ss("ut_prom_vasc", False)),
-    "prominent_vascular_adnexa_scope": ss("ut_prom_vasc_scope", "myometrium"),
-    "endometrial_thickness_mm": ss("ut_endo_mm", ""),
-    "endometrial_pattern": ss("ut_endo_pattern", "regular"),
-    "endometrial_echotexture": ss("ut_endo_texture", "homogeneous"),
-    "endometrial_subcysts": bool(ss("ut_endo_subcysts", False)),
-    "endometrial_vascularity": bool(ss("ut_endo_vascularity", False)),
-    "endometrial_suspicion": ss("ut_endo_suspicion", "none"),
-    "endometrial_collection": ss("ut_endo_coll", "none"),
-    "endometrial_collection_het": bool(ss("ut_endo_het", False)),
-    "rpoc": bool(ss("ut_rpoc", False)),
-    "rpoc_size": ss("ut_rpoc_size", ""),
-    "rpoc_echo": ss("ut_rpoc_echo", "hypo"),
-    "cervix_elongated": bool(ss("ut_cx_elong", False)),
-    "cervix_bulky": bool(ss("ut_cx_bulky", False)),
-    "cervix_bulky_size_mm": ss("ut_cx_bulky_size", ""),
-    "nabothian": ss("ut_nabothian", "none"),
-    "cervix_collection": ss("ut_cx_coll", "none"),
-    "cervicitis_suspected": bool(ss("ut_cervicitis", False)),
-    "fibroid": bool(ss("ut_fibroid", False)),
-    "fibroid_count": ss("ut_fibroid_count", "single"),
-    "fibroid_types": fib_types,
-    "fibroid_lesions": fib_lesions,
-    "fibroid_figo_manual": ss("ut_fib_figo_manual", ""),
-    "adenomyosis": bool(ss("ut_adenomyosis", False)),
-    "adenomyosis_features": adeno_feats,
-    "adenomyosis_interface": ss("ut_aden_interface", "none"),
-    "adenomyosis_confidence": ss("ut_aden_conf", "auto"),
-    "adenomyomas": bool(ss("ut_adenomyomas", False)),
-    "adenomyomas_count": ss("ut_adenoma_count", "couple"),
-    "adenomyomas_echo": ss("ut_adenoma_echo", "hyperechoic"),
-    "adenomyomas_location": ss("ut_adenoma_loc", "posterior"),
-    "adenomyomas_size": ss("ut_adenoma_size", ""),
-    "adenomyomas_avascular": bool(ss("ut_adenoma_avascular", True)),
-    "neg_rpoc": bool(ss("ut_neg_rpoc", False)),
-    "neg_sol": bool(ss("ut_neg_sol", False)),
-    "neg_sol_irregular": bool(ss("ut_neg_sol_irregular", False)),
-    "neg_sol_collection": bool(ss("ut_neg_sol_collection", False)),
-})
-
-for side, sd in (("right", "r"), ("left", "l")):
-    o = data["ovaries"][side]
-    o["status"] = ss(f"ov_{sd}_status", "normal")
-    o["size_text"] = ss(f"ov_{sd}_size", "")
-    o["volume_cc"] = ss(f"ov_{sd}_vol", "")
-    o["findings"] = []
-    if o["status"] == "normal":
-        _finding_map = [
-            (f"ov_{sd}_f_simple", "simple_cyst",
-             f"ov_{sd}_f_simple_size", f"ov_{sd}_f_simple_count"),
-            (f"ov_{sd}_f_hem", "hemorrhagic_cyst",
-             f"ov_{sd}_f_hem_size", f"ov_{sd}_f_hem_count"),
-            (f"ov_{sd}_f_cl", "corpus_luteum",
-             f"ov_{sd}_f_cl_size", f"ov_{sd}_f_cl_count"),
-        ]
-        for _ck, _ftype, _sz_key, _cnt_key in _finding_map:
-            if ss(_ck, False):
-                cnt = ss(_cnt_key, "single")
-                finding = {
-                    "type": _ftype,
-                    "size_mm": ss(_sz_key, ""),
-                    "count": cnt,
-                }
-                if cnt in ("couple", "few", "multiple"):
-                    finding["size2_mm"] = ss(f"{_ck}_size2", "")
-                o["findings"].append(finding)
-
-data["ovaries"].update({
-    "pcos": bool(ss("ov_pcos", False)),
-    "pcos_feature2": bool(ss("ov_pcos_f2", False)),
-    "pcos_feature3": bool(ss("ov_pcos_f3", False)),
-    "pcos_feature4": bool(ss("ov_pcos_f4", False)),
-    "pcos_feature4_variable": bool(ss("ov_pcos_f4_var", False)),
-    "pcos_feature4_peripheral":
-        (ss("ov_pcos_f4_dist", "peripheral") == "peripheral"),
-    "pcos_feature4_random":
-        (ss("ov_pcos_f4_dist", "peripheral") == "random"),
-})
+    data["ovaries"].update({
+        "pcos": bool(ss("ov_pcos", False)),
+        "pcos_feature2": bool(ss("ov_pcos_f2", False)),
+        "pcos_feature3": bool(ss("ov_pcos_f3", False)),
+        "pcos_feature4": bool(ss("ov_pcos_f4", False)),
+        "pcos_feature4_variable": bool(ss("ov_pcos_f4_var", False)),
+        "pcos_feature4_peripheral":
+            (ss("ov_pcos_f4_dist", "peripheral") == "peripheral"),
+        "pcos_feature4_random":
+            (ss("ov_pcos_f4_dist", "peripheral") == "random"),
+    })
 else:
-ub_empty = (data["urinary_bladder"]["status"] in ("empty", "partially_empty"))
-pr_not_vis = bool(ss("pr_not_visualized", False))
-pr_partial = bool(ss("pr_partial_visualization", False))
-if ub_empty and not pr_not_vis and not pr_partial:
-    if data["urinary_bladder"]["status"] == "empty":
-        pr_not_vis = True
-    else:
-        pr_partial = True
+    ub_empty = (data["urinary_bladder"]["status"] in ("empty", "partially_empty"))
+    pr_not_vis = bool(ss("pr_not_visualized", False))
+    pr_partial = bool(ss("pr_partial_visualization", False))
+    if ub_empty and not pr_not_vis and not pr_partial:
+        if data["urinary_bladder"]["status"] == "empty":
+            pr_not_vis = True
+        else:
+            pr_partial = True
 
-data["prostate"].update({
-    "size_cc": ss("pr_cc", ""),
-    "median_lobe": bool(ss("pr_median_lobe", False)),
-    "median_lobe_size_mm": ss("pr_median_lobe_size", ""),
-    "median_lobe_boo": bool(ss("pr_median_lobe_boo", False)),
-    "cyst": bool(ss("pr_cyst", False)),
-    "cyst_size": ss("pr_cyst_size", ""),
-    "cyst_left_hemi": bool(ss("pr_cyst_left_hemi", False)),
-    "cyst_right_hemi": bool(ss("pr_cyst_right_hemi", False)),
-    "not_visualized": pr_not_vis,
-    "partial_visualization": pr_partial,
-})
+    data["prostate"].update({
+        "size_cc": ss("pr_cc", ""),
+        "median_lobe": bool(ss("pr_median_lobe", False)),
+        "median_lobe_size_mm": ss("pr_median_lobe_size", ""),
+        "median_lobe_boo": bool(ss("pr_median_lobe_boo", False)),
+        "cyst": bool(ss("pr_cyst", False)),
+        "cyst_size": ss("pr_cyst_size", ""),
+        "cyst_left_hemi": bool(ss("pr_cyst_left_hemi", False)),
+        "cyst_right_hemi": bool(ss("pr_cyst_right_hemi", False)),
+        "not_visualized": pr_not_vis,
+        "partial_visualization": pr_partial,
+    })
 
 data["bowel"].update({
-"wall_thickening": bool(ss("bw_wall_thick", False)),
+    "wall_thickening": bool(ss("bw_wall_thick", False)),
 })
 
 data["mln"] = {
-"branch": ss("mln_branch", "none"),
-"reactive_sub": ss("mln_reactive_sub", "plain"),
-"sig_tail": ss("mln_sig_tail", "significance"),
-"count": ss("mln_count", "multiple"),
-"size": ss("mln_size", "small"),
-"location": ss("mln_location", "bilateral"),
-"inflamed": bool(ss("mln_inflamed", False)),
-"lost_hila": bool(ss("mln_lost_hila", False)),
-"necrotic": bool(ss("mln_necrotic", False)),
-"largest": ss("mln_largest", ""),
-"size2": ss("mln_size2", ""),
+    "branch": ss("mln_branch", "none"),
+    "reactive_sub": ss("mln_reactive_sub", "plain"),
+    "sig_tail": ss("mln_sig_tail", "significance"),
+    "count": ss("mln_count", "multiple"),
+    "size": ss("mln_size", "small"),
+    "location": ss("mln_location", "bilateral"),
+    "inflamed": bool(ss("mln_inflamed", False)),
+    "lost_hila": bool(ss("mln_lost_hila", False)),
+    "necrotic": bool(ss("mln_necrotic", False)),
+    "largest": ss("mln_largest", ""),
+    "size2": ss("mln_size2", ""),
 }
 
 data["pleural_effusion"] = {
-"status": ss("pe_status", "none"),
-"laterality": ss("pe_laterality", "right"),
-"grade_right": ss("pe_grade_right", "mild"),
-"grade_left": ss("pe_grade_left", "mild"),
-"bilateral_asym_predom": ss("pe_predom", "r_gt_l"),
-"append_no_ascites": bool(ss("pe_append_no_ascites", False)),
+    "status": ss("pe_status", "none"),
+    "laterality": ss("pe_laterality", "right"),
+    "grade_right": ss("pe_grade_right", "mild"),
+    "grade_left": ss("pe_grade_left", "mild"),
+    "bilateral_asym_predom": ss("pe_predom", "r_gt_l"),
+    "append_no_ascites": bool(ss("pe_append_no_ascites", False)),
 }
 
 data["free_fluid"] = {
-"kind": ss("ff_kind", "none"),
-"grade": ss("ff_grade", "mild"),
-"append_no_effusion": bool(ss("ff_append_no_effusion", False)),
+    "kind": ss("ff_kind", "none"),
+    "grade": ss("ff_grade", "mild"),
+    "append_no_effusion": bool(ss("ff_append_no_effusion", False)),
 }
 
 data["appendix"].update({
-"status": ss("ap_status", "not_assessed"),
-"diameter_mm": ss("ap_d", ""),
+    "status": ss("ap_status", "not_assessed"),
+    "diameter_mm": ss("ap_d", ""),
 })
 
 
@@ -7645,83 +7646,83 @@ data["appendix"].update({
 # ============================================================
 
 with col_prev:
-st.subheader("📄 Live Preview")
-preview_placeholder = st.empty()
+    st.subheader("📄 Live Preview")
+    preview_placeholder = st.empty()
 
 with col_prev:
-st.subheader("✏️ Additional Body Findings (manual)")
-st.caption("Optional free text. Rendered in bold italic just before "
-           "IMPRESSION in the preview and DOCX. First letter of each "
-           "sentence is auto-capitalized.")
+    st.subheader("✏️ Additional Body Findings (manual)")
+    st.caption("Optional free text. Rendered in bold italic just before "
+               "IMPRESSION in the preview and DOCX. First letter of each "
+               "sentence is auto-capitalized.")
 
-def _cap_addendum_cb():
-    cur = st.session_state.get("additional_body_findings_box", "")
-    st.session_state["additional_body_findings_box"] = capitalize_sentences(cur)
+    def _cap_addendum_cb():
+        cur = st.session_state.get("additional_body_findings_box", "")
+        st.session_state["additional_body_findings_box"] = capitalize_sentences(cur)
 
-addendum_text = st.text_area(
-    "Additional body findings",
-    height=120, label_visibility="collapsed",
-    key="additional_body_findings_box",
-    placeholder="e.g. A small umbilical hernia is noted in the anterior "
-                "abdominal wall.",
-    on_change=_cap_addendum_cb)
+    addendum_text = st.text_area(
+        "Additional body findings",
+        height=120, label_visibility="collapsed",
+        key="additional_body_findings_box",
+        placeholder="e.g. A small umbilical hernia is noted in the anterior "
+                    "abdominal wall.",
+        on_change=_cap_addendum_cb)
 
 data["additional_body_findings"] = addendum_text or ""
 
 
 def render_preview_findings(data):
-p = data["patient"]
-out = ["         ULTRASOUND WHOLE ABDOMEN", ""]
-sex, age = p["sex"], p["age"]
-age_years = parse_age(age)
-is_ped = age_years is not None and age_years < 18
-is_ped_female = (sex == "F" and age_years is not None and age_years < 14)
-p_status = data["pancreas"].get("status", "normal")
-spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
-ub_status = data["urinary_bladder"].get("status") or "adequately_distended"
-secs = [liver_sentence(data["liver"], sex, age,
-                        spleen_enlarged=spleen_enlarged,
-                        cbd_ihbr=data["cbd"].get("ihbr", "normal")),
-        gall_bladder_sentence(data["gall_bladder"]),
-        cbd_sentence(data["cbd"]),
-        pancreas_sentence(data["pancreas"]),
-        spleen_sentence(data["spleen"]),
-        kidneys_sentence(data["kidneys"], ub_status=ub_status, age_text=age),
-        urinary_bladder_sentence(data["urinary_bladder"])]
-if sex == "F":
-    ov = data["ovaries"]
-    r_p = ov["right"].get("status", "normal") == "normal"
-    l_p = ov["left"].get("status", "normal") == "normal"
-    both_ovaries_gone = not r_p and not l_p
-    ut_not_vis = data["uterus"].get("status") == "not_visualized"
-    if both_ovaries_gone and ut_not_vis:
-        data["uterus"]["_ovaries_not_visualized"] = True
-    secs.append(uterus_sentence(data["uterus"], pediatric=is_ped_female,
-                                 age_years=age_years))
-    uterus_operated = data["uterus"].get("status") == "operated"
-    secs.append(ovaries_sentence(
-        ov, age_years=age_years, uterus_operated=uterus_operated,
-        uterus_not_visualized=ut_not_vis))
-else:
-    secs.append(prostate_sentence(data["prostate"], pediatric=is_ped,
-                                   ub_status=ub_status))
-secs.append(bowel_sentence(data["bowel"], sex, pancreas_status=p_status))
-if data["appendix"]["status"] != "not_assessed":
-    secs.append(appendix_sentence(data["appendix"]))
-secs.append(fluid_mln_sentence(data))
-for s in secs:
-    if not s:
-        continue
-    out.append("".join(x[0] for x in s))
-    out.append("")
-addendum = (data.get("additional_body_findings") or "").strip()
-if addendum:
-    out.append(addendum)
-    out.append("")
-out.append("IMPRESSION:")
-for line in data["impression"]["lines"]:
-    out.append(f"  - {line}")
-return "\n".join(out)
+    p = data["patient"]
+    out = ["         ULTRASOUND WHOLE ABDOMEN", ""]
+    sex, age = p["sex"], p["age"]
+    age_years = parse_age(age)
+    is_ped = age_years is not None and age_years < 18
+    is_ped_female = (sex == "F" and age_years is not None and age_years < 14)
+    p_status = data["pancreas"].get("status", "normal")
+    spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
+    ub_status = data["urinary_bladder"].get("status") or "adequately_distended"
+    secs = [liver_sentence(data["liver"], sex, age,
+                            spleen_enlarged=spleen_enlarged,
+                            cbd_ihbr=data["cbd"].get("ihbr", "normal")),
+            gall_bladder_sentence(data["gall_bladder"]),
+            cbd_sentence(data["cbd"]),
+            pancreas_sentence(data["pancreas"]),
+            spleen_sentence(data["spleen"]),
+            kidneys_sentence(data["kidneys"], ub_status=ub_status, age_text=age),
+            urinary_bladder_sentence(data["urinary_bladder"])]
+    if sex == "F":
+        ov = data["ovaries"]
+        r_p = ov["right"].get("status", "normal") == "normal"
+        l_p = ov["left"].get("status", "normal") == "normal"
+        both_ovaries_gone = not r_p and not l_p
+        ut_not_vis = data["uterus"].get("status") == "not_visualized"
+        if both_ovaries_gone and ut_not_vis:
+            data["uterus"]["_ovaries_not_visualized"] = True
+        secs.append(uterus_sentence(data["uterus"], pediatric=is_ped_female,
+                                     age_years=age_years))
+        uterus_operated = data["uterus"].get("status") == "operated"
+        secs.append(ovaries_sentence(
+            ov, age_years=age_years, uterus_operated=uterus_operated,
+            uterus_not_visualized=ut_not_vis))
+    else:
+        secs.append(prostate_sentence(data["prostate"], pediatric=is_ped,
+                                       ub_status=ub_status))
+    secs.append(bowel_sentence(data["bowel"], sex, pancreas_status=p_status))
+    if data["appendix"]["status"] != "not_assessed":
+        secs.append(appendix_sentence(data["appendix"]))
+    secs.append(fluid_mln_sentence(data))
+    for s in secs:
+        if not s:
+            continue
+        out.append("".join(x[0] for x in s))
+        out.append("")
+    addendum = (data.get("additional_body_findings") or "").strip()
+    if addendum:
+        out.append(addendum)
+        out.append("")
+    out.append("IMPRESSION:")
+    for line in data["impression"]["lines"]:
+        out.append(f"  - {line}")
+    return "\n".join(out)
 
 
 auto_impression = generate_impression(data, p_sex, p_age)
@@ -7730,72 +7731,72 @@ data["impression"]["lines"] = auto_impression
 preview_text = render_preview_findings(data)
 
 with preview_placeholder:
-_safe = html.escape(preview_text).replace("\n", "<br>")
-st.markdown(f'<div class="preview-box">{_safe}</div>', unsafe_allow_html=True)
+    _safe = html.escape(preview_text).replace("\n", "<br>")
+    st.markdown(f'<div class="preview-box">{_safe}</div>', unsafe_allow_html=True)
 
 
 def _h(s):
-return hashlib.md5(s.encode("utf-8")).hexdigest()
+    return hashlib.md5(s.encode("utf-8")).hexdigest()
 
 
 with col_prev:
-st.subheader("✏️ Impression (editable)")
-st.caption("Edit any line. Auto-updates with findings unless you type here.")
-auto_imp_str = "\n".join(auto_impression)
+    st.subheader("✏️ Impression (editable)")
+    st.caption("Edit any line. Auto-updates with findings unless you type here.")
+    auto_imp_str = "\n".join(auto_impression)
 
-if "_auto_imp_hash" not in st.session_state:
-    st.session_state["impression_box"] = auto_imp_str
-    st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
-    st.session_state["_last_set_content"] = auto_imp_str
+    if "_auto_imp_hash" not in st.session_state:
+        st.session_state["impression_box"] = auto_imp_str
+        st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
+        st.session_state["_last_set_content"] = auto_imp_str
 
-new_auto_hash = _h(auto_imp_str)
-if new_auto_hash != st.session_state["_auto_imp_hash"]:
-    cur_widget = st.session_state.get("impression_box", "")
-    if cur_widget == st.session_state["_last_set_content"]:
+    new_auto_hash = _h(auto_imp_str)
+    if new_auto_hash != st.session_state["_auto_imp_hash"]:
+        cur_widget = st.session_state.get("impression_box", "")
+        if cur_widget == st.session_state["_last_set_content"]:
+            st.session_state["impression_box"] = auto_imp_str
+            st.session_state["_last_set_content"] = auto_imp_str
+        st.session_state["_auto_imp_hash"] = new_auto_hash
+
+    edited_imp = st.text_area("Impression lines (one per line)",
+                              height=200, label_visibility="collapsed",
+                              key="impression_box")
+
+    if st.button("↺ Reset to auto-generated impression", key="reset_imp_btn"):
         st.session_state["impression_box"] = auto_imp_str
         st.session_state["_last_set_content"] = auto_imp_str
-    st.session_state["_auto_imp_hash"] = new_auto_hash
+        st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
+        st.rerun()
 
-edited_imp = st.text_area("Impression lines (one per line)",
-                          height=200, label_visibility="collapsed",
-                          key="impression_box")
-
-if st.button("↺ Reset to auto-generated impression", key="reset_imp_btn"):
-    st.session_state["impression_box"] = auto_imp_str
-    st.session_state["_last_set_content"] = auto_imp_str
-    st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
-    st.rerun()
-
-st.markdown("---")
-c_a, c_b = st.columns(2)
-with c_a:
-    final_data = dict(data)
-    if edited_imp.strip():
-        final_data["impression"] = {
-            "lines": [ln.strip() for ln in edited_imp.splitlines()
-                      if ln.strip()]
-        }
-    final_data["additional_body_findings"] = addendum_text or ""
-    docx_bytes = build_docx_bytes(final_data)
-    fname = f"{p_name or 'report'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-    fname = "".join(ch for ch in fname if ch.isalnum() or ch in "._-")
-    st.download_button(
-        "⬇️ Download .docx", docx_bytes, file_name=fname,
-        mime="application/vnd.openxmlformats-officedocument."
-             "wordprocessingml.document")
-with c_b:
-    if st.button("💾 Save to Database", key="save_db_btn"):
-        if not p_name.strip():
-            st.warning("Enter patient name first.")
-        else:
-            final_data = dict(data)
-            if edited_imp.strip():
-                final_data["impression"] = {
-                    "lines": [ln.strip() for ln in edited_imp.splitlines()
-                              if ln.strip()]
-                }
-            final_data["additional_body_findings"] = addendum_text or ""
-            save_report(final_data)
-            if p_ref.strip():
-                add_referrer(p_ref)
-            st.success("Saved to local database.")
+    st.markdown("---")
+    c_a, c_b = st.columns(2)
+    with c_a:
+        final_data = dict(data)
+        if edited_imp.strip():
+            final_data["impression"] = {
+                "lines": [ln.strip() for ln in edited_imp.splitlines()
+                          if ln.strip()]
+            }
+        final_data["additional_body_findings"] = addendum_text or ""
+        docx_bytes = build_docx_bytes(final_data)
+        fname = f"{p_name or 'report'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+        fname = "".join(ch for ch in fname if ch.isalnum() or ch in "._-")
+        st.download_button(
+            "⬇️ Download .docx", docx_bytes, file_name=fname,
+            mime="application/vnd.openxmlformats-officedocument."
+                 "wordprocessingml.document")
+    with c_b:
+        if st.button("💾 Save to Database", key="save_db_btn"):
+            if not p_name.strip():
+                st.warning("Enter patient name first.")
+            else:
+                final_data = dict(data)
+                if edited_imp.strip():
+                    final_data["impression"] = {
+                        "lines": [ln.strip() for ln in edited_imp.splitlines()
+                                  if ln.strip()]
+                    }
+                final_data["additional_body_findings"] = addendum_text or ""
+                save_report(final_data)
+                if p_ref.strip():
+                    add_referrer(p_ref)
+                st.success("Saved to local database.")
