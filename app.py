@@ -7193,14 +7193,14 @@ data["patient"] = {"name": p_name, "age": p_age, "sex": p_sex,
 _lf = ss("liver_focal", "none")
 _abscess_lesions = []
 if _lf == "abscess":
-_ac = ss("abscess_count", "single")
-n_abs = 1 if _ac == "single" else int(ss("abscess_n", 2) or 2)
-for i in range(n_abs):
-    _abscess_lesions.append({
-        "segment": ss(f"abs_seg_{i}", "I"),
-        "dim": ss(f"abs_dim_{i}", ""),
-        "vol": ss(f"abs_vol_{i}", ""),
-    })
+  _ac = ss("abscess_count", "single")
+  n_abs = 1 if _ac == "single" else int(ss("abscess_n", 2) or 2)
+  for i in range(n_abs):
+      _abscess_lesions.append({
+          "segment": ss(f"abs_seg_{i}", "I"),
+          "dim": ss(f"abs_dim_{i}", ""),
+          "vol": ss(f"abs_vol_{i}", ""),
+      })
 
 data["liver"].update({
 "size_mm": liver_size,
