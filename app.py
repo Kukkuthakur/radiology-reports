@@ -5250,6 +5250,43 @@ def generate_impression(d, sex, age):
         for _b in _blocks:
             lines.append(_b.upper())
 
+    # Negative impression lines (Item #7)
+    if d.get("tg_neg_pancreas"):
+        lines.append("PANCREAS APPEARS NORMAL IN SIZE & ECHOTEXTURE AT THE "
+                     "TIME OF SCAN.")
+    if d.get("tg_neg_kidneys"):
+        lines.append("KIDNEYS APPEAR NORMAL IN SIZE & ECHOTEXTURE AT THE "
+                     "TIME OF SCAN.")
+
+    # S. Amylase/Lipase standalone bullet (Item #8, Case B only)
+    _s_amy_in_combined = False
+    if d.get("tg_s_amylase"):
+        for _ln in lines:
+            if "ACUTE PANCREATITIS" in _ln or "PANCREATITIS" in _ln:
+                _s_amy_in_combined = True
+                break
+        if not _s_amy_in_combined:
+            lines.append("Adv- S. Amylase/Lipase Correlation.")
+
+    # CECT Abdomen Correlation advice (Item #20)
+    if d.get("tg_cect_abd") and lines:
+        _cect_opt = d.get("tg_cect_option", "if_clinically_warranted")
+        _cect_text = {
+            "if_clinically_warranted":
+                "Adv- CECT Abdomen Correlation, if clinically warranted.",
+            "for_further_evaluation":
+                "Adv- CECT Abdomen Correlation for further evaluation.",
+            "to_rule_out_neoplastic":
+                "Adv- CECT Abdomen Correlation, to rule out possible "
+                "neoplastic process.",
+        }[_cect_opt]
+        _longest_idx = max(range(len(lines)), key=lambda i: len(lines[i]))
+        _base = lines[_longest_idx].rstrip(".")
+        _adv_idx = _base.find("Adv-")
+        if _adv_idx != -1:
+            _base = _base[:_adv_idx].rstrip()
+        lines[_longest_idx] = _base + " - " + _cect_text
+
     if not lines:
         return (list(IMPRESSION_NORMAL_FEMALE) if (sex == "F" and not is_pediatric)
                 else list(IMPRESSION_NORMAL_MALE))
@@ -8465,6 +8502,13 @@ if _tpl_override:
 # Acalculus cholecystitis template flag
 if ss("ac_hepatitis_template", False):
     data["ac_hepatitis_template"] = True
+
+# Top-Row Toggles Group (UI-G)
+data["tg_cect_abd"] = bool(ss("tg_cect_abd", False))
+data["tg_cect_option"] = ss("tg_cect_option", "if_clinically_warranted")
+data["tg_neg_pancreas"] = bool(ss("tg_neg_pancreas", False))
+data["tg_neg_kidneys"] = bool(ss("tg_neg_kidneys", False))
+data["tg_s_amylase"] = bool(ss("tg_s_amylase", False))
 
 
 # ============================================================
