@@ -7888,12 +7888,61 @@ with col_find:
                                                      False)))
                         wget("ppln_lost_hila", False)
 
-    # --- BOWEL WALL legacy fallback ---
-    if not ss("bw_wall_present", False):
-        st.checkbox("Bowel wall thickening present (legacy)",
-                    key="bw_wall_thick",
-                    value=bool(_seed("bw_wall_thick", False)))
-        wget("bw_wall_thick", False)
+    # ============================================================
+    # TOP-ROW TOGGLES GROUP (UI-G)
+    # ============================================================
+    st.markdown("---")
+    _tg_c1, _tg_c2, _tg_c3, _tg_c4 = st.columns(4)
+    with _tg_c1:
+        st.checkbox("CECT Abd", key="tg_cect_abd",
+                    value=bool(_seed("tg_cect_abd", False)),
+                    help="Adv- CECT Abdomen Correlation (3 sub-options)")
+        wget("tg_cect_abd", False)
+    with _tg_c2:
+        st.checkbox("Neg - Pancreas", key="tg_neg_pancreas",
+                    value=bool(_seed("tg_neg_pancreas", False)),
+                    help="Pancreas appears normal in size & echotexture at the time of scan.")
+        wget("tg_neg_pancreas", False)
+    with _tg_c3:
+        st.checkbox("Neg - Kidneys", key="tg_neg_kidneys",
+                    value=bool(_seed("tg_neg_kidneys", False)),
+                    help="Kidneys appear normal in size & echotexture at the time of scan.")
+        wget("tg_neg_kidneys", False)
+    with _tg_c4:
+        st.checkbox("S. Amy/Lip", key="tg_s_amylase",
+                    value=bool(_seed("tg_s_amylase", False)),
+                    help='Append "Adv- S. Amylase/Lipase Correlation."')
+        wget("tg_s_amylase", False)
+
+    if ss("tg_cect_abd", False):
+        _cect_opts = [
+            "if_clinically_warranted",
+            "for_further_evaluation",
+            "to_rule_out_neoplastic",
+        ]
+        st.radio(
+            "CECT Abd advice wording",
+            _cect_opts,
+            index=_idx("tg_cect_option", _cect_opts, "if_clinically_warranted"),
+            horizontal=True,
+            format_func=lambda x: {
+                "if_clinically_warranted":
+                    "Adv- CECT Abdomen Correlation, if clinically warranted.",
+                "for_further_evaluation":
+                    "Adv- CECT Abdomen Correlation for further evaluation.",
+                "to_rule_out_neoplastic":
+                    "Adv- CECT Abdomen Correlation, to rule out possible "
+                    "neoplastic process.",
+            }[x],
+            key="tg_cect_option",
+            label_visibility="collapsed",
+        )
+        wget("tg_cect_option", "if_clinically_warranted")
+
+
+# ============================================================
+# ASSEMBLE DATA
+# ============================================================
 
 
 # ============================================================
