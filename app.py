@@ -5451,7 +5451,35 @@ def _add_impression_line_runs(para, line):
         _add_run(para, " " + adv, bold=True, italic=True)
 
 
+def enforce_uppercase_after_period(segs):
+    """Item #9: Force the first letter of any sentence after '. ' to uppercase,
+    while preserving each segment's bold/underline/italic flags."""
+    if not segs:
+        return segs
+    full = "".join(t[0] if isinstance(t[0], str) else "" for t in segs)
+    if not full:
+        return segs
+    fixed = re.sub(r"\.\s+([a-z])",
+                   lambda m: ". " + m.group(1).upper(),
+                   full)
+    if fixed == full:
+        return segs
+    out = []
+    idx = 0
+    for tup in segs:
+        t = tup[0]
+        if not isinstance(t, str):
+            out.append(tup)
+            continue
+        n = len(t)
+        out.append((fixed[idx:idx + n], tup[1], tup[2],
+                    tup[3] if len(tup) > 3 else None))
+        idx += n
+    return out
+
+
 def _render_segments(para, segs):
+    segs = enforce_uppercase_after_period(segs)
     for tup in segs:
         text = tup[0]
         bold = tup[1]
@@ -8597,6 +8625,7 @@ def render_preview_findings(data):
     for s in secs:
         if not s:
             continue
+        s = enforce_uppercase_after_period(s)
         out.append("".join(x[0] for x in s))
         out.append("")
     addendum = (data.get("additional_body_findings") or "").strip()
