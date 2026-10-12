@@ -5240,8 +5240,15 @@ def generate_impression(d, sex, age):
         lines.append(app_line)
 
     fluid_lines = fluid_mln_impression_lines(d)
-    for ln in fluid_lines:
+    for ln in reversed(fluid_lines):
         lines.insert(0, ln)
+
+    # Manual additional body findings → impression bullets (Item #6)
+    _addendum = (d.get("additional_body_findings") or "").strip()
+    if _addendum:
+        _blocks = [b.strip() for b in _addendum.split("\n\n") if b.strip()]
+        for _b in _blocks:
+            lines.append(_b.upper())
 
     if not lines:
         return (list(IMPRESSION_NORMAL_FEMALE) if (sex == "F" and not is_pediatric)
