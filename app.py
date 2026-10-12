@@ -4413,7 +4413,7 @@ def _liver_impression_line(liver):
     elif echo == "increased":
         if grade == "Severe+++":
             echo_descriptor = ("SIGNIFICANT FATTY INFILTRATION - "
-                               "?NON-ALCOHOLIC STEATO-HEPATITIS")
+                               "?NON-ALCOHOLIC STEATO-HEPATITIS(NASH)")
         elif grade:
             echo_descriptor = f"HEPATIC STEATOSIS({grade.upper()})"
         else:
@@ -5379,6 +5379,7 @@ def _add_trailing_stub(doc):
 
 
 _BOSNIAK_RE = re.compile(r"BOSNIAK\s+CAT-[IVX]+", re.IGNORECASE)
+_NASH_RE = re.compile(r"\(NASH\)", re.IGNORECASE)
 _VS_RE = re.compile(r"\bvs\b", re.IGNORECASE)
 
 
@@ -5425,7 +5426,8 @@ def _split_vs(text):
 
 def _split_bosniak(text):
     parts, last = [], 0
-    for m in _BOSNIAK_RE.finditer(text):
+    combined_re = re.compile(r"BOSNIAK\s+CAT-[IVX]+|\(NASH\)", re.IGNORECASE)
+    for m in combined_re.finditer(text):
         if m.start() > last:
             parts.append((text[last:m.start()], False))
         parts.append((m.group(0).upper(), True))
@@ -5515,6 +5517,18 @@ def build_docx_bytes(data):
     style.paragraph_format.space_after = Pt(0)
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.line_spacing = 1.0
+
+    # === FLEXIBLE TOP SPACER — add/remove lines as needed for stationery ===
+    # Each line uses font size 10 (blank paragraph).
+    for _ in range(3):
+        _p = doc.add_paragraph()
+        _p.paragraph_format.space_after = Pt(0)
+        _p.paragraph_format.space_before = Pt(0)
+        _p.paragraph_format.line_spacing = 1.0
+        _run = _p.add_run("")
+        _run.font.name = FONT_BODY
+        _run.font.size = Pt(10)
+    # === END SPACER ===
 
     table = doc.add_table(rows=2, cols=2)
     table.autofit = True
