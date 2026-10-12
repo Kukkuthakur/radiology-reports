@@ -126,40 +126,7 @@ TEMPLATES = {
         "ff_kind": "ascites",
         "ff_grade": "mild",
         "ac_hepatitis_template": True,
-    },
-    "Reactive Mesenteric Lymphadenitis / ?Koch's Abdomen": {
-        "liver_size_num": 149,
-        "gb_status": "adequately_distended",
-        "gb_calculi": "none",
-        "cbd_status": "normal",
-        "sp_size_num": 123,
-        "sp_portal_mm": "9.1",
-        "sp_focal": "none",
-        "ut_status": "anteverted",
-        "ut_size": "59x28",
-        "ut_endo_mm": "6.0",
-        "ut_myometrium": "homogenous",
-        "ov_r_status": "normal",
-        "ov_l_status": "normal",
-        "ov_l_f_hem": True,
-        "ov_l_f_hem_size": "25x11",
-        "ov_l_f_hem_count": "single",
-        "mln_branch": "reactive",
-        "mln_reactive_sub": "tb",
-        "mln_count": "few",
-        "mln_size": "enlarged",
-        "mln_location": "bilateral",
-        "mln_largest": "14x08",
-        "bw_wall_present": True,
-        "bw_segment_type": "short",
-        "bw_segment_len": "24",
-        "bw_term_ileum_check": True,
-        "bw_term_ileum_size": "4.7",
-        "bw_perifocal_mesentery": True,
-        "bw_embedded_nodes": True,
-        "bw_embedded_nodes_size": "14x08",
-        "bw_advice": "koch",
-    },
+    },   
 }
 
 
@@ -1227,7 +1194,7 @@ def liver_sentence(d, sex, age, spleen_enlarged=False, cbd_ihbr="normal"):
         s.append(seg(", "))
         if d.get("volume_redistribution"):
             s.append(seg("volume redistribution, ", True))
-        s.append(seg("crenated/nodular outline and", True))
+        s.append(seg("with crenated/nodular outline and", True))
         if echo == "coarse":
             s.append(seg(" coarse echotexture", True))
         elif echo == "increased":
@@ -3878,8 +3845,6 @@ def bowel_wall_sentence(d):
     if not loc_body_parts:
         return None
 
-    loc_str = " concentric ".join(loc_body_parts)
-    # Fix: first location shouldn't have "concentric" prefix
     loc_str = "concentric " + " & ".join(loc_body_parts)
 
     extras = []
@@ -4322,7 +4287,6 @@ def fluid_mln_sentence(data):
 
     out = []
     if fluid_sentence:
-        out.append(seg(" "))
         out.append(seg(fluid_sentence, True))
 
     if saio_line:
@@ -4449,7 +4413,7 @@ def _liver_impression_line(liver):
     elif echo == "increased":
         if grade == "Severe+++":
             echo_descriptor = ("SIGNIFICANT FATTY INFILTRATION - "
-                               "?NON-ALCOHOLIC STEATO-HEPATITIS")
+                               "?NON-ALCOHOLIC STEATO-HEPATITIS(NASH)")
         elif grade:
             echo_descriptor = f"HEPATIC STEATOSIS({grade.upper()})"
         else:
@@ -4750,9 +4714,10 @@ def fluid_mln_impression_lines(data):
 def generate_impression(d, sex, age):
     # Template impression override
     if d.get("impression_override"):
-        lines = [d["impression_override"]]
+        _line = d["impression_override"]
         if d.get("impression_advice"):
-            lines.append(d["impression_advice"])
+            _line = _line.rstrip(".") + ". " + d["impression_advice"]
+        lines = [_line]
         lines.append(IMPRESSION_REST_UNREMARKABLE)
         return [_q(l) for l in lines]
 
@@ -5275,8 +5240,52 @@ def generate_impression(d, sex, age):
         lines.append(app_line)
 
     fluid_lines = fluid_mln_impression_lines(d)
-    for ln in fluid_lines:
-        lines.append(ln)
+    for ln in reversed(fluid_lines):
+        lines.insert(0, ln)
+
+    # Manual additional body findings → impression bullets (Item #6)
+    _addendum = (d.get("additional_body_findings") or "").strip()
+    if _addendum:
+        _blocks = [b.strip() for b in _addendum.split("\n\n") if b.strip()]
+        for _b in _blocks:
+            lines.append(_b.upper())
+
+    # Negative impression lines (Item #7)
+    if d.get("tg_neg_pancreas"):
+        lines.append("PANCREAS APPEARS NORMAL IN SIZE & ECHOTEXTURE AT THE "
+                     "TIME OF SCAN.")
+    if d.get("tg_neg_kidneys"):
+        lines.append("KIDNEYS APPEAR NORMAL IN SIZE & ECHOTEXTURE AT THE "
+                     "TIME OF SCAN.")
+
+    # S. Amylase/Lipase standalone bullet (Item #8, Case B only)
+    _s_amy_in_combined = False
+    if d.get("tg_s_amylase"):
+        for _ln in lines:
+            if "ACUTE PANCREATITIS" in _ln or "PANCREATITIS" in _ln:
+                _s_amy_in_combined = True
+                break
+        if not _s_amy_in_combined:
+            lines.append("Adv- S. Amylase/Lipase Correlation.")
+
+    # CECT Abdomen Correlation advice (Item #20)
+    if d.get("tg_cect_abd") and lines:
+        _cect_opt = d.get("tg_cect_option", "if_clinically_warranted")
+        _cect_text = {
+            "if_clinically_warranted":
+                "Adv- CECT Abdomen Correlation, if clinically warranted.",
+            "for_further_evaluation":
+                "Adv- CECT Abdomen Correlation for further evaluation.",
+            "to_rule_out_neoplastic":
+                "Adv- CECT Abdomen Correlation, to rule out possible "
+                "neoplastic process.",
+        }[_cect_opt]
+        _longest_idx = max(range(len(lines)), key=lambda i: len(lines[i]))
+        _base = lines[_longest_idx].rstrip(".")
+        _adv_idx = _base.find("Adv-")
+        if _adv_idx != -1:
+            _base = _base[:_adv_idx].rstrip()
+        lines[_longest_idx] = _base + " - " + _cect_text
 
     if not lines:
         return (list(IMPRESSION_NORMAL_FEMALE) if (sex == "F" and not is_pediatric)
@@ -5370,6 +5379,7 @@ def _add_trailing_stub(doc):
 
 
 _BOSNIAK_RE = re.compile(r"BOSNIAK\s+CAT-[IVX]+", re.IGNORECASE)
+_NASH_RE = re.compile(r"\(NASH\)", re.IGNORECASE)
 _VS_RE = re.compile(r"\bvs\b", re.IGNORECASE)
 
 
@@ -5416,7 +5426,8 @@ def _split_vs(text):
 
 def _split_bosniak(text):
     parts, last = [], 0
-    for m in _BOSNIAK_RE.finditer(text):
+    combined_re = re.compile(r"BOSNIAK\s+CAT-[IVX]+|\(NASH\)", re.IGNORECASE)
+    for m in combined_re.finditer(text):
         if m.start() > last:
             parts.append((text[last:m.start()], False))
         parts.append((m.group(0).upper(), True))
@@ -5442,7 +5453,35 @@ def _add_impression_line_runs(para, line):
         _add_run(para, " " + adv, bold=True, italic=True)
 
 
+def enforce_uppercase_after_period(segs):
+    """Item #9: Force the first letter of any sentence after '. ' to uppercase,
+    while preserving each segment's bold/underline/italic flags."""
+    if not segs:
+        return segs
+    full = "".join(t[0] if isinstance(t[0], str) else "" for t in segs)
+    if not full:
+        return segs
+    fixed = re.sub(r"\.\s+([a-z])",
+                   lambda m: ". " + m.group(1).upper(),
+                   full)
+    if fixed == full:
+        return segs
+    out = []
+    idx = 0
+    for tup in segs:
+        t = tup[0]
+        if not isinstance(t, str):
+            out.append(tup)
+            continue
+        n = len(t)
+        out.append((fixed[idx:idx + n], tup[1], tup[2],
+                    tup[3] if len(tup) > 3 else None))
+        idx += n
+    return out
+
+
 def _render_segments(para, segs):
+    segs = enforce_uppercase_after_period(segs)
     for tup in segs:
         text = tup[0]
         bold = tup[1]
@@ -5478,6 +5517,18 @@ def build_docx_bytes(data):
     style.paragraph_format.space_after = Pt(0)
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.line_spacing = 1.0
+
+    # === FLEXIBLE TOP SPACER — add/remove lines as needed for stationery ===
+    # Each line uses font size 10 (blank paragraph).
+    for _ in range(3):
+        _p = doc.add_paragraph()
+        _p.paragraph_format.space_after = Pt(0)
+        _p.paragraph_format.space_before = Pt(0)
+        _p.paragraph_format.line_spacing = 1.0
+        _run = _p.add_run("")
+        _run.font.name = FONT_BODY
+        _run.font.size = Pt(10)
+    # === END SPACER ===
 
     table = doc.add_table(rows=2, cols=2)
     table.autofit = True
@@ -7916,12 +7967,61 @@ with col_find:
                                                      False)))
                         wget("ppln_lost_hila", False)
 
-    # --- BOWEL WALL legacy fallback ---
-    if not ss("bw_wall_present", False):
-        st.checkbox("Bowel wall thickening present (legacy)",
-                    key="bw_wall_thick",
-                    value=bool(_seed("bw_wall_thick", False)))
-        wget("bw_wall_thick", False)
+    # ============================================================
+    # TOP-ROW TOGGLES GROUP (UI-G)
+    # ============================================================
+    st.markdown("---")
+    _tg_c1, _tg_c2, _tg_c3, _tg_c4 = st.columns(4)
+    with _tg_c1:
+        st.checkbox("CECT Abd", key="tg_cect_abd",
+                    value=bool(_seed("tg_cect_abd", False)),
+                    help="Adv- CECT Abdomen Correlation (3 sub-options)")
+        wget("tg_cect_abd", False)
+    with _tg_c2:
+        st.checkbox("Neg - Pancreas", key="tg_neg_pancreas",
+                    value=bool(_seed("tg_neg_pancreas", False)),
+                    help="Pancreas appears normal in size & echotexture at the time of scan.")
+        wget("tg_neg_pancreas", False)
+    with _tg_c3:
+        st.checkbox("Neg - Kidneys", key="tg_neg_kidneys",
+                    value=bool(_seed("tg_neg_kidneys", False)),
+                    help="Kidneys appear normal in size & echotexture at the time of scan.")
+        wget("tg_neg_kidneys", False)
+    with _tg_c4:
+        st.checkbox("S. Amy/Lip", key="tg_s_amylase",
+                    value=bool(_seed("tg_s_amylase", False)),
+                    help='Append "Adv- S. Amylase/Lipase Correlation."')
+        wget("tg_s_amylase", False)
+
+    if ss("tg_cect_abd", False):
+        _cect_opts = [
+            "if_clinically_warranted",
+            "for_further_evaluation",
+            "to_rule_out_neoplastic",
+        ]
+        st.radio(
+            "CECT Abd advice wording",
+            _cect_opts,
+            index=_idx("tg_cect_option", _cect_opts, "if_clinically_warranted"),
+            horizontal=True,
+            format_func=lambda x: {
+                "if_clinically_warranted":
+                    "Adv- CECT Abdomen Correlation, if clinically warranted.",
+                "for_further_evaluation":
+                    "Adv- CECT Abdomen Correlation for further evaluation.",
+                "to_rule_out_neoplastic":
+                    "Adv- CECT Abdomen Correlation, to rule out possible "
+                    "neoplastic process.",
+            }[x],
+            key="tg_cect_option",
+            label_visibility="collapsed",
+        )
+        wget("tg_cect_option", "if_clinically_warranted")
+
+
+# ============================================================
+# ASSEMBLE DATA
+# ============================================================
 
 
 # ============================================================
@@ -8445,6 +8545,13 @@ if _tpl_override:
 if ss("ac_hepatitis_template", False):
     data["ac_hepatitis_template"] = True
 
+# Top-Row Toggles Group (UI-G)
+data["tg_cect_abd"] = bool(ss("tg_cect_abd", False))
+data["tg_cect_option"] = ss("tg_cect_option", "if_clinically_warranted")
+data["tg_neg_pancreas"] = bool(ss("tg_neg_pancreas", False))
+data["tg_neg_kidneys"] = bool(ss("tg_neg_kidneys", False))
+data["tg_s_amylase"] = bool(ss("tg_s_amylase", False))
+
 
 # ============================================================
 # PREVIEW / ADDENDUM / IMPRESSION
@@ -8532,6 +8639,7 @@ def render_preview_findings(data):
     for s in secs:
         if not s:
             continue
+        s = enforce_uppercase_after_period(s)
         out.append("".join(x[0] for x in s))
         out.append("")
     addendum = (data.get("additional_body_findings") or "").strip()
