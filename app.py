@@ -3845,8 +3845,6 @@ def bowel_wall_sentence(d):
     if not loc_body_parts:
         return None
 
-    loc_str = " concentric ".join(loc_body_parts)
-    # Fix: first location shouldn't have "concentric" prefix
     loc_str = "concentric " + " & ".join(loc_body_parts)
 
     extras = []
@@ -4716,9 +4714,10 @@ def fluid_mln_impression_lines(data):
 def generate_impression(d, sex, age):
     # Template impression override
     if d.get("impression_override"):
-        lines = [d["impression_override"]]
+        _lines = [d["impression_override"]]
         if d.get("impression_advice"):
-            lines.append(d["impression_advice"])
+            _line = _line.rstrip(".") + ". " + d["impression_advice"]
+        lines = [_line]
         lines.append(IMPRESSION_REST_UNREMARKABLE)
         return [_q(l) for l in lines]
 
