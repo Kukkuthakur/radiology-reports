@@ -1194,7 +1194,7 @@ def liver_sentence(d, sex, age, spleen_enlarged=False, cbd_ihbr="normal"):
         s.append(seg(", "))
         if d.get("volume_redistribution"):
             s.append(seg("volume redistribution, ", True))
-        s.append(seg("crenated/nodular outline and", True))
+        s.append(seg("with crenated/nodular outline and", True))
         if echo == "coarse":
             s.append(seg(" coarse echotexture", True))
         elif echo == "increased":
@@ -4289,7 +4289,6 @@ def fluid_mln_sentence(data):
 
     out = []
     if fluid_sentence:
-        out.append(seg(" "))
         out.append(seg(fluid_sentence, True))
 
     if saio_line:
