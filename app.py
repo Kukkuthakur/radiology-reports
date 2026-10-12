@@ -4714,7 +4714,7 @@ def fluid_mln_impression_lines(data):
 def generate_impression(d, sex, age):
     # Template impression override
     if d.get("impression_override"):
-        _lines = [d["impression_override"]]
+        _line = d["impression_override"]
         if d.get("impression_advice"):
             _line = _line.rstrip(".") + ". " + d["impression_advice"]
         lines = [_line]
