@@ -5241,7 +5241,7 @@ def generate_impression(d, sex, age):
 
     fluid_lines = fluid_mln_impression_lines(d)
     for ln in fluid_lines:
-        lines.append(ln)
+        lines.insert(0, ln)
 
     if not lines:
         return (list(IMPRESSION_NORMAL_FEMALE) if (sex == "F" and not is_pediatric)
