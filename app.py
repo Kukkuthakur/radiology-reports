@@ -7908,19 +7908,6 @@ with col_find:
             with st.expander("Subacute Intestinal Obstruction", expanded=False):
                 st.radio("Distension Type",
 
-                st.radio("Distension Type",
-                         ["none", "liquid_filled", "gaseous"],
-                         index=_idx("saio_distension_type",
-                                    ["none", "liquid_filled", "gaseous"],
-                                    "none"),
-                         horizontal=True,
-                         format_func=lambda x: {
-                             "none": "None",
-                             "liquid_filled": "Liquid Filled",
-                             "gaseous": "Gaseous"}[x],
-                         key="saio_distension_type")
-                wget("saio_distension_type", "none")
-
                 st.markdown("**Bowel Loop Sizes (mm)**")
                 c_a, c_b = st.columns(2)
                 with c_a:
