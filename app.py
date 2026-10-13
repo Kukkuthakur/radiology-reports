@@ -2800,6 +2800,25 @@ def uterus_sentence(d, pediatric=False, age_years=None):
     if status == "operated":
         return [seg("UTERUS", True, True), seg(" is operated.")]
 
+    # Item #21: post-menopausal uterus — age-appropriate line
+    if status == "post_menopausal":
+        _size = d.get("size", "")
+        if _size:
+            _s = [seg("UTERUS", True, True),
+                  seg(" appears age-appropriate in size "),
+                  size_seg(f"({_size}mm)"),
+                  seg(" with normal shape & echotexture.")]
+        else:
+            _s = [seg("UTERUS", True, True),
+                  seg(" appears age-appropriate in size with normal shape "
+                      "& echotexture.")]
+        # Still allow user-entered uterus findings (fibroid/adenomyosis) to
+        # fire on top of the age-appropriate line.
+        _extras = _myometrium_body_clause(d)
+        if _extras:
+            _s += [seg(" ")] + _extras
+        return _s
+
     s = [seg("UTERUS", True, True)]
     size = d.get("size", "")
     cls = _uterus_size_class(d)
@@ -3209,6 +3228,10 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
     if d.get("status") in ("not_visualized", "operated"):
         return lines
 
+    # Item #21: post_menopausal uterus produces no primary impression line,
+    # but any user-added findings (fibroid/adenomyosis/etc.) still fire.
+    _pm = (d.get("status") == "post_menopausal")
+
     rpoc_line = _rpoc_impression_line(d)
     cervix_line = _cervix_impression_line(d) if not rpoc_line else None
     pre_lines = []
@@ -3271,6 +3294,35 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
             if cl:
                 findings.append(cl.rstrip("."))
         lines.append(join_findings(primary, findings))
+        return pre_lines + lines
+        if _pm:
+        # Skip the size-based uterus line; jump straight to findings.
+        cls = "normal"
+        leading = ""
+        myo_prefix = ""
+        globular = False
+        myo_hetero = False
+        myo_word = ""
+        has_congestion = bool(d.get("prominent_vascular_channels"))
+        findings_list = []
+        if d.get("fibroid"):
+            _f = _fibroid_impression_fragment(d)
+            if _f:
+                findings_list.append(_f)
+        if d.get("adenomyosis"):
+            _f = _adenomyosis_impression_fragment(d)
+            if _f:
+                findings_list.append(f"FEATURES OF ADENOMYOSIS: {_f}")
+        if d.get("adenomyomas"):
+            _f = _adenomyomas_impression_fragment(d)
+            if _f:
+                findings_list.append(_f)
+        if findings_list:
+            lines.append(join_findings("", findings_list))
+        if ovaries is not None:
+            _endo_line = _endometrial_impression_pathways(d, ovaries)
+            if _endo_line:
+                lines.append(_endo_line)
         return pre_lines + lines
 
     cls = _uterus_size_class(d)
@@ -3720,7 +3772,9 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False,
             return []
         if postmeno and not uterus_operated:
             return [seg("BOTH OVARIES", True, True),
-                    seg(" are not visualized(likely atrophic).")]
+                    seg(" are not visualized"),
+                    seg("(likely atrophic)", italic=True),
+                    seg(".")]
         return [seg("BOTH OVARIES", True, True), seg(" are not visualized.")]
 
     pcos_body = _pcos_body_sentence(d) if d.get("pcos") else []
@@ -7145,16 +7199,20 @@ with col_find:
         if ut_open:
             with st.container(border=True):
                 _ut_status_opts = ["anteverted", "partially_visualized",
-                                   "operated", "not_visualized"]
+                                   "post_menopausal", "operated",
+                                   "not_visualized"]
                 st.radio("Status", _ut_status_opts,
                          index=_idx("ut_status", _ut_status_opts, "anteverted"),
                          horizontal=True,
                          format_func=lambda x: {
                              "anteverted": "Anteverted",
                              "partially_visualized": "Partially visualized",
+                             "post_menopausal": "Post-menopausal",
                              "operated": "Operated",
                              "not_visualized": "Not visualized"}[x],
-                         key="ut_status")
+                         key="ut_status",
+                         on_change=lambda: st.session_state.update(
+                             {"_ut_user_touched": True}))
                 wget("ut_status", "anteverted")
                 _uts = ss("ut_status", "anteverted")
 
@@ -7162,7 +7220,8 @@ with col_find:
                     st.caption("Ovaries auto-fill as not visualized. "
                                "Override below if needed.")
 
-                if _uts in ("anteverted", "partially_visualized"):
+                if _uts in ("anteverted", "partially_visualized",
+                            "post_menopausal"):
                     st.checkbox("Retro-flexed", key="ut_retroflexed",
                                 value=bool(_seed("ut_retroflexed", False)))
                     wget("ut_retroflexed", False)
@@ -7206,7 +7265,8 @@ with col_find:
                                  key="ut_cervix_vis")
                         wget("ut_cervix_vis", "partially")
 
-                if _uts in ("anteverted", "partially_visualized"):
+                if _uts in ("anteverted", "partially_visualized",
+                            "post_menopausal"):
                     st.text_input("Uterus size (mm) — e.g. 92x33",
                                   key="ut_size",
                                   value=_seed("ut_size", ""))
@@ -8542,6 +8602,15 @@ if p_sex == "F":
     ut_status = ss("ut_status", "anteverted")
 
     # --- AUTO-APPEND LOGIC FOR UTERUS ---
+    # Item #21: if age >= 50, auto-fill post_menopausal UNLESS user has
+    # manually chosen operated/not_visualized/partially_visualized.
+    _age_yrs_ut = parse_age(p_age)
+    if (_age_yrs_ut is not None and _age_yrs_ut >= 50):
+        _user_touched_ut = ss("_ut_user_touched", False)
+        if (not _user_touched_ut
+                and ut_status == "anteverted"):
+            ut_status = "post_menopausal"
+
     ub_status_val = data["urinary_bladder"]["status"]
     if (ub_status_val in ("empty", "partially_empty")
             and ut_status == "anteverted"):
