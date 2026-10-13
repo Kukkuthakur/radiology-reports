@@ -3295,7 +3295,7 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
                 findings.append(cl.rstrip("."))
         lines.append(join_findings(primary, findings))
         return pre_lines + lines
-        if _pm:
+    if _pm:
         # Skip the size-based uterus line; jump straight to findings.
         cls = "normal"
         leading = ""
