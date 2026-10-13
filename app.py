@@ -1116,6 +1116,15 @@ def new_report(sex="F"):
 # SEGMENTS
 # ============================================================
 
+def size_seg(text):
+    """Return a bold+italic segment for parenthetical sizes on abnormal
+    findings (Item #5)."""
+    if isinstance(text, str):
+        text = _lower_mm_in_text(text)
+        text = _q(text)
+    return (text, True, False, True)
+
+
 def seg(text, bold=False, underline=False, italic=None):
     if isinstance(text, str):
         text = _lower_mm_in_text(text)
@@ -1193,15 +1202,15 @@ def liver_sentence(d, sex, age, spleen_enlarged=False, cbd_ihbr="normal"):
     if desc == "normal":
         s.append(seg(f" is normal in size ({size}mm)"))
     elif desc == "borderline":
-        s += [seg(" is "), seg("borderline enlarged in size", True), seg(f" ({size}mm)")]
+        s += [seg(" is "), seg("borderline enlarged in size", True), size_seg(f" ({size}mm)")]
     elif desc == "mild":
-        s += [seg(" is "), seg("mildly enlarged in size", True), seg(f" ({size}mm)")]
+        s += [seg(" is "), seg("mildly enlarged in size", True), size_seg(f" ({size}mm)")]
     elif desc == "moderate":
-        s += [seg(" is "), seg("moderately enlarged in size", True), seg(f" ({size}mm)")]
+        s += [seg(" is "), seg("moderately enlarged in size", True), size_seg(f" ({size}mm)")]
     elif desc == "gross":
-        s += [seg(" is "), seg("grossly enlarged in size", True), seg(f" ({size}mm)")]
+        s += [seg(" is "), seg("grossly enlarged in size", True), size_seg(f" ({size}mm)")]
     elif desc == "enlarged_for_age":
-        s += [seg(" is "), seg("enlarged for age in size", True), seg(f" ({size}mm)")]
+        s += [seg(" is "), seg("enlarged for age in size", True), size_seg(f" ({size}mm)")]
 
     if outline == "crenated":
         s.append(seg(", "))
@@ -1257,7 +1266,7 @@ def liver_sentence(d, sex, age, spleen_enlarged=False, cbd_ihbr="normal"):
         else:
             s += [seg(" Portal vein is "), seg("dilated", True)]
             if d["portal_vein_mm"]:
-                s.append(seg(f" ({d['portal_vein_mm']}mm)"))
+                s.append(size_seg(f" ({d['portal_vein_mm']}mm)"))
             s.append(seg("."))
     return s
 
@@ -1600,22 +1609,21 @@ def spleen_sentence(d):
     if desc == "normal":
         s.append(seg(f" is normal in size ({size}mm)"))
     elif desc == "borderline":
-        s += [seg(" is "), seg("borderline enlarged in size", True), seg(f" ({size}mm)")]
+        s += [seg(" is "), seg("borderline enlarged in size", True), size_seg(f" ({size}mm)")]
     elif desc == "mild":
-        s += [seg(" is "), seg("mildly enlarged in size", True), seg(f" ({size}mm)")]
+        s += [seg(" is "), seg("mildly enlarged in size", True), size_seg(f" ({size}mm)")]
     elif desc == "mild_to_moderate":
         s += [seg(" is "), seg("mild to moderately enlarged in size", True),
-              seg(f" ({size}mm)")]
+              size_seg(f" ({size}mm)")]
     elif desc == "moderate":
-        s += [seg(" is "), seg("moderately enlarged in size", True), seg(f" ({size}mm)")]
+        s += [seg(" is "), seg("moderately enlarged in size", True), size_seg(f" ({size}mm)")]
     elif desc == "moderate_to_gross":
         s += [seg(" is "), seg("moderately to grossly enlarged in size", True),
-              seg(f" ({size}mm)")]
+              size_seg(f" ({size}mm)")]
     elif desc == "gross":
-        s += [seg(" is "), seg("grossly enlarged in size", True), seg(f" ({size}mm)")]
+        s += [seg(" is "), seg("grossly enlarged in size", True), size_seg(f" ({size}mm)")]
     elif desc == "enlarged_for_age":
-        s += [seg(" is "), seg("enlarged for age in size", True), seg(f" ({size}mm)")]
-
+        s += [seg(" is "), seg("enlarged for age in size", True), size_seg(f" ({size}mm)")]
     s.append(seg(" with normal echotexture."))
 
     fl = d.get("focal_lesion", "none")
@@ -2395,7 +2403,7 @@ def prostate_sentence(d, pediatric=False, ub_status=None):
     body_desc, _ = band
     s += [seg(" is "), seg(f"{body_desc} in size", True)]
     if cc:
-        s.append(seg(f"({cc}CC)"))
+        s.append(size_seg(f"({cc}CC)"))
     if median_frag:
         s += [seg(" with "), seg(median_frag, True),
               seg(", however the attenuation and margins are normal.")]
@@ -2819,7 +2827,7 @@ def uterus_sentence(d, pediatric=False, age_years=None):
         if size_word:
             s += [seg(" and "), seg(f"{size_word} in size", True)]
             if size:
-                s.append(seg(f"({size}mm)"))
+                s.append(size_seg(f"({size}mm)"))
             if globular:
                 s.append(seg(" with globular shape."))
             else:
