@@ -4202,9 +4202,9 @@ def _lipoma_impression_line(d):
         size_paren = f" ({size1}MM)"
 
     if count == "single":
-        return f"A LIPOMA IN THE {loc_up}{size_paren}."
+        return f"A SUBCUTANEOUS LIPOMA IN THE {loc_up}{size_paren}."
     word = "FEW" if count == "few" else "MULTIPLE"
-    return f"{word} LIPOMAS IN THE {loc_up}{size_paren}."
+    return f"{word} SUBCUTANEOUS LIPOMAS IN THE {loc_up}{size_paren}."
 
 
 def ppln_impression_line(d):
