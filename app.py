@@ -8792,8 +8792,8 @@ def render_preview_findings(data):
             sections.append(app_segs)
     lipoma_segs = lipoma_sentence(data.get("lipoma", {}))
     if lipoma_segs:
-        sections.append(lipoma_segs)
-    sections.append(fluid_mln_sentence(data))
+        secs.append(lipoma_segs)
+    secs.append(fluid_mln_sentence(data))
 
     for s in secs:
         if not s:
