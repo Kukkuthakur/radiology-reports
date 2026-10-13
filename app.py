@@ -1101,6 +1101,12 @@ def new_report(sex="F"):
             "size1": "",
             "size2": "",
         },
+        "aash": {
+            "present": False,
+            "location": "umbilicus",
+            "content": "omentum",
+            "size": "",
+        },
         "additional_body_findings": "",
         "impression": {"lines": []},
     }
@@ -4162,6 +4168,33 @@ def lipoma_sentence(d):
     return [seg(text, True)]
 
 
+def _aash_sentence(d):
+    if not d.get("present"):
+        return None
+    loc = d.get("location", "umbilicus")
+    content = d.get("content", "omentum")
+    size = d.get("size", "")
+
+    size_txt = f" ({size}mm)" if size else ""
+
+    loc_body = {
+        "umbilicus": "at the level of umbilicus",
+        "incisional": "at the incisional site",
+        "supra_umbilical": "in the supra-umbilical region",
+        "infra_umbilical": "in the infra-umbilical region",
+    }.get(loc, "in the anterior abdominal wall")
+
+    if content == "omentum":
+        content_phrase = "omentum is seen herniating at the time of scan"
+    else:
+        content_phrase = ("omentum & bowel loops are seen herniating at the "
+                          "time of scan")
+
+    text = (f"An anterior abdominal wall defect{size_txt} seen {loc_body} "
+            f"through which {content_phrase}.")
+    return [seg(text, True)]
+
+
 def ppln_sentence(d):
     if not d.get("present"):
         return []
@@ -4179,6 +4212,28 @@ def ppln_sentence(d):
         return [seg(f"{count_word} {loc_body} lymph nodes are seen, largest of "
                     f"these measuring {size}mm.", True)]
     return [seg(f"{count_word} {loc_body} lymph nodes are seen.", True)]
+
+
+def _aash_impression_line(d):
+    if not d.get("present"):
+        return None
+    loc = d.get("location", "umbilicus")
+    content = d.get("content", "omentum")
+    size = d.get("size", "")
+
+    size_paren = f" (DEFECT={size}MM)" if size else ""
+
+    loc_up = {
+        "umbilicus": "UMBILICAL HERNIA",
+        "incisional": "INCISIONAL HERNIA",
+        "supra_umbilical": "SUPRA-UMBILICAL HERNIA",
+        "infra_umbilical": "INFRA-UMBILICAL HERNIA",
+    }.get(loc, "ANTERIOR ABDOMINAL WALL HERNIA")
+
+    if content == "omentum":
+        return f"{loc_up}{size_paren} WITH HERNIATION OF OMENTUM."
+    return (f"{loc_up} WITH HERNIATION OF BOWEL LOOPS & OMENTUM, HOWEVER "
+            f"NO BOWEL LOOPS STRANGULATION IS APPRECIATED AT THE TIME OF SCAN.")
 
 
 def _lipoma_impression_line(d):
@@ -5316,6 +5371,10 @@ def generate_impression(d, sex, age):
     if lip_line:
         lines.append(lip_line)
 
+    aash_line = _aash_impression_line(d.get("aash", {}))
+    if aash_line:
+        lines.append(aash_line)
+
     fluid_lines = fluid_mln_impression_lines(d)
     for ln in reversed(fluid_lines):
         lines.insert(0, ln)
@@ -5702,6 +5761,9 @@ def build_docx_bytes(data):
     lipoma_segs = lipoma_sentence(data.get("lipoma", {}))
     if lipoma_segs:
         secs.append(lipoma_segs)
+    aash_segs = _aash_sentence(data.get("aash", {}))
+    if aash_segs:
+        secs.append(aash_segs)
     secs.append(fluid_mln_sentence(data))
 
     rendered_count = 0
@@ -8061,6 +8123,48 @@ with col_find:
                                           value=_seed("lipoma_size2", ""))
                             wget("lipoma_size2", "")
 
+            # --- ANTERIOR ABDOMINAL WALL HERNIA (AASH) ---
+            with st.expander("Anterior Abdominal Wall Hernia",
+                             expanded=False):
+                st.checkbox("Anterior abdominal wall hernia present",
+                            key="aash_present",
+                            value=bool(_seed("aash_present", False)))
+                wget("aash_present", False)
+                if ss("aash_present", False):
+                    st.text_input("Defect size (mm, e.g. 18x12)",
+                                  key="aash_size",
+                                  value=_seed("aash_size", ""))
+                    wget("aash_size", "")
+
+                    _aash_loc_opts = ["umbilicus", "incisional",
+                                      "supra_umbilical", "infra_umbilical"]
+                    st.radio(
+                        "Location", _aash_loc_opts,
+                        index=_idx("aash_location", _aash_loc_opts,
+                                   "umbilicus"),
+                        horizontal=True,
+                        format_func=lambda x: {
+                            "umbilicus": "Umbilicus",
+                            "incisional": "Incisional site",
+                            "supra_umbilical": "Supra-umbilical",
+                            "infra_umbilical": "Infra-umbilical",
+                        }[x],
+                        key="aash_location")
+                    wget("aash_location", "umbilicus")
+
+                    _aash_content_opts = ["omentum", "omentum_bowel"]
+                    st.radio(
+                        "Herniated Content", _aash_content_opts,
+                        index=_idx("aash_content", _aash_content_opts,
+                                   "omentum"),
+                        horizontal=True,
+                        format_func=lambda x: {
+                            "omentum": "Omentum",
+                            "omentum_bowel": "Omentum & Bowel loops",
+                        }[x],
+                        key="aash_content")
+                    wget("aash_content", "omentum")
+
             # --- PERI-PANCREATIC / PERI-PORTAL NODES ---
             with st.expander("Peri-Pancreatic / Peri-Portal Nodes",
                              expanded=False):
@@ -8683,6 +8787,13 @@ data["lipoma"] = {
     "size2": ss("lipoma_size2", ""),
 }
 
+data["aash"] = {
+    "present": bool(ss("aash_present", False)),
+    "location": ss("aash_location", "umbilicus"),
+    "content": ss("aash_content", "omentum"),
+    "size": ss("aash_size", ""),
+}
+
 # Template impression override injection
 _tpl_override = st.session_state.get("_template_impression_override", "")
 _tpl_advice = st.session_state.get("_template_advice", "")
@@ -8792,8 +8903,11 @@ def render_preview_findings(data):
             sections.append(app_segs)
     lipoma_segs = lipoma_sentence(data.get("lipoma", {}))
     if lipoma_segs:
-        secs.append(lipoma_segs)
-    secs.append(fluid_mln_sentence(data))
+        sections.append(lipoma_segs)
+    aash_segs = _aash_sentence(data.get("aash", {}))
+    if aash_segs:
+        sections.append(aash_segs)
+    sections.append(fluid_mln_sentence(data))
 
     for s in secs:
         if not s:
