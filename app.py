@@ -8906,8 +8906,8 @@ def render_preview_findings(data):
         sections.append(lipoma_segs)
     aash_segs = _aash_sentence(data.get("aash", {}))
     if aash_segs:
-        sections.append(aash_segs)
-    sections.append(fluid_mln_sentence(data))
+        secs.append(aash_segs)
+    secs.append(fluid_mln_sentence(data))
 
     for s in secs:
         if not s:
