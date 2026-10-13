@@ -4159,7 +4159,7 @@ def lipoma_sentence(d):
             text = (f"{word} well-defined subcutaneous fat-density SOLs are "
                     f"seen in the {loc_phrase} -- likely lipomas.")
 
-    return [seg(" "), seg(text, True)]
+    return [seg(text, True)]
 
 
 def ppln_sentence(d):
