@@ -5771,8 +5771,8 @@ def build_docx_bytes(data):
         secs.append(lipoma_segs)
     aash_segs = _aash_sentence(data.get("aash", {}))
     if aash_segs:
-        secs.append(aash_segs)
-    secs.append(fluid_mln_sentence(data))
+        sections.append(aash_segs)
+    sections.append(fluid_mln_sentence(data))
 
     rendered_count = 0
     for segs in sections:
