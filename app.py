@@ -5559,14 +5559,21 @@ def build_docx_bytes(data):
     _add_run(title_para, "ULTRASOUND WHOLE ABDOMEN", bold=True, underline=True,
              size=FONT_SIZE_TITLE, color=TITLE_COLOR)
 
-    # SAIO subheading (gaseous)
+    # Scan quality / limitation subheading
+    _subhead_map = {
+        "gaseous":
+            "[Limited Scan: Extensively gaseous Epigastrium & midline]",
+        "difficult_habitus":
+            "[Limited Scan: Difficult patient habitus]",
+    }
     saio = data.get("saio", {})
-    if saio.get("subheading") == "gaseous":
+    _sub_key = saio.get("subheading", "none")
+    if _sub_key in _subhead_map:
         subhead = doc.add_paragraph()
         subhead.alignment = WD_ALIGN_PARAGRAPH.CENTER
         subhead.paragraph_format.space_after = Pt(0)
         subhead.paragraph_format.space_before = Pt(2)
-        _add_run(subhead, SAIO_SUBHEADING_TEXT, italic=True,
+        _add_run(subhead, _subhead_map[_sub_key], italic=True,
                  size=FONT_SIZE_BODY)
 
     _add_one_and_half_line(doc)
@@ -5909,6 +5916,23 @@ with st.container():
                                 key="p_date_input")
     with c5:
         p_ref = st.text_input("Referred by", key="p_ref_input")
+
+st.markdown("**Scan Quality / Limitation**")
+_subhead_opts = ["none", "gaseous", "difficult_habitus"]
+_top_subheading = st.radio(
+    "Scan Quality / Limitation",
+    _subhead_opts,
+    index=_idx("top_subheading", _subhead_opts, "none"),
+    horizontal=True,
+    label_visibility="collapsed",
+    format_func=lambda x: {
+        "none": "None",
+        "gaseous": "[Limited Scan: Extensively gaseous Epigastrium & midline]",
+        "difficult_habitus": "[Limited Scan: Difficult patient habitus]",
+    }[x],
+    key="top_subheading",
+)
+wget("top_subheading", "none")
 
 st.markdown("---")
 
@@ -7882,17 +7906,7 @@ with col_find:
 
             # --- SUBACUTE INTESTINAL OBSTRUCTION (SAIO) ---
             with st.expander("Subacute Intestinal Obstruction", expanded=False):
-                st.radio("Subheading",
-                         ["none", "gaseous"],
-                         index=_idx("saio_subheading",
-                                    ["none", "gaseous"], "none"),
-                         horizontal=True,
-                         format_func=lambda x: {
-                             "none": "None",
-                             "gaseous": "[Limited Scan: Extensively gaseous "
-                                        "Epigastrium & midline]"}[x],
-                         key="saio_subheading")
-                wget("saio_subheading", "none")
+                st.radio("Distension Type",
 
                 st.radio("Distension Type",
                          ["none", "liquid_filled", "gaseous"],
@@ -8503,9 +8517,17 @@ data["ppln"] = {
     "lost_hila": bool(ss("ppln_lost_hila", False)),
 }
 
+_saio_dist = ss("saio_distension_type", "none")
+_top_sub = ss("top_subheading", "none")
+# SAIO subheading supersedes top radio when SAIO distension is gaseous.
+if _saio_dist == "gaseous":
+    _effective_subheading = "gaseous"
+else:
+    _effective_subheading = _top_sub
+
 data["saio"] = {
-    "subheading": ss("saio_subheading", "none"),
-    "distension_type": ss("saio_distension_type", "none"),
+    "subheading": _effective_subheading,
+    "distension_type": _saio_dist,
     "terminal_ileum": ss("saio_terminal_ileum", ""),
     "ascending_colon": ss("saio_ascending_colon", ""),
     "transverse_colon": ss("saio_transverse_colon", ""),
@@ -8593,9 +8615,16 @@ def render_preview_findings(data):
     spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
     ub_status = data["urinary_bladder"].get("status") or "adequately_distended"
 
+    _subhead_map_prev = {
+        "gaseous":
+            "[Limited Scan: Extensively gaseous Epigastrium & midline]",
+        "difficult_habitus":
+            "[Limited Scan: Difficult patient habitus]",
+    }
     saio = data.get("saio", {})
-    if saio.get("subheading") == "gaseous":
-        out.append(SAIO_SUBHEADING_TEXT)
+    _sub_key_prev = saio.get("subheading", "none")
+    if _sub_key_prev in _subhead_map_prev:
+        out.append(_subhead_map_prev[_sub_key_prev])
         out.append("")
 
     secs = [
