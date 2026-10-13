@@ -1094,6 +1094,13 @@ def new_report(sex="F"):
         "pleural_effusion": _new_pleural_effusion(),
         "free_fluid": _new_free_fluid(),
         "appendix": _new_appendix(),
+        "lipoma": {
+            "present": False,
+            "location": "right_flank",
+            "count": "single",
+            "size1": "",
+            "size2": "",
+        },
         "additional_body_findings": "",
         "impression": {"lines": []},
     }
@@ -4115,6 +4122,46 @@ def mln_impression_line(d):
 # PPLN BODY & IMPRESSION
 # ============================================================
 
+def lipoma_sentence(d):
+    if not d.get("present"):
+        return None
+    loc = d.get("location", "right_flank")
+    count = d.get("count", "single")
+    size1 = d.get("size1", "")
+    size2 = d.get("size2", "")
+
+    loc_phrase = {
+        "right_flank": "right flank region",
+        "left_flank": "left flank region",
+        "epigastrium": "epigastrium region",
+    }.get(loc, "abdominal wall")
+
+    size_txt = ""
+    if size1 and size2:
+        size_txt = f"({size1}mm & {size2}mm)"
+    elif size1:
+        size_txt = f"({size1}mm)"
+
+    if count == "single":
+        if size_txt:
+            text = (f"A well-defined subcutaneous fat-density SOL {size_txt} "
+                    f"is seen in the {loc_phrase} -- likely lipoma.")
+        else:
+            text = (f"A well-defined subcutaneous fat-density SOL is seen in "
+                    f"the {loc_phrase} -- likely lipoma.")
+    else:
+        word = "Few" if count == "few" else "Multiple"
+        if size_txt:
+            text = (f"{word} well-defined subcutaneous fat-density SOLs are "
+                    f"seen in the {loc_phrase}, largest of these measuring "
+                    f"{size1}mm -- likely lipomas.")
+        else:
+            text = (f"{word} well-defined subcutaneous fat-density SOLs are "
+                    f"seen in the {loc_phrase} -- likely lipomas.")
+
+    return [seg(text, True)]
+
+
 def ppln_sentence(d):
     if not d.get("present"):
         return []
@@ -4132,6 +4179,32 @@ def ppln_sentence(d):
         return [seg(f"{count_word} {loc_body} lymph nodes are seen, largest of "
                     f"these measuring {size}mm.", True)]
     return [seg(f"{count_word} {loc_body} lymph nodes are seen.", True)]
+
+
+def _lipoma_impression_line(d):
+    if not d.get("present"):
+        return None
+    loc = d.get("location", "right_flank")
+    count = d.get("count", "single")
+    size1 = d.get("size1", "")
+    size2 = d.get("size2", "")
+
+    loc_up = {
+        "right_flank": "RIGHT FLANK",
+        "left_flank": "LEFT FLANK",
+        "epigastrium": "EPIGASTRIUM",
+    }.get(loc, "ABDOMINAL WALL")
+
+    size_paren = ""
+    if size1 and size2:
+        size_paren = f" ({size1}MM & {size2}MM)"
+    elif size1:
+        size_paren = f" ({size1}MM)"
+
+    if count == "single":
+        return f"A SUBCUTANEOUS LIPOMA IN THE {loc_up}{size_paren}."
+    word = "FEW" if count == "few" else "MULTIPLE"
+    return f"{word} SUBCUTANEOUS LIPOMAS IN THE {loc_up}{size_paren}."
 
 
 def ppln_impression_line(d):
@@ -5239,6 +5312,10 @@ def generate_impression(d, sex, age):
     if app_line:
         lines.append(app_line)
 
+    lip_line = _lipoma_impression_line(d.get("lipoma", {}))
+    if lip_line:
+        lines.append(lip_line)
+
     fluid_lines = fluid_mln_impression_lines(d)
     for ln in reversed(fluid_lines):
         lines.insert(0, ln)
@@ -5559,14 +5636,21 @@ def build_docx_bytes(data):
     _add_run(title_para, "ULTRASOUND WHOLE ABDOMEN", bold=True, underline=True,
              size=FONT_SIZE_TITLE, color=TITLE_COLOR)
 
-    # SAIO subheading (gaseous)
+    # Scan quality / limitation subheading
+    _subhead_map = {
+        "gaseous":
+            "[Limited Scan: Extensively gaseous Epigastrium & midline]",
+        "difficult_habitus":
+            "[Limited Scan: Difficult patient habitus]",
+    }
     saio = data.get("saio", {})
-    if saio.get("subheading") == "gaseous":
+    _sub_key = saio.get("subheading", "none")
+    if _sub_key in _subhead_map:
         subhead = doc.add_paragraph()
         subhead.alignment = WD_ALIGN_PARAGRAPH.CENTER
         subhead.paragraph_format.space_after = Pt(0)
         subhead.paragraph_format.space_before = Pt(2)
-        _add_run(subhead, SAIO_SUBHEADING_TEXT, italic=True,
+        _add_run(subhead, _subhead_map[_sub_key], italic=True,
                  size=FONT_SIZE_BODY)
 
     _add_one_and_half_line(doc)
@@ -5614,8 +5698,11 @@ def build_docx_bytes(data):
     if data["appendix"].get("status") not in ("not_assessed",):
         app_segs = appendix_sentence(data["appendix"])
         if app_segs:
-            sections.append(app_segs)
-    sections.append(fluid_mln_sentence(data))
+            secs.append(app_segs)
+    lipoma_segs = lipoma_sentence(data.get("lipoma", {}))
+    if lipoma_segs:
+        secs.append(lipoma_segs)
+    secs.append(fluid_mln_sentence(data))
 
     rendered_count = 0
     for segs in sections:
@@ -5909,6 +5996,23 @@ with st.container():
                                 key="p_date_input")
     with c5:
         p_ref = st.text_input("Referred by", key="p_ref_input")
+
+st.markdown("**Scan Quality / Limitation**")
+_subhead_opts = ["none", "gaseous", "difficult_habitus"]
+_top_subheading = st.radio(
+    "Scan Quality / Limitation",
+    _subhead_opts,
+    index=_idx("top_subheading", _subhead_opts, "none"),
+    horizontal=True,
+    label_visibility="collapsed",
+    format_func=lambda x: {
+        "none": "None",
+        "gaseous": "[Limited Scan: Extensively gaseous Epigastrium & midline]",
+        "difficult_habitus": "[Limited Scan: Difficult patient habitus]",
+    }[x],
+    key="top_subheading",
+)
+wget("top_subheading", "none")
 
 st.markdown("---")
 
@@ -7882,18 +7986,6 @@ with col_find:
 
             # --- SUBACUTE INTESTINAL OBSTRUCTION (SAIO) ---
             with st.expander("Subacute Intestinal Obstruction", expanded=False):
-                st.radio("Subheading",
-                         ["none", "gaseous"],
-                         index=_idx("saio_subheading",
-                                    ["none", "gaseous"], "none"),
-                         horizontal=True,
-                         format_func=lambda x: {
-                             "none": "None",
-                             "gaseous": "[Limited Scan: Extensively gaseous "
-                                        "Epigastrium & midline]"}[x],
-                         key="saio_subheading")
-                wget("saio_subheading", "none")
-
                 st.radio("Distension Type",
                          ["none", "liquid_filled", "gaseous"],
                          index=_idx("saio_distension_type",
@@ -7906,7 +7998,6 @@ with col_find:
                              "gaseous": "Gaseous"}[x],
                          key="saio_distension_type")
                 wget("saio_distension_type", "none")
-
                 st.markdown("**Bowel Loop Sizes (mm)**")
                 c_a, c_b = st.columns(2)
                 with c_a:
@@ -7927,6 +8018,48 @@ with col_find:
                                   key="saio_descending_colon",
                                   value=_seed("saio_descending_colon", ""))
                     wget("saio_descending_colon", "")
+
+            # --- LIPOMA ---
+            with st.expander("Lipoma", expanded=False):
+                st.checkbox("Lipoma present", key="lipoma_present",
+                            value=bool(_seed("lipoma_present", False)))
+                wget("lipoma_present", False)
+                if ss("lipoma_present", False):
+                    _lip_loc_opts = ["right_flank", "left_flank", "epigastrium"]
+                    st.radio(
+                        "Location", _lip_loc_opts,
+                        index=_idx("lipoma_location", _lip_loc_opts,
+                                   "right_flank"),
+                        horizontal=True,
+                        format_func=lambda x: {
+                            "right_flank": "Right Flank",
+                            "left_flank": "Left Flank",
+                            "epigastrium": "Epigastrium",
+                        }[x],
+                        key="lipoma_location")
+                    wget("lipoma_location", "right_flank")
+
+                    _lip_cnt_opts = ["single", "few", "multiple"]
+                    st.radio(
+                        "Count", _lip_cnt_opts,
+                        index=_idx("lipoma_count", _lip_cnt_opts, "single"),
+                        horizontal=True,
+                        format_func=lambda x: x.title(),
+                        key="lipoma_count")
+                    wget("lipoma_count", "single")
+
+                    c_a, c_b = st.columns(2)
+                    with c_a:
+                        st.text_input("Size (mm, e.g. 45x22)",
+                                      key="lipoma_size1",
+                                      value=_seed("lipoma_size1", ""))
+                        wget("lipoma_size1", "")
+                    with c_b:
+                        if ss("lipoma_count", "single") in ("few", "multiple"):
+                            st.text_input("2nd largest (mm, optional)",
+                                          key="lipoma_size2",
+                                          value=_seed("lipoma_size2", ""))
+                            wget("lipoma_size2", "")
 
             # --- PERI-PANCREATIC / PERI-PORTAL NODES ---
             with st.expander("Peri-Pancreatic / Peri-Portal Nodes",
@@ -8503,9 +8636,17 @@ data["ppln"] = {
     "lost_hila": bool(ss("ppln_lost_hila", False)),
 }
 
+_saio_dist = ss("saio_distension_type", "none")
+_top_sub = ss("top_subheading", "none")
+# SAIO subheading supersedes top radio when SAIO distension is gaseous.
+if _saio_dist == "gaseous":
+    _effective_subheading = "gaseous"
+else:
+    _effective_subheading = _top_sub
+
 data["saio"] = {
-    "subheading": ss("saio_subheading", "none"),
-    "distension_type": ss("saio_distension_type", "none"),
+    "subheading": _effective_subheading,
+    "distension_type": _saio_dist,
     "terminal_ileum": ss("saio_terminal_ileum", ""),
     "ascending_colon": ss("saio_ascending_colon", ""),
     "transverse_colon": ss("saio_transverse_colon", ""),
@@ -8532,6 +8673,14 @@ data["appendix"] = {
     "diameter_mm": ss("ap_d", ""),
     "periappendiceal_fat": bool(ss("ap_periappendiceal_fat", False)),
     "periappendiceal_fluid": bool(ss("ap_periappendiceal_fluid", False)),
+}
+
+data["lipoma"] = {
+    "present": bool(ss("lipoma_present", False)),
+    "location": ss("lipoma_location", "right_flank"),
+    "count": ss("lipoma_count", "single"),
+    "size1": ss("lipoma_size1", ""),
+    "size2": ss("lipoma_size2", ""),
 }
 
 # Template impression override injection
@@ -8593,9 +8742,16 @@ def render_preview_findings(data):
     spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
     ub_status = data["urinary_bladder"].get("status") or "adequately_distended"
 
+    _subhead_map_prev = {
+        "gaseous":
+            "[Limited Scan: Extensively gaseous Epigastrium & midline]",
+        "difficult_habitus":
+            "[Limited Scan: Difficult patient habitus]",
+    }
     saio = data.get("saio", {})
-    if saio.get("subheading") == "gaseous":
-        out.append(SAIO_SUBHEADING_TEXT)
+    _sub_key_prev = saio.get("subheading", "none")
+    if _sub_key_prev in _subhead_map_prev:
+        out.append(_subhead_map_prev[_sub_key_prev])
         out.append("")
 
     secs = [
@@ -8633,7 +8789,10 @@ def render_preview_findings(data):
     if data["appendix"].get("status") not in ("not_assessed",):
         app_segs = appendix_sentence(data["appendix"])
         if app_segs:
-            secs.append(app_segs)
+            sections.append(app_segs)
+    lipoma_segs = lipoma_sentence(data.get("lipoma", {}))
+    if lipoma_segs:
+        secs.append(lipoma_segs)
     secs.append(fluid_mln_sentence(data))
 
     for s in secs:
