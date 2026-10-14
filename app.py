@@ -5821,10 +5821,10 @@ def build_docx_bytes(data):
     if data["appendix"].get("status") not in ("not_assessed",):
         app_segs = appendix_sentence(data["appendix"])
         if app_segs:
-            secs.append(app_segs)
+            sections.append(app_segs)
     lipoma_segs = lipoma_sentence(data.get("lipoma", {}))
     if lipoma_segs:
-        secs.append(lipoma_segs)
+        sections.append(lipoma_segs)
     aash_segs = _aash_sentence(data.get("aash", {}))
     if aash_segs:
         sections.append(aash_segs)
@@ -8996,15 +8996,14 @@ def render_preview_findings(data):
     if data["appendix"].get("status") not in ("not_assessed",):
         app_segs = appendix_sentence(data["appendix"])
         if app_segs:
-            sections.append(app_segs)
+            secs.append(app_segs)
     lipoma_segs = lipoma_sentence(data.get("lipoma", {}))
     if lipoma_segs:
-        sections.append(lipoma_segs)
+        secs.append(lipoma_segs)
     aash_segs = _aash_sentence(data.get("aash", {}))
     if aash_segs:
         secs.append(aash_segs)
     secs.append(fluid_mln_sentence(data))
-
     for s in secs:
         if not s:
             continue
