@@ -5281,33 +5281,49 @@ def generate_impression(d, sex, age):
                 return _base + ", to rule out possible neoplastic process."
         return _base + "."
 
+    # Item #10: unified IHBR fragment, uppercase for impression.
+    _ihbr_frag_up = ""
+    if cbd_ihbr == "proximal":
+        _ihbr_frag_up = " WITH PROXIMAL DILATATION OF IHBR"
+    elif cbd_ihbr == "dilated":
+        _ihbr_frag_up = " WITH DILATATION OF IHBR"
+
     if cbd_has_calc and gb_has_calculi and cbd_dilated:
-        # Item #10: merged bullet for GB + CBD calculi with dilated CBD.
-        _head = (f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED CBD "
-                 f"UPTO {cbd_size}MM")
-        _head += ihbr_clause()
+        # Dilated CBD + both calculi.
+        if cbd_ihbr == "normal":
+            _head = (f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED "
+                     f"CBD UPTO {cbd_size}MM WITH NORMAL CALIBER IHBR")
+        else:
+            _head = (f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED "
+                     f"CBD UPTO {cbd_size}MM{_ihbr_frag_up}")
         _head += _acute_chole_frag + ". " + _gbcbd_advice()
         lines.append(_head)
     elif cbd_has_calc and gb_has_calculi and not cbd_dilated:
-        # Item #10: normal CBD + both calculi.
+        # Normal CBD + both calculi.
         if cbd_ihbr == "normal":
             _head = ("CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS WITH NORMAL "
                      "CALIBER CBD AND IHBR")
         else:
-            _head = "CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND NORMAL CALIBER CBD"
-            _head += ihbr_clause()
+            _head = ("CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND NORMAL "
+                     f"CALIBER CBD{_ihbr_frag_up}")
         _head += _acute_chole_frag + ". " + _gbcbd_advice()
         lines.append(_head)
     elif cbd_has_calc and cbd_dilated:
-        _head = (f"CHOLEDOCHOLITHIASIS WITH DILATED CBD UPTO {cbd_size}MM"
-                 + ihbr_clause() + ". " + _gbcbd_advice())
-        lines.append(_head)
+        # CBD calculi only (no GB calculi).
+        if cbd_ihbr == "normal":
+            _head = (f"CHOLEDOCHOLITHIASIS WITH DILATED CBD UPTO "
+                     f"{cbd_size}MM WITH NORMAL CALIBER IHBR")
+        else:
+            _head = (f"CHOLEDOCHOLITHIASIS WITH DILATED CBD UPTO "
+                     f"{cbd_size}MM{_ihbr_frag_up}")
+        lines.append(_head + ". " + _gbcbd_advice())
     elif cbd_has_calc and not cbd_dilated:
+        # CBD calculi only, normal CBD.
         if cbd_ihbr == "normal":
             _head = "CHOLEDOCHOLITHIASIS WITH NORMAL CALIBER CBD AND IHBR"
         else:
-            _head = "CHOLEDOCHOLITHIASIS WITH NORMAL CALIBER CBD" + ihbr_clause()
-        _head += ". " + _gbcbd_advice()
+            _head = f"CHOLEDOCHOLITHIASIS WITH NORMAL CALIBER CBD{_ihbr_frag_up}"
+        lines.append(_head + ". " + _gbcbd_advice())
         lines.append(_head)
 
     # Item #10: duplication flag drops the cbd_dilated condition.
