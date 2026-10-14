@@ -2375,7 +2375,34 @@ def prostate_sentence(d, pediatric=False, ub_status=None):
     if d.get("not_visualized"):
         s.append(seg(" is not visualized."))
         return s
+
+    band_partial = _prostate_band(d)
+    median_frag_partial = _prostate_median_lobe_body_frag(d)
+    cyst_frag_partial = _prostate_cyst_body(d)
+    cc_partial = d.get("size_cc", "")
+
     if d.get("partial_visualization"):
+        # Item #11: still show size and any findings if the user entered them.
+        if band_partial is not None:
+            body_desc, _ = band_partial
+            s += [seg(" is partially visualized, however appears "),
+                  seg(f"{body_desc} in size", True)]
+            if cc_partial:
+                s.append(size_seg(f"({cc_partial}CC)"))
+            if median_frag_partial:
+                s += [seg(" with "), seg(median_frag_partial, True)]
+            s.append(seg("."))
+            if cyst_frag_partial:
+                s += [seg(" "), seg(cyst_frag_partial, True)]
+            return s
+        if cc_partial:
+            s += [seg(f" is partially visualized, measuring "),
+                  size_seg(f"{cc_partial}CC"), seg(".")]
+            if median_frag_partial:
+                s += [seg(" "), seg(median_frag_partial, True), seg(".")]
+            if cyst_frag_partial:
+                s += [seg(" "), seg(cyst_frag_partial, True)]
+            return s
         s.append(seg(" is partially visualized."))
         return s
 
@@ -2415,7 +2442,7 @@ def prostate_sentence(d, pediatric=False, ub_status=None):
 
 
 def _prostate_impression_line(d):
-    if d.get("not_visualized") or d.get("partial_visualization"):
+    if d.get("not_visualized"):
         return None
     band = _prostate_band(d)
     cc = d.get("size_cc", "")
@@ -8765,11 +8792,10 @@ else:
                 in ("empty", "partially_empty"))
     pr_not_vis = bool(ss("pr_not_visualized", False))
     pr_partial = bool(ss("pr_partial_visualization", False))
+    # Item #11: auto-set partially_visualized (NOT not_visualized) when UB is
+    # empty, and only if the user has not manually picked a prostate status.
     if ub_empty and not pr_not_vis and not pr_partial:
-        if data["urinary_bladder"]["status"] == "empty":
-            pr_not_vis = True
-        else:
-            pr_partial = True
+        pr_partial = True
 
     data["prostate"].update({
         "size_cc": ss("pr_cc", ""),
