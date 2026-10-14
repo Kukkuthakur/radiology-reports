@@ -9502,7 +9502,7 @@ def render_preview_findings(data):
     ing_segs = _inguinal_sentence(data.get("inguinal", {}))
     if ing_segs:
         sections.append(ing_segs)
-    sections.append(fluid_mln_sentence(data))
+    secs.append(fluid_mln_sentence(data))
     for s in secs:
         if not s:
             continue
