@@ -5235,12 +5235,13 @@ def generate_impression(d, sex, age):
     cbd_dilated = cbd_status in ("proximal", "dilated")
 
     def ihbr_clause():
+        # Item #10: no leading/trailing periods — the caller adds separators.
         if cbd_ihbr == "normal":
-            return ". HOWEVER IHBR ARE NORMAL IN CALIBER."
+            return " with normal caliber CBD and IHBR"
         elif cbd_ihbr == "proximal":
-            return " WITH PROXIMAL DILATATION OF IHBR."
+            return " with proximal dilatation of IHBR"
         elif cbd_ihbr == "dilated":
-            return " WITH DILATATION OF IHBR."
+            return " with dilatation of IHBR"
         return ""
 
     gb = d["gall_bladder"]
@@ -5260,22 +5261,73 @@ def generate_impression(d, sex, age):
         except (ValueError, TypeError):
             wall_descriptor = ""
 
-    if cbd_has_calc and gb_has_calculi and cbd_dilated:
-        lines.append(f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED CBD "
-                     f"UPTO {cbd_size}MM" + ihbr_clause() +
-                     " Adv- MRCP/CECT Abdomen Correlation.")
-    elif cbd_has_calc and gb_has_calculi and not cbd_dilated:
-        lines.append("CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND NORMAL "
-                     "CALIBER CBD" + ihbr_clause() +
-                     " Adv- MRCP/CECT Abdomen Correlation.")
-    elif cbd_has_calc and cbd_dilated:
-        lines.append(f"CHOLEDOCHOLITHIASIS WITH DILATED CBD UPTO {cbd_size}MM"
-                     + ihbr_clause() + " Adv- MRCP/CECT Abdomen Correlation.")
-    elif cbd_has_calc and not cbd_dilated:
-        lines.append("CHOLEDOCHOLITHIASIS WITH NORMAL CALIBER CBD"
-                     + ihbr_clause() + " Adv- MRCP/CECT Abdomen Correlation.")
+    # Item #10: compute acute-cholecystitis fragment once, used in the merge.
+    _acute_chole_frag = ""
+    _gb_over_or_calc = (gb_over or gb_has_calculi)
+    if _gb_over_or_calc and (gb_wall_thickened or gb_peri_fluid):
+        _acute_chole_frag = (" WITH FEATURES SUGGESTIVE OF ?ACUTE "
+                             "CHOLECYSTITIS")
 
-    gb_calc_already_reported = cbd_has_calc and gb_has_calculi and cbd_dilated
+    # Build advice tail — honors CECT toggle (Item #20, Q4=a).
+    def _gbcbd_advice():
+        _base = "Adv- MRCP/CECT Abdomen Correlation"
+        if d.get("tg_cect_abd"):
+            _cect_opt = d.get("tg_cect_option", "if_clinically_warranted")
+            if _cect_opt == "if_clinically_warranted":
+                return _base + ", if clinically warranted."
+            elif _cect_opt == "for_further_evaluation":
+                return _base + " for further evaluation."
+            elif _cect_opt == "to_rule_out_neoplastic":
+                return _base + ", to rule out possible neoplastic process."
+        return _base + "."
+
+    # Item #10: unified IHBR fragment, uppercase for impression.
+    _ihbr_frag_up = ""
+    if cbd_ihbr == "proximal":
+        _ihbr_frag_up = " WITH PROXIMAL DILATATION OF IHBR"
+    elif cbd_ihbr == "dilated":
+        _ihbr_frag_up = " WITH DILATATION OF IHBR"
+
+    if cbd_has_calc and gb_has_calculi and cbd_dilated:
+        # Dilated CBD + both calculi.
+        if cbd_ihbr == "normal":
+            _head = (f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED "
+                     f"CBD UPTO {cbd_size}MM WITH NORMAL CALIBER IHBR")
+        else:
+            _head = (f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED "
+                     f"CBD UPTO {cbd_size}MM{_ihbr_frag_up}")
+        _head += _acute_chole_frag + ". " + _gbcbd_advice()
+        lines.append(_head)
+    elif cbd_has_calc and gb_has_calculi and not cbd_dilated:
+        # Normal CBD + both calculi.
+        if cbd_ihbr == "normal":
+            _head = ("CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS WITH NORMAL "
+                     "CALIBER CBD AND IHBR")
+        else:
+            _head = ("CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND NORMAL "
+                     f"CALIBER CBD{_ihbr_frag_up}")
+        _head += _acute_chole_frag + ". " + _gbcbd_advice()
+        lines.append(_head)
+    elif cbd_has_calc and cbd_dilated:
+        # CBD calculi only (no GB calculi).
+        if cbd_ihbr == "normal":
+            _head = (f"CHOLEDOCHOLITHIASIS WITH DILATED CBD UPTO "
+                     f"{cbd_size}MM WITH NORMAL CALIBER IHBR")
+        else:
+            _head = (f"CHOLEDOCHOLITHIASIS WITH DILATED CBD UPTO "
+                     f"{cbd_size}MM{_ihbr_frag_up}")
+        lines.append(_head + ". " + _gbcbd_advice())
+    elif cbd_has_calc and not cbd_dilated:
+        # CBD calculi only, normal CBD.
+        if cbd_ihbr == "normal":
+            _head = "CHOLEDOCHOLITHIASIS WITH NORMAL CALIBER CBD AND IHBR"
+        else:
+            _head = f"CHOLEDOCHOLITHIASIS WITH NORMAL CALIBER CBD{_ihbr_frag_up}"
+        lines.append(_head + ". " + _gbcbd_advice())
+        lines.append(_head)
+
+    # Item #10: duplication flag drops the cbd_dilated condition.
+    gb_calc_already_reported = cbd_has_calc and gb_has_calculi
     if not gb_calc_already_reported:
         if gb_over and gb_has_calculi and (gb_wall_thickened or gb_peri_fluid):
             lines.append("OVERDISTENDED GALL BLADDER WITH CHOLELITHIASIS & "
@@ -5674,11 +5726,22 @@ def generate_impression(d, sex, age):
                 "neoplastic process.",
         }[_cect_opt]
         _longest_idx = max(range(len(lines)), key=lambda i: len(lines[i]))
-        _base = lines[_longest_idx].rstrip(".")
-        _adv_idx = _base.find("Adv-")
-        if _adv_idx != -1:
-            _base = _base[:_adv_idx].rstrip()
-        lines[_longest_idx] = _base + " - " + _cect_text
+        _line_full = lines[_longest_idx]
+
+        # Item #10: skip if the bullet already carries an MRCP/CECT advice —
+        # the merged CBD+GB bullet already lists the CECT option.
+        if "MRCP/CECT Abdomen Correlation" in _line_full:
+            _base = _line_full.rstrip(".")
+            _adv_idx = _base.find("Adv-")
+            if _adv_idx != -1:
+                _base = _base[:_adv_idx].rstrip()
+            lines[_longest_idx] = _base + ". " + _cect_text
+        else:
+            _base = _line_full.rstrip(".")
+            _adv_idx = _base.find("Adv-")
+            if _adv_idx != -1:
+                _base = _base[:_adv_idx].rstrip()
+            lines[_longest_idx] = _base + ". " + _cect_text
 
     if not lines:
         return (list(IMPRESSION_NORMAL_FEMALE) if (sex == "F" and not is_pediatric)
