@@ -1002,6 +1002,7 @@ def _new_ppln():
 def _new_saio():
     return {
         "subheading": "none", "distension_type": "none",
+        "saio_ff": "none",
         "terminal_ileum": "", "ascending_colon": "",
         "transverse_colon": "", "descending_colon": "",
     }
@@ -4436,6 +4437,53 @@ def saio_sentence(d):
     asc = d.get("ascending_colon", "")
     trans = d.get("transverse_colon", "")
     desc = d.get("descending_colon", "")
+    saio_ff = d.get("saio_ff", "none")
+
+    sizes = []
+    if term:
+        sizes.append(f"terminal ileum > {term}mm")
+    if asc:
+        sizes.append(f"ascending colon > {asc}mm")
+    if trans:
+        sizes.append(f"transverse colon > {trans}mm")
+    if desc:
+        sizes.append(f"descending colon > {desc}mm")
+    sizes_str = f" ({', '.join(sizes)})" if sizes else ""
+
+    dist_line = None
+    if dist == "liquid_filled":
+        dist_line = f"liquid filled distension of bowel loops{sizes_str}"
+    elif dist == "gaseous":
+        dist_line = f"gaseous distension of bowel loops{sizes_str}"
+
+    # Item #17: SAIO FF override prepends a fluid lead-in.
+    ff_lead = None
+    if saio_ff == "mild_inter_bowel":
+        ff_lead = "mild inter-bowel free fluid"
+    elif saio_ff == "mild_mod_peritoneal":
+        ff_lead = "mild to moderate free fluid in the peritoneal cavity"
+    elif saio_ff == "mild_mod_internal_echoes":
+        ff_lead = ("mild to moderate free fluid with internal echoes in the "
+                   "peritoneal cavity")
+
+    if ff_lead and dist_line:
+        return f"{ff_lead.capitalize()} is seen with {dist_line}."
+    if ff_lead and not dist_line:
+        return f"{ff_lead.capitalize()} is seen."
+    if dist_line:
+        return f"{dist_line.capitalize()}."
+    return None
+
+
+def _saio_impression_line(d):
+    """Item #17: SAIO impression line with perforation tail support."""
+    dist = d.get("distension_type", "none")
+    term = d.get("terminal_ileum", "")
+    asc = d.get("ascending_colon", "")
+    trans = d.get("transverse_colon", "")
+    desc = d.get("descending_colon", "")
+    saio_ff = d.get("saio_ff", "none")
+
     sizes = []
     if term:
         sizes.append(f"TERMINAL ILEUM > {term}MM")
@@ -4445,17 +4493,37 @@ def saio_sentence(d):
         sizes.append(f"TRANSVERSE COLON > {trans}MM")
     if desc:
         sizes.append(f"DESCENDING COLON > {desc}MM")
+    sizes_str = f" ({', '.join(sizes)})" if sizes else ""
 
+    dist_line = None
     if dist == "liquid_filled":
-        if sizes:
-            return (f"LIQUID FILLED DISTENSION OF BOWEL LOOPS "
-                    f"({', '.join(sizes)})")
-        return "LIQUID FILLED DISTENSION OF BOWEL LOOPS"
-    if dist == "gaseous":
-        if sizes:
-            return (f"GASEOUS DISTENSION OF BOWEL LOOPS "
-                    f"({', '.join(sizes)})")
-        return "EXTENSIVELY GASEOUS ABDOMEN"
+        dist_line = f"LIQUID FILLED DISTENSION OF BOWEL LOOPS{sizes_str}"
+    elif dist == "gaseous":
+        dist_line = f"GASEOUS DISTENSION OF BOWEL LOOPS{sizes_str}"
+
+    ff_lead_up = None
+    if saio_ff == "mild_inter_bowel":
+        ff_lead_up = "MILD INTER-BOWEL FREE FLUID"
+    elif saio_ff == "mild_mod_peritoneal":
+        ff_lead_up = "MILD TO MODERATE FREE FLUID IN THE PERITONEAL CAVITY"
+    elif saio_ff == "mild_mod_internal_echoes":
+        ff_lead_up = ("MILD TO MODERATE FREE FLUID WITH INTERNAL ECHOES IN "
+                      "THE PERITONEAL CAVITY")
+
+    # Perforation tail when radio 4 is selected.
+    if saio_ff == "mild_mod_internal_echoes":
+        tail = (" - ?SUSPECTED BOWEL PERFORATION vs SUBACUTE INTESTINAL "
+                "OBSTRUCTION. Adv- Erect CXR & X-ray Abdomen Correlation.")
+    else:
+        tail = (" - ?SUBACUTE INTESTINAL OBSTRUCTION. "
+                "Adv- Erect CXR & X-ray Abdomen Correlation.")
+
+    if ff_lead_up and dist_line:
+        return f"{ff_lead_up} IS SEEN WITH {dist_line}{tail}"
+    if ff_lead_up and not dist_line:
+        return f"{ff_lead_up} IS SEEN{tail}"
+    if dist_line:
+        return f"{dist_line}{tail}"
     return None
 
 
@@ -4530,7 +4598,9 @@ def fluid_mln_sentence(data):
     eff_present = eff.get("status", "none") != "none"
     ff_present = (ff.get("kind", "none") != "none") and not pancreas_acute
     mln_present = mln.get("branch", "none") != "none"
-    saio_line = saio_sentence(saio) if saio.get("distension_type", "none") != "none" else None
+    _saio_active = (saio.get("distension_type", "none") != "none"
+                    or saio.get("saio_ff", "none") != "none")
+    saio_line = saio_sentence(saio) if _saio_active else None
 
     if not eff_present and not ff_present and not mln_present and not saio_line:
         if pancreas_acute:
@@ -4924,8 +4994,14 @@ def fluid_mln_impression_lines(data):
 
     eff_present = eff.get("status", "none") != "none"
     ff_present = (ff.get("kind", "none") != "none") and not pancreas_acute
+    if saio.get("saio_ff", "none") != "none":
+        ff_present = False
+    if saio.get("saio_ff", "none") != "none":
+        ff_present = False
     mln_present = mln.get("branch", "none") != "none"
-    saio_line = saio_sentence(saio) if saio.get("distension_type", "none") != "none" else None
+    _saio_active = (saio.get("distension_type", "none") != "none"
+                    or saio.get("saio_ff", "none") != "none")
+    saio_line = _saio_impression_line(saio) if _saio_active else None
 
     present_count = sum([eff_present, ff_present, mln_present]) + (1 if saio_line else 0)
     if present_count == 0:
@@ -4949,9 +5025,7 @@ def fluid_mln_impression_lines(data):
         return _full
 
     if eff_present and ff_present and saio_line:
-        lines.append(f"{eff_phrase} WITH {ff_phrase}. {saio_line} - ?SUBACUTE "
-                     f"INTESTINAL OBSTRUCTION. Adv- Erect X-Ray Abdomen "
-                     f"Correlation.")
+        lines.append(f"{eff_phrase} WITH {ff_phrase}. {saio_line}")
         if mln_present:
             lines.append(_mln_fragment())
         return lines
@@ -4959,11 +5033,9 @@ def fluid_mln_impression_lines(data):
     if eff_present and ff_present:
         lines.append(f"{eff_phrase} WITH {ff_phrase}.")
     elif eff_present and saio_line:
-        lines.append(f"{eff_phrase}. {saio_line} - ?SUBACUTE INTESTINAL "
-                     f"OBSTRUCTION. Adv- Erect X-Ray Abdomen Correlation.")
+        lines.append(f"{eff_phrase}. {saio_line}")
     elif ff_present and saio_line:
-        lines.append(f"{ff_phrase}. {saio_line} - ?SUBACUTE INTESTINAL "
-                     f"OBSTRUCTION. Adv- Erect X-Ray Abdomen Correlation.")
+        lines.append(f"{ff_phrase}. {saio_line}")
     elif eff_present and mln_present:
         lines.append(f"{eff_phrase}. {_mln_fragment()}")
     elif ff_present and mln_present:
@@ -4973,8 +5045,7 @@ def fluid_mln_impression_lines(data):
     elif ff_present:
         lines.append(f"{ff_phrase}.")
     elif saio_line:
-        lines.append(f"{saio_line} - ?SUBACUTE INTESTINAL OBSTRUCTION. "
-                     f"Adv- Erect X-Ray Abdomen Correlation.")
+        lines.append(saio_line)
     elif mln_present:
         line = mln_impression_line(mln)
         if line:
@@ -7989,8 +8060,11 @@ with col_find:
                         wget("mln_sig_tail", "significance")
 
             # --- FREE FLUID ---
-            with st.expander("Free Fluid", expanded=False):
-                _ff_kind_opts = ["none", "inter_bowel", "peritoneal", "ascites"]
+            # Item #17: hidden when SAIO FF override is active.
+            _saio_ff_active = (ss("saio_ff", "none") != "none")
+            if not _saio_ff_active:
+                with st.expander("Free Fluid", expanded=False):
+                    _ff_kind_opts = ["none", "inter_bowel", "peritoneal", "ascites"]
                 st.radio(
                     "Free fluid", _ff_kind_opts,
                     index=_idx("ff_kind", _ff_kind_opts, "none"),
@@ -8259,6 +8333,27 @@ with col_find:
                              "gaseous": "Gaseous"}[x],
                          key="saio_distension_type")
                 wget("saio_distension_type", "none")
+
+                # Item #17: SAIO FF radios override the standalone FF module.
+                _saio_ff_opts = ["none", "mild_inter_bowel",
+                                 "mild_mod_peritoneal",
+                                 "mild_mod_internal_echoes"]
+                st.radio(
+                    "Free Fluid (SAIO override)",
+                    _saio_ff_opts,
+                    index=_idx("saio_ff", _saio_ff_opts, "none"),
+                    horizontal=True,
+                    format_func=lambda x: {
+                        "none": "None",
+                        "mild_inter_bowel": "Mild inter-bowel free fluid",
+                        "mild_mod_peritoneal":
+                            "Mild-mod free fluid (peritoneal)",
+                        "mild_mod_internal_echoes":
+                            "Mild-mod free fluid with internal echoes",
+                    }[x],
+                    key="saio_ff")
+                wget("saio_ff", "none")
+
                 st.markdown("**Bowel Loop Sizes (mm)**")
                 c_a, c_b = st.columns(2)
                 with c_a:
@@ -8975,6 +9070,7 @@ else:
 data["saio"] = {
     "subheading": _effective_subheading,
     "distension_type": _saio_dist,
+    "saio_ff": ss("saio_ff", "none"),
     "terminal_ileum": ss("saio_terminal_ileum", ""),
     "ascending_colon": ss("saio_ascending_colon", ""),
     "transverse_colon": ss("saio_transverse_colon", ""),
