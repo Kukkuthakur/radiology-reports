@@ -2375,7 +2375,34 @@ def prostate_sentence(d, pediatric=False, ub_status=None):
     if d.get("not_visualized"):
         s.append(seg(" is not visualized."))
         return s
+
+    band_partial = _prostate_band(d)
+    median_frag_partial = _prostate_median_lobe_body_frag(d)
+    cyst_frag_partial = _prostate_cyst_body(d)
+    cc_partial = d.get("size_cc", "")
+
     if d.get("partial_visualization"):
+        # Item #11: still show size and any findings if the user entered them.
+        if band_partial is not None:
+            body_desc, _ = band_partial
+            s += [seg(" is partially visualized, however appears "),
+                  seg(f"{body_desc} in size", True)]
+            if cc_partial:
+                s.append(size_seg(f"({cc_partial}CC)"))
+            if median_frag_partial:
+                s += [seg(" with "), seg(median_frag_partial, True)]
+            s.append(seg("."))
+            if cyst_frag_partial:
+                s += [seg(" "), seg(cyst_frag_partial, True)]
+            return s
+        if cc_partial:
+            s += [seg(f" is partially visualized, measuring "),
+                  size_seg(f"{cc_partial}CC"), seg(".")]
+            if median_frag_partial:
+                s += [seg(" "), seg(median_frag_partial, True), seg(".")]
+            if cyst_frag_partial:
+                s += [seg(" "), seg(cyst_frag_partial, True)]
+            return s
         s.append(seg(" is partially visualized."))
         return s
 
@@ -2415,7 +2442,7 @@ def prostate_sentence(d, pediatric=False, ub_status=None):
 
 
 def _prostate_impression_line(d):
-    if d.get("not_visualized") or d.get("partial_visualization"):
+    if d.get("not_visualized"):
         return None
     band = _prostate_band(d)
     cc = d.get("size_cc", "")
@@ -4265,17 +4292,39 @@ def ppln_sentence(d):
     loc = d.get("location", "peri_pancreatic")
     count = d.get("count", "few")
     size = d.get("size", "")
-    loc_body = PPLN_LOCATION_BODY.get(loc, "peri-pancreatic")
+    necrotic = bool(d.get("necrotic", False))
+    lost_hila = bool(d.get("lost_hila", False))
+
+    # Item #18: single-node ignores necrosis/lost-hila flags; multi uses both.
     if count == "single":
+        necrotic = False
+        lost_hila = False
+        loc_body = PPLN_LOCATION_BODY.get(loc, "peri-pancreatic")
         if size:
-            return [seg(f"An isolated {loc_body} lymph node ({size}mm) noted.",
-                        True)]
-        return [seg(f"An isolated {loc_body} lymph node noted.", True)]
+            base = f"An isolated {loc_body} lymph node ({size}mm) noted"
+        else:
+            base = f"An isolated {loc_body} lymph node noted"
+        return [seg(" "), seg(base + ".", True)]
+
+    loc_body = PPLN_LOCATION_BODY.get(loc, "peri-pancreatic")
     count_word = "Few" if count == "few" else "Multiple"
+
     if size:
-        return [seg(f"{count_word} {loc_body} lymph nodes are seen, largest of "
-                    f"these measuring {size}mm.", True)]
-    return [seg(f"{count_word} {loc_body} lymph nodes are seen.", True)]
+        base = (f"{count_word} {loc_body} lymph nodes are seen, largest of "
+                f"these measuring {size}mm")
+    else:
+        base = f"{count_word} {loc_body} lymph nodes are seen"
+
+    if necrotic and lost_hila:
+        tail = ", few of these showing partial necrosis with lost fatty hila"
+    elif necrotic:
+        tail = ", few of these showing partial necrosis"
+    elif lost_hila:
+        tail = ", few of these with lost fatty hila"
+    else:
+        tail = ""
+
+    return [seg(" "), seg(base + tail + ".", True)]
 
 
 def _aash_impression_line(d):
@@ -4335,18 +4384,47 @@ def ppln_impression_line(d):
     necrotic = bool(d.get("necrotic"))
     lost_hila = bool(d.get("lost_hila"))
     loc_up = PPLN_LOCATION_IMP.get(loc, "PERI-PANCREATIC")
-    if count == "single":
-        if size:
-            return (f"AN ISOLATED {loc_up} LYMPH NODE ({size}MM) - "
-                    f"?SIGNIFICANCE. Adv- Lab & Clinical Correlation.")
-        return (f"AN ISOLATED {loc_up} LYMPH NODE - ?SIGNIFICANCE. "
-                f"Adv- Lab & Clinical Correlation.")
-    count_word = "FEW" if count == "few" else "MULTIPLE"
-    necrotic_part = "(PARTIALLY NECROTIC) " if necrotic else ""
-    lost_hila_part = ", WITH LOST HILA" if lost_hila else ""
-    return (f"{count_word} {necrotic_part}{loc_up} LYMPH NODES{lost_hila_part} "
-            f"NOTED. Adv- Lab & Clinical Correlation.")
 
+    if count == "single":
+        # Item #18: single-node wording per spec.
+        if size:
+            head = f"AN ISOLATED {loc_up} LYMPH NODE ({size}MM)"
+        else:
+            head = f"AN ISOLATED {loc_up} LYMPH NODE"
+        if necrotic or lost_hila:
+            if necrotic and lost_hila:
+                cond = "SHOWING PARTIAL NECROSIS WITH LOST HILUM"
+            elif necrotic:
+                cond = "SHOWING PARTIAL NECROSIS"
+            else:
+                cond = "WITH LOST HILUM"
+            return (f"{head} {cond} - PERI-PANCREATIC LYMPHADENITIS. "
+                    f"Adv- Lab & Clinical Correlation.")
+        return (f"{head} - ?SIGNIFICANCE. "
+                f"Adv- Lab & Clinical Correlation.")
+
+    count_word = "FEW" if count == "few" else "MULTIPLE"
+
+    # Item #18: multi-node phrasing per spec.
+    head = f"{count_word} PERI-PANCREATIC"
+    if loc == "peri_portal":
+        head = f"{count_word} PERI-PORTAL"
+    elif loc == "both":
+        head = f"{count_word} PERI-PANCREATIC & PERI-PORTAL"
+
+    if necrotic and lost_hila:
+        head = f"{count_word} (PARTIALLY NECROTIC) {loc_up} LYMPH NODES, WITH LOST HILA"
+    elif necrotic:
+        head = f"{count_word} (PARTIALLY NECROTIC) {loc_up} LYMPH NODES"
+    elif lost_hila:
+        head = f"{count_word} {loc_up} LYMPH NODES, WITH LOST HILA"
+    else:
+        head = f"{count_word} {loc_up} LYMPH NODES"
+
+    if necrotic or lost_hila:
+        return (f"{head} NOTED - PERI-PANCREATIC LYMPHADENITIS. "
+                f"Adv- Lab & Clinical Correlation.")
+    return f"{head} NOTED. Adv- Lab & Clinical Correlation."
 
 # ============================================================
 # SAIO BODY
@@ -4857,19 +4935,25 @@ def fluid_mln_impression_lines(data):
     ff_phrase = _ff_impression_phrase(ff) if ff_present else None
     mln_head = _mln_impression_head(mln) if mln_present else None
 
-    infective_tail = (
-        " - LIKELY INFECTIVE PROCESS(TUBERCULAR). "
-        "Adv- Mantoux/CBNAAT, Lab & Clinical Correlation."
-    )
-
     lines = []
+
+    def _mln_fragment():
+        """Build the MLN impression fragment honoring the selected branch."""
+        _full = mln_impression_line(mln)
+        if not _full:
+            return mln_head or ""
+        # Strip the leading head we already know (avoid duplication)
+        if mln_head and _full.startswith(mln_head):
+            _tail = _full[len(mln_head):]
+            return f"{mln_head}{_tail}"
+        return _full
 
     if eff_present and ff_present and saio_line:
         lines.append(f"{eff_phrase} WITH {ff_phrase}. {saio_line} - ?SUBACUTE "
                      f"INTESTINAL OBSTRUCTION. Adv- Erect X-Ray Abdomen "
                      f"Correlation.")
         if mln_present:
-            lines.append(f"{mln_head}{infective_tail}")
+            lines.append(_mln_fragment())
         return lines
 
     if eff_present and ff_present:
@@ -4881,9 +4965,9 @@ def fluid_mln_impression_lines(data):
         lines.append(f"{ff_phrase}. {saio_line} - ?SUBACUTE INTESTINAL "
                      f"OBSTRUCTION. Adv- Erect X-Ray Abdomen Correlation.")
     elif eff_present and mln_present:
-        lines.append(f"{eff_phrase}. {mln_head}{infective_tail}")
+        lines.append(f"{eff_phrase}. {_mln_fragment()}")
     elif ff_present and mln_present:
-        lines.append(f"{ff_phrase}. {mln_head}{infective_tail}")
+        lines.append(f"{ff_phrase}. {_mln_fragment()}")
     elif eff_present:
         lines.append(f"{eff_phrase}.")
     elif ff_present:
@@ -5443,6 +5527,44 @@ def generate_impression(d, sex, age):
     for ln in reversed(fluid_lines):
         lines.insert(0, ln)
 
+    # Item #19: Fluid-only impression tail - ?ETIOLOGY
+    if fluid_lines and lines:
+        # Suppression checks
+        _liver_d = d.get("liver", {})
+        _spleen_d = d.get("spleen", {})
+        _pv_mm = _spleen_d.get("portal_vein_mm", "") or _liver_d.get("portal_vein_mm", "")
+        _pv_class = classify_portal_vein(_pv_mm) if _pv_mm else "normal"
+        _cld_like = (
+            _pv_class in ("prominent", "dilated")
+            or _liver_d.get("outline") == "crenated"
+            or _liver_d.get("echotexture") == "coarse"
+        )
+        _mln_branch = d.get("mln", {}).get("branch", "none")
+        _mln_suspicious = _mln_branch in ("reactive", "non_reactive")
+        _ppln_d = d.get("ppln", {})
+        _ppln_suspicious = (_ppln_d.get("present", False)
+                            and (_ppln_d.get("necrotic", False)
+                                 or _ppln_d.get("lost_hila", False)))
+        _has_addendum = bool((d.get("additional_body_findings") or "").strip())
+
+        _suppress_tail = (_cld_like or _mln_suspicious
+                          or _ppln_suspicious or _has_addendum)
+
+        if not _suppress_tail:
+            if d.get("tg_s_amylase"):
+                _etiology_tail = (" - ?ETIOLOGY. Adv- S. Amylase/Lipase "
+                                  "Correlation.")
+            else:
+                _etiology_tail = (" - ?ETIOLOGY. Adv- Lab & Clinical "
+                                  "Correlation.")
+            # Append to the first fluid bullet (which was inserted at index 0)
+            _first = lines[0].rstrip(".")
+            # Remove any trailing advice from the fluid line first
+            _adv_cut = _first.find("Adv-")
+            if _adv_cut != -1:
+                _first = _first[:_adv_cut].rstrip()
+            lines[0] = _first + _etiology_tail
+
     # Manual additional body findings → impression bullets (Item #6)
     _addendum = (d.get("additional_body_findings") or "").strip()
     if _addendum:
@@ -5821,10 +5943,10 @@ def build_docx_bytes(data):
     if data["appendix"].get("status") not in ("not_assessed",):
         app_segs = appendix_sentence(data["appendix"])
         if app_segs:
-            secs.append(app_segs)
+            sections.append(app_segs)
     lipoma_segs = lipoma_sentence(data.get("lipoma", {}))
     if lipoma_segs:
-        secs.append(lipoma_segs)
+        sections.append(lipoma_segs)
     aash_segs = _aash_sentence(data.get("aash", {}))
     if aash_segs:
         sections.append(aash_segs)
@@ -8272,14 +8394,21 @@ with col_find:
                                   value=_seed("ppln_size", ""))
                     wget("ppln_size", "")
 
-                    if ss("ppln_count", "few") != "single":
-                        st.checkbox("Partially necrotic", key="ppln_necrotic",
-                                    value=bool(_seed("ppln_necrotic", False)))
-                        wget("ppln_necrotic", False)
+                    # Item #18: necrosis / lost-hila flags apply to both
+                    # single-node and multi-node cases; wording differs.
+                    _ppln_is_single = (ss("ppln_count", "few") == "single")
+                    st.checkbox("Partially necrotic", key="ppln_necrotic",
+                                value=bool(_seed("ppln_necrotic", False)))
+                    wget("ppln_necrotic", False)
+                    if _ppln_is_single:
+                        st.checkbox("Lost hilum", key="ppln_lost_hila",
+                                    value=bool(_seed("ppln_lost_hila",
+                                                     False)))
+                    else:
                         st.checkbox("Lost hila", key="ppln_lost_hila",
                                     value=bool(_seed("ppln_lost_hila",
                                                      False)))
-                        wget("ppln_lost_hila", False)
+                    wget("ppln_lost_hila", False)
 
     # ============================================================
     # TOP-ROW TOGGLES GROUP (UI-G)
@@ -8765,11 +8894,10 @@ else:
                 in ("empty", "partially_empty"))
     pr_not_vis = bool(ss("pr_not_visualized", False))
     pr_partial = bool(ss("pr_partial_visualization", False))
+    # Item #11: auto-set partially_visualized (NOT not_visualized) when UB is
+    # empty, and only if the user has not manually picked a prostate status.
     if ub_empty and not pr_not_vis and not pr_partial:
-        if data["urinary_bladder"]["status"] == "empty":
-            pr_not_vis = True
-        else:
-            pr_partial = True
+        pr_partial = True
 
     data["prostate"].update({
         "size_cc": ss("pr_cc", ""),
@@ -8996,15 +9124,14 @@ def render_preview_findings(data):
     if data["appendix"].get("status") not in ("not_assessed",):
         app_segs = appendix_sentence(data["appendix"])
         if app_segs:
-            sections.append(app_segs)
+            secs.append(app_segs)
     lipoma_segs = lipoma_sentence(data.get("lipoma", {}))
     if lipoma_segs:
-        sections.append(lipoma_segs)
+        secs.append(lipoma_segs)
     aash_segs = _aash_sentence(data.get("aash", {}))
     if aash_segs:
         secs.append(aash_segs)
     secs.append(fluid_mln_sentence(data))
-
     for s in secs:
         if not s:
             continue
