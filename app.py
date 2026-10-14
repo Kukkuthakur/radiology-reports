@@ -4884,19 +4884,25 @@ def fluid_mln_impression_lines(data):
     ff_phrase = _ff_impression_phrase(ff) if ff_present else None
     mln_head = _mln_impression_head(mln) if mln_present else None
 
-    infective_tail = (
-        " - LIKELY INFECTIVE PROCESS(TUBERCULAR). "
-        "Adv- Mantoux/CBNAAT, Lab & Clinical Correlation."
-    )
-
     lines = []
+
+    def _mln_fragment():
+        """Build the MLN impression fragment honoring the selected branch."""
+        _full = mln_impression_line(mln)
+        if not _full:
+            return mln_head or ""
+        # Strip the leading head we already know (avoid duplication)
+        if mln_head and _full.startswith(mln_head):
+            _tail = _full[len(mln_head):]
+            return f"{mln_head}{_tail}"
+        return _full
 
     if eff_present and ff_present and saio_line:
         lines.append(f"{eff_phrase} WITH {ff_phrase}. {saio_line} - ?SUBACUTE "
                      f"INTESTINAL OBSTRUCTION. Adv- Erect X-Ray Abdomen "
                      f"Correlation.")
         if mln_present:
-            lines.append(f"{mln_head}{infective_tail}")
+            lines.append(_mln_fragment())
         return lines
 
     if eff_present and ff_present:
@@ -4908,9 +4914,9 @@ def fluid_mln_impression_lines(data):
         lines.append(f"{ff_phrase}. {saio_line} - ?SUBACUTE INTESTINAL "
                      f"OBSTRUCTION. Adv- Erect X-Ray Abdomen Correlation.")
     elif eff_present and mln_present:
-        lines.append(f"{eff_phrase}. {mln_head}{infective_tail}")
+        lines.append(f"{eff_phrase}. {_mln_fragment()}")
     elif ff_present and mln_present:
-        lines.append(f"{ff_phrase}. {mln_head}{infective_tail}")
+        lines.append(f"{ff_phrase}. {_mln_fragment()}")
     elif eff_present:
         lines.append(f"{eff_phrase}.")
     elif ff_present:
