@@ -9501,7 +9501,7 @@ def render_preview_findings(data):
         sections.append(aash_segs)
     ing_segs = _inguinal_sentence(data.get("inguinal", {}))
     if ing_segs:
-        sections.append(ing_segs)
+        secs.append(ing_segs)
     secs.append(fluid_mln_sentence(data))
     for s in secs:
         if not s:
