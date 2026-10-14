@@ -6843,10 +6843,17 @@ with col_find:
                                 value=bool(_seed("gb_calc_neck", False)))
                     wget("gb_calc_neck", False)
                     _gb_neck_on = ss("gb_calc_neck", False)
-                    # Single + neck: ask only one size (the neck size).
-                    # Otherwise: ask the largest size.
+                    _gb_cnt_single = (ss("gb_calc_count", "single") == "single")
                     if _gb_cnt_single and _gb_neck_on:
                         st.text_input("Calculus size (mm)",
+                                      key="gb_neck_size",
+                                      value=_seed("gb_neck_size", ""))
+                        wget("gb_neck_size", "")
+                    elif _gb_neck_on:
+                        st.text_input("Largest size (mm)", key="gb_calc_size",
+                                      value=_seed("gb_calc_size", ""))
+                        wget("gb_calc_size", "")
+                        st.text_input("Neck calculus size (mm)",
                                       key="gb_neck_size",
                                       value=_seed("gb_neck_size", ""))
                         wget("gb_neck_size", "")
@@ -6854,11 +6861,6 @@ with col_find:
                         st.text_input("Largest size (mm)", key="gb_calc_size",
                                       value=_seed("gb_calc_size", ""))
                         wget("gb_calc_size", "")
-                        if _gb_neck_on:
-                            st.text_input("Neck calculus size (mm)",
-                                          key="gb_neck_size",
-                                          value=_seed("gb_neck_size", ""))
-                            wget("gb_neck_size", "")
             _gsl_opts = ["none", "trace", "significant", "echogenic", "organized"]
             st.radio("Sludge", _gsl_opts,
                      index=_idx("gb_sludge", _gsl_opts, "none"),
