@@ -4292,17 +4292,39 @@ def ppln_sentence(d):
     loc = d.get("location", "peri_pancreatic")
     count = d.get("count", "few")
     size = d.get("size", "")
-    loc_body = PPLN_LOCATION_BODY.get(loc, "peri-pancreatic")
+    necrotic = bool(d.get("necrotic", False))
+    lost_hila = bool(d.get("lost_hila", False))
+
+    # Item #18: single-node ignores necrosis/lost-hila flags; multi uses both.
     if count == "single":
+        necrotic = False
+        lost_hila = False
+        loc_body = PPLN_LOCATION_BODY.get(loc, "peri-pancreatic")
         if size:
-            return [seg(f"An isolated {loc_body} lymph node ({size}mm) noted.",
-                        True)]
-        return [seg(f"An isolated {loc_body} lymph node noted.", True)]
+            base = f"An isolated {loc_body} lymph node ({size}mm) noted"
+        else:
+            base = f"An isolated {loc_body} lymph node noted"
+        return [seg(" "), seg(base + ".", True)]
+
+    loc_body = PPLN_LOCATION_BODY.get(loc, "peri-pancreatic")
     count_word = "Few" if count == "few" else "Multiple"
+
     if size:
-        return [seg(f"{count_word} {loc_body} lymph nodes are seen, largest of "
-                    f"these measuring {size}mm.", True)]
-    return [seg(f"{count_word} {loc_body} lymph nodes are seen.", True)]
+        base = (f"{count_word} {loc_body} lymph nodes are seen, largest of "
+                f"these measuring {size}mm")
+    else:
+        base = f"{count_word} {loc_body} lymph nodes are seen"
+
+    if necrotic and lost_hila:
+        tail = ", few of these showing partial necrosis with lost fatty hila"
+    elif necrotic:
+        tail = ", few of these showing partial necrosis"
+    elif lost_hila:
+        tail = ", few of these with lost fatty hila"
+    else:
+        tail = ""
+
+    return [seg(" "), seg(base + tail + ".", True)]
 
 
 def _aash_impression_line(d):
@@ -4362,18 +4384,47 @@ def ppln_impression_line(d):
     necrotic = bool(d.get("necrotic"))
     lost_hila = bool(d.get("lost_hila"))
     loc_up = PPLN_LOCATION_IMP.get(loc, "PERI-PANCREATIC")
-    if count == "single":
-        if size:
-            return (f"AN ISOLATED {loc_up} LYMPH NODE ({size}MM) - "
-                    f"?SIGNIFICANCE. Adv- Lab & Clinical Correlation.")
-        return (f"AN ISOLATED {loc_up} LYMPH NODE - ?SIGNIFICANCE. "
-                f"Adv- Lab & Clinical Correlation.")
-    count_word = "FEW" if count == "few" else "MULTIPLE"
-    necrotic_part = "(PARTIALLY NECROTIC) " if necrotic else ""
-    lost_hila_part = ", WITH LOST HILA" if lost_hila else ""
-    return (f"{count_word} {necrotic_part}{loc_up} LYMPH NODES{lost_hila_part} "
-            f"NOTED. Adv- Lab & Clinical Correlation.")
 
+    if count == "single":
+        # Item #18: single-node wording per spec.
+        if size:
+            head = f"AN ISOLATED {loc_up} LYMPH NODE ({size}MM)"
+        else:
+            head = f"AN ISOLATED {loc_up} LYMPH NODE"
+        if necrotic or lost_hila:
+            if necrotic and lost_hila:
+                cond = "SHOWING PARTIAL NECROSIS WITH LOST HILUM"
+            elif necrotic:
+                cond = "SHOWING PARTIAL NECROSIS"
+            else:
+                cond = "WITH LOST HILUM"
+            return (f"{head} {cond} - PERI-PANCREATIC LYMPHADENITIS. "
+                    f"Adv- Lab & Clinical Correlation.")
+        return (f"{head} - ?SIGNIFICANCE. "
+                f"Adv- Lab & Clinical Correlation.")
+
+    count_word = "FEW" if count == "few" else "MULTIPLE"
+
+    # Item #18: multi-node phrasing per spec.
+    head = f"{count_word} PERI-PANCREATIC"
+    if loc == "peri_portal":
+        head = f"{count_word} PERI-PORTAL"
+    elif loc == "both":
+        head = f"{count_word} PERI-PANCREATIC & PERI-PORTAL"
+
+    if necrotic and lost_hila:
+        head = f"{count_word} (PARTIALLY NECROTIC) {loc_up} LYMPH NODES, WITH LOST HILA"
+    elif necrotic:
+        head = f"{count_word} (PARTIALLY NECROTIC) {loc_up} LYMPH NODES"
+    elif lost_hila:
+        head = f"{count_word} {loc_up} LYMPH NODES, WITH LOST HILA"
+    else:
+        head = f"{count_word} {loc_up} LYMPH NODES"
+
+    if necrotic or lost_hila:
+        return (f"{head} NOTED - PERI-PANCREATIC LYMPHADENITIS. "
+                f"Adv- Lab & Clinical Correlation.")
+    return f"{head} NOTED. Adv- Lab & Clinical Correlation."
 
 # ============================================================
 # SAIO BODY
@@ -8348,6 +8399,17 @@ with col_find:
                                     value=bool(_seed("ppln_necrotic", False)))
                         wget("ppln_necrotic", False)
                         st.checkbox("Lost hila", key="ppln_lost_hila",
+                                    value=bool(_seed("ppln_lost_hila",
+                                                     False)))
+                        wget("ppln_lost_hila", False)
+                    else:
+                        # Item #18: single-node ignores these flags.
+                        st.checkbox("Partially necrotic (single-node)",
+                                    key="ppln_necrotic",
+                                    value=bool(_seed("ppln_necrotic", False)))
+                        wget("ppln_necrotic", False)
+                        st.checkbox("Lost hilum (single-node)",
+                                    key="ppln_lost_hila",
                                     value=bool(_seed("ppln_lost_hila",
                                                      False)))
                         wget("ppln_lost_hila", False)
