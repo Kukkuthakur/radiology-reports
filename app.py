@@ -8402,17 +8402,6 @@ with col_find:
                                     value=bool(_seed("ppln_lost_hila",
                                                      False)))
                         wget("ppln_lost_hila", False)
-                    else:
-                        # Item #18: single-node ignores these flags.
-                        st.checkbox("Partially necrotic (single-node)",
-                                    key="ppln_necrotic",
-                                    value=bool(_seed("ppln_necrotic", False)))
-                        wget("ppln_necrotic", False)
-                        st.checkbox("Lost hilum (single-node)",
-                                    key="ppln_lost_hila",
-                                    value=bool(_seed("ppln_lost_hila",
-                                                     False)))
-                        wget("ppln_lost_hila", False)
 
     # ============================================================
     # TOP-ROW TOGGLES GROUP (UI-G)
