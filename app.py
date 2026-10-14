@@ -1349,9 +1349,6 @@ def gall_bladder_sentence(d):
             else:
                 s += [seg(" "), seg(f"{word} {size_cat} calculi seen in the GB lumen, "
                                      f"largest of these measuring {size}mm.", True)]
-            else:
-                s += [seg(" "), seg(f"{word} {size_cat} calculi seen in the GB lumen, "
-                                     f"largest of these measuring {size}mm.", True)]
     else:
         s.append(seg(" No obvious gall stones seen."))
 
