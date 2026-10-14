@@ -8394,14 +8394,21 @@ with col_find:
                                   value=_seed("ppln_size", ""))
                     wget("ppln_size", "")
 
-                    if ss("ppln_count", "few") != "single":
-                        st.checkbox("Partially necrotic", key="ppln_necrotic",
-                                    value=bool(_seed("ppln_necrotic", False)))
-                        wget("ppln_necrotic", False)
+                    # Item #18: necrosis / lost-hila flags apply to both
+                    # single-node and multi-node cases; wording differs.
+                    _ppln_is_single = (ss("ppln_count", "few") == "single")
+                    st.checkbox("Partially necrotic", key="ppln_necrotic",
+                                value=bool(_seed("ppln_necrotic", False)))
+                    wget("ppln_necrotic", False)
+                    if _ppln_is_single:
+                        st.checkbox("Lost hilum", key="ppln_lost_hila",
+                                    value=bool(_seed("ppln_lost_hila",
+                                                     False)))
+                    else:
                         st.checkbox("Lost hila", key="ppln_lost_hila",
                                     value=bool(_seed("ppln_lost_hila",
                                                      False)))
-                        wget("ppln_lost_hila", False)
+                    wget("ppln_lost_hila", False)
 
     # ============================================================
     # TOP-ROW TOGGLES GROUP (UI-G)
