@@ -1330,18 +1330,25 @@ def gall_bladder_sentence(d):
         if count == "innumerable":
             s += [seg(" "), seg("Innumerable tiny calculi seen in the GB lumen.", True)]
         elif count == "single":
+            # Item-9-fix: for a single calculus impacted at the neck, the
+            # user may have entered the size in the "neck size" field only.
+            _eff_size = size or neck_size
             if neck:
-                s += [seg(" "), seg(f"A calculus measuring {size}mm, seen impacted "
-                                     f"at the GB neck.", True)]
+                s += [seg(" "), seg(f"A calculus measuring {_eff_size}mm, seen "
+                                     f"impacted at the GB neck.", True)]
             else:
-                s += [seg(" "), seg(f"A calculus measuring {size}mm is seen in the "
-                                     f"GB lumen.", True)]
+                s += [seg(" "), seg(f"A calculus measuring {_eff_size}mm is seen "
+                                     f"in the GB lumen.", True)]
         else:
             word = "Few" if count == "few" else "Multiple"
             if neck:
+                _neck_disp = neck_size or size
                 s += [seg(" "), seg(f"{word} {size_cat} calculi seen in the GB lumen, "
-                                     f"with a calculus measuring {neck_size}mm "
+                                     f"with a calculus measuring {_neck_disp}mm "
                                      f"impacted at the GB neck.", True)]
+            else:
+                s += [seg(" "), seg(f"{word} {size_cat} calculi seen in the GB lumen, "
+                                     f"largest of these measuring {size}mm.", True)]
             else:
                 s += [seg(" "), seg(f"{word} {size_cat} calculi seen in the GB lumen, "
                                      f"largest of these measuring {size}mm.", True)]
@@ -6831,17 +6838,27 @@ with col_find:
                                  key="gb_calc_size_cat")
                         wget("gb_calc_size_cat", "small")
                 if ss("gb_calc_count", "single") != "innumerable":
-                    st.text_input("Largest size (mm)", key="gb_calc_size",
-                                  value=_seed("gb_calc_size", ""))
-                    wget("gb_calc_size", "")
+                    _gb_cnt_single = (ss("gb_calc_count", "single") == "single")
                     st.checkbox("Calculus at GB neck", key="gb_calc_neck",
                                 value=bool(_seed("gb_calc_neck", False)))
                     wget("gb_calc_neck", False)
-                    if ss("gb_calc_neck", False):
-                        st.text_input("Neck calculus size (mm)",
+                    _gb_neck_on = ss("gb_calc_neck", False)
+                    # Single + neck: ask only one size (the neck size).
+                    # Otherwise: ask the largest size.
+                    if _gb_cnt_single and _gb_neck_on:
+                        st.text_input("Calculus size (mm)",
                                       key="gb_neck_size",
                                       value=_seed("gb_neck_size", ""))
                         wget("gb_neck_size", "")
+                    else:
+                        st.text_input("Largest size (mm)", key="gb_calc_size",
+                                      value=_seed("gb_calc_size", ""))
+                        wget("gb_calc_size", "")
+                        if _gb_neck_on:
+                            st.text_input("Neck calculus size (mm)",
+                                          key="gb_neck_size",
+                                          value=_seed("gb_neck_size", ""))
+                            wget("gb_neck_size", "")
             _gsl_opts = ["none", "trace", "significant", "echogenic", "organized"]
             st.radio("Sludge", _gsl_opts,
                      index=_idx("gb_sludge", _gsl_opts, "none"),
