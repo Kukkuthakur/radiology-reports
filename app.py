@@ -1027,6 +1027,19 @@ def _new_appendix():
     }
 
 
+def _new_inguinal():
+    return {
+        "present": False,
+        "side": "right",           # right / left / bilateral
+        "size_right": "",
+        "size_left": "",
+        "type": "direct",          # direct / indirect / unspecified
+        "content": "omentum",      # omentum / bowel / omentum_bowel
+        "reducibility": "reducible",  # reducible / irreducible
+        "no_strangulation": True,
+    }
+
+
 def new_report(sex="F"):
     return {
         "patient": {"name": "", "age": "", "sex": sex,
@@ -1108,6 +1121,7 @@ def new_report(sex="F"):
             "content": "omentum",
             "size": "",
         },
+        "inguinal": _new_inguinal(),
         "additional_body_findings": "",
         "impression": {"lines": []},
     }
@@ -4287,6 +4301,45 @@ def _aash_sentence(d):
     return [seg(text, True)]
 
 
+def _inguinal_sentence(d):
+    if not d.get("present"):
+        return None
+    side = d.get("side", "right")
+    content = d.get("content", "omentum")
+    reducibility = d.get("reducibility", "reducible")
+    size_right = d.get("size_right", "")
+    size_left = d.get("size_left", "")
+
+    # Size brackets
+    def _size_txt(s):
+        return f" ({s}mm)" if s else ""
+
+    content_body = {
+        "omentum": "omentum is seen herniating",
+        "bowel": "bowel loops are seen herniating",
+        "omentum_bowel": "omentum & bowel loops are seen herniating",
+    }.get(content, "omentum is seen herniating")
+
+    if reducibility == "reducible":
+        hernia_phrase = f"{content_body} only on valsalva manoeuvre"
+    else:
+        hernia_phrase = (f"{content_body} on baseline which accentuates "
+                         f"further on valsalva manoeuvre")
+
+    if side == "right":
+        text = (f"A defect{_size_txt(size_right)} is seen in the right "
+                f"inguinal canal, through which {hernia_phrase}.")
+    elif side == "left":
+        text = (f"A defect{_size_txt(size_left)} is seen in the left "
+                f"inguinal canal, through which {hernia_phrase}.")
+    else:
+        r_txt = size_right if size_right else "___"
+        l_txt = size_left if size_left else "___"
+        text = (f"Small defects (Right {r_txt}mm, Left {l_txt}mm) seen in the "
+                f"bilateral inguinal canals, through which {hernia_phrase}.")
+    return [seg(text, True)]
+
+
 def ppln_sentence(d):
     if not d.get("present"):
         return []
@@ -4374,6 +4427,64 @@ def _lipoma_impression_line(d):
         return f"A SUBCUTANEOUS LIPOMA IN THE {loc_up}{size_paren}."
     word = "FEW" if count == "few" else "MULTIPLE"
     return f"{word} SUBCUTANEOUS LIPOMAS IN THE {loc_up}{size_paren}."
+
+
+def _inguinal_impression_line(d):
+    if not d.get("present"):
+        return None
+    side = d.get("side", "right")
+    hernia_type = d.get("type", "direct")
+    content = d.get("content", "omentum")
+    reducibility = d.get("reducibility", "reducible")
+    size_right = d.get("size_right", "")
+    size_left = d.get("size_left", "")
+    no_strang = bool(d.get("no_strangulation", True))
+
+    type_up = {
+        "direct": "DIRECT",
+        "indirect": "INDIRECT",
+        "unspecified": "INGUINAL",
+    }.get(hernia_type, "DIRECT")
+
+    # Reducibility phrasing
+    if reducibility == "reducible":
+        red_phrase = "ONLY ON VALSALVA MANOEUVRE - LIKELY REDUCIBLE"
+    else:
+        red_phrase = ("ON BASELINE WHICH ACCENTUATES FURTHER ON VALSALVA "
+                      "MANOEUVRE - LIKELY IRREDUCIBLE")
+
+    # Content phrase
+    if content == "omentum":
+        content_up = "THROUGH WHICH OMENTUM IS SEEN HERNIATING"
+    elif content == "bowel":
+        content_up = "THROUGH WHICH BOWEL LOOPS ARE SEEN HERNIATING"
+    else:
+        content_up = ("THROUGH WHICH OMENTUM & BOWEL LOOPS ARE SEEN "
+                      "HERNIATING")
+
+    # Strangulation clause — only appended for omentum_bowel + irreducible
+    strang_clause = ""
+    if content == "omentum_bowel" and reducibility == "irreducible" and no_strang:
+        strang_clause = (", HOWEVER NO BOWEL LOOP STRANGULATION IS "
+                         "APPRECIATED AT THE TIME OF SCAN")
+
+    if side == "right":
+        size_paren = f" ({size_right}MM)" if size_right else ""
+        head = f"RIGHT INGUINAL CANAL DEFECT{size_paren}"
+        return (f"{head}, {content_up} {red_phrase} "
+                f"{type_up} INGUINAL HERNIA{strang_clause}.")
+    if side == "left":
+        size_paren = f" ({size_left}MM)" if size_left else ""
+        head = f"LEFT INGUINAL CANAL DEFECT{size_paren}"
+        return (f"{head}, {content_up} {red_phrase} "
+                f"{type_up} INGUINAL HERNIA{strang_clause}.")
+    # bilateral
+    r_txt = size_right if size_right else "___"
+    l_txt = size_left if size_left else "___"
+    head = (f"BILATERAL INGUINAL CANAL DEFECTS (RIGHT {r_txt}MM, "
+            f"LEFT {l_txt}MM)")
+    return (f"{head}, {content_up} {red_phrase} BILATERAL {type_up} "
+            f"INGUINAL HERNIA{strang_clause}.")
 
 
 def ppln_impression_line(d):
@@ -5646,6 +5757,10 @@ def generate_impression(d, sex, age):
     if aash_line:
         lines.append(aash_line)
 
+    ing_line = _inguinal_impression_line(d.get("inguinal", {}))
+    if ing_line:
+        lines.append(ing_line)
+
     fluid_lines = fluid_mln_impression_lines(d)
     for ln in reversed(fluid_lines):
         lines.insert(0, ln)
@@ -6084,6 +6199,9 @@ def build_docx_bytes(data):
     aash_segs = _aash_sentence(data.get("aash", {}))
     if aash_segs:
         sections.append(aash_segs)
+    ing_segs = _inguinal_sentence(data.get("inguinal", {}))
+    if ing_segs:
+        sections.append(ing_segs)
     sections.append(fluid_mln_sentence(data))
 
     rendered_count = 0
@@ -8522,6 +8640,86 @@ with col_find:
                         key="aash_content")
                     wget("aash_content", "omentum")
 
+            # --- INGUINAL HERNIA ---
+            with st.expander("Inguinal Hernia", expanded=False):
+                st.checkbox("Inguinal hernia present", key="ing_present",
+                            value=bool(_seed("ing_present", False)))
+                wget("ing_present", False)
+                if ss("ing_present", False):
+                    _ing_side_opts = ["right", "left", "bilateral"]
+                    st.radio("Side", _ing_side_opts,
+                             index=_idx("ing_side", _ing_side_opts, "right"),
+                             horizontal=True,
+                             format_func=lambda x: x.title(),
+                             key="ing_side")
+                    wget("ing_side", "right")
+
+                    _ing_side = ss("ing_side", "right")
+                    if _ing_side == "bilateral":
+                        c_a, c_b = st.columns(2)
+                        with c_a:
+                            st.text_input("Right defect size (mm, e.g. 18x12)",
+                                          key="ing_size_right",
+                                          value=_seed("ing_size_right", ""))
+                            wget("ing_size_right", "")
+                        with c_b:
+                            st.text_input("Left defect size (mm, e.g. 22x15)",
+                                          key="ing_size_left",
+                                          value=_seed("ing_size_left", ""))
+                            wget("ing_size_left", "")
+                    elif _ing_side == "right":
+                        st.text_input("Right defect size (mm, e.g. 18x12)",
+                                      key="ing_size_right",
+                                      value=_seed("ing_size_right", ""))
+                        wget("ing_size_right", "")
+                    else:
+                        st.text_input("Left defect size (mm, e.g. 22x15)",
+                                      key="ing_size_left",
+                                      value=_seed("ing_size_left", ""))
+                        wget("ing_size_left", "")
+
+                    _ing_type_opts = ["direct", "indirect", "unspecified"]
+                    st.radio("Type", _ing_type_opts,
+                             index=_idx("ing_type", _ing_type_opts, "direct"),
+                             horizontal=True,
+                             format_func=lambda x: {
+                                 "direct": "Direct",
+                                 "indirect": "Indirect",
+                                 "unspecified": "Not specified"}[x],
+                             key="ing_type")
+                    wget("ing_type", "direct")
+
+                    _ing_content_opts = ["omentum", "bowel", "omentum_bowel"]
+                    st.radio("Content", _ing_content_opts,
+                             index=_idx("ing_content", _ing_content_opts,
+                                        "omentum"),
+                             horizontal=True,
+                             format_func=lambda x: {
+                                 "omentum": "Omentum",
+                                 "bowel": "Bowel loops",
+                                 "omentum_bowel": "Omentum & Bowel loops"}[x],
+                             key="ing_content")
+                    wget("ing_content", "omentum")
+
+                    _ing_red_opts = ["reducible", "irreducible"]
+                    st.radio("Reducibility", _ing_red_opts,
+                             index=_idx("ing_reducibility", _ing_red_opts,
+                                        "reducible"),
+                             horizontal=True,
+                             format_func=lambda x: {
+                                 "reducible": "Reducible (only on Valsalva)",
+                                 "irreducible":
+                                     "Irreducible (baseline, accentuates on "
+                                     "Valsalva)"}[x],
+                             key="ing_reducibility")
+                    wget("ing_reducibility", "reducible")
+
+                    st.checkbox("No bowel loop strangulation appreciated",
+                                key="ing_no_strangulation",
+                                value=bool(_seed("ing_no_strangulation",
+                                                 True)))
+                    wget("ing_no_strangulation", True)
+
             # --- PERI-PANCREATIC / PERI-PORTAL NODES ---
             with st.expander("Peri-Pancreatic / Peri-Portal Nodes",
                              expanded=False):
@@ -9177,6 +9375,17 @@ data["aash"] = {
     "size": ss("aash_size", ""),
 }
 
+data["inguinal"] = {
+    "present": bool(ss("ing_present", False)),
+    "side": ss("ing_side", "right"),
+    "size_right": ss("ing_size_right", ""),
+    "size_left": ss("ing_size_left", ""),
+    "type": ss("ing_type", "direct"),
+    "content": ss("ing_content", "omentum"),
+    "reducibility": ss("ing_reducibility", "reducible"),
+    "no_strangulation": bool(ss("ing_no_strangulation", True)),
+}
+
 # Template impression override injection
 _tpl_override = st.session_state.get("_template_impression_override", "")
 _tpl_advice = st.session_state.get("_template_advice", "")
@@ -9289,8 +9498,11 @@ def render_preview_findings(data):
         secs.append(lipoma_segs)
     aash_segs = _aash_sentence(data.get("aash", {}))
     if aash_segs:
-        secs.append(aash_segs)
-    secs.append(fluid_mln_sentence(data))
+        sections.append(aash_segs)
+    ing_segs = _inguinal_sentence(data.get("inguinal", {}))
+    if ing_segs:
+        sections.append(ing_segs)
+    sections.append(fluid_mln_sentence(data))
     for s in secs:
         if not s:
             continue
