@@ -5470,6 +5470,44 @@ def generate_impression(d, sex, age):
     for ln in reversed(fluid_lines):
         lines.insert(0, ln)
 
+    # Item #19: Fluid-only impression tail - ?ETIOLOGY
+    if fluid_lines and lines:
+        # Suppression checks
+        _liver_d = d.get("liver", {})
+        _spleen_d = d.get("spleen", {})
+        _pv_mm = _spleen_d.get("portal_vein_mm", "") or _liver_d.get("portal_vein_mm", "")
+        _pv_class = classify_portal_vein(_pv_mm) if _pv_mm else "normal"
+        _cld_like = (
+            _pv_class in ("prominent", "dilated")
+            or _liver_d.get("outline") == "crenated"
+            or _liver_d.get("echotexture") == "coarse"
+        )
+        _mln_branch = d.get("mln", {}).get("branch", "none")
+        _mln_suspicious = _mln_branch in ("reactive", "non_reactive")
+        _ppln_d = d.get("ppln", {})
+        _ppln_suspicious = (_ppln_d.get("present", False)
+                            and (_ppln_d.get("necrotic", False)
+                                 or _ppln_d.get("lost_hila", False)))
+        _has_addendum = bool((d.get("additional_body_findings") or "").strip())
+
+        _suppress_tail = (_cld_like or _mln_suspicious
+                          or _ppln_suspicious or _has_addendum)
+
+        if not _suppress_tail:
+            if d.get("tg_s_amylase"):
+                _etiology_tail = (" - ?ETIOLOGY. Adv- S. Amylase/Lipase "
+                                  "Correlation.")
+            else:
+                _etiology_tail = (" - ?ETIOLOGY. Adv- Lab & Clinical "
+                                  "Correlation.")
+            # Append to the first fluid bullet (which was inserted at index 0)
+            _first = lines[0].rstrip(".")
+            # Remove any trailing advice from the fluid line first
+            _adv_cut = _first.find("Adv-")
+            if _adv_cut != -1:
+                _first = _first[:_adv_cut].rstrip()
+            lines[0] = _first + _etiology_tail
+
     # Manual additional body findings → impression bullets (Item #6)
     _addendum = (d.get("additional_body_findings") or "").strip()
     if _addendum:
