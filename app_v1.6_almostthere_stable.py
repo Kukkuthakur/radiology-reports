@@ -2425,23 +2425,26 @@ def prostate_sentence(d, pediatric=False, ub_status=None):
         s.append(seg(" is partially visualized."))
         return s
 
-    if pediatric and not _prostate_band(d):
-        s.append(seg(" is age-appropriate."))
-        return s
-
     band = _prostate_band(d)
     median_frag = _prostate_median_lobe_body_frag(d)
     cyst_frag = _prostate_cyst_body(d)
     cc = d.get("size_cc", "")
 
     if band is None:
+        if pediatric and not cc and not median_frag and not cyst_frag:
+            s.append(seg(" is age-appropriate."))
+            return s
         if median_frag:
             s.append(seg(" is normal in size"))
+            if cc:
+                s.append(size_seg(f"({cc}CC)"))
             s += [seg(" with "), seg(median_frag, True),
                   seg(", however the attenuation and margins are normal.")]
         else:
-            s.append(seg(" is normal in size and attenuation. No diffuse or "
-                         "focal lesion seen."))
+            s.append(seg(" is normal in size and attenuation"))
+            if cc:
+                s.append(size_seg(f"({cc}CC)"))
+            s.append(seg(". No diffuse or focal lesion seen."))
         if cyst_frag:
             s += [seg(" "), seg(cyst_frag, True)]
         return s
@@ -3919,13 +3922,16 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False,
 # BOWEL WALL & BOWEL
 # ============================================================
 
-def bowel_sentence(d, sex, pancreas_status="normal"):
+def bowel_sentence(d, sex, pancreas_status="normal", mln_present=False):
     acute = (pancreas_status == "acute")
     s = []
     wall = bool(d.get("wall_thickening"))
     if not wall:
-        s.append(seg("No obvious bowel wall thickening or lymphadenitis "
-                     "appreciated.", True))
+        if mln_present:
+            s.append(seg("No obvious bowel wall thickening appreciated.", True))
+        else:
+            s.append(seg("No obvious bowel wall thickening or lymphadenitis "
+                         "appreciated.", True))
     else:
         s.append(seg("Bowel wall thickening seen.", True))
     if acute:
@@ -4753,14 +4759,28 @@ def fluid_mln_sentence(data):
             out.append(seg(saio_line + ".", True))
 
     if mln_segs:
-        if fluid_sentence or saio_line:
+        # Merge fluid + MLN into one sentence when fluid is present (with-join).
+        if fluid_sentence and not saio_line:
+            # Strip the trailing period from the fluid sentence, lowercase
+            # the leading letter of the MLN sentence, and join with " with ".
+            merged_fluid = fluid_sentence.rstrip(".")
+            mln_body = mln_segs[0][0].strip()
+            # lowercase first letter of MLN body
+            if mln_body and mln_body[0].isupper():
+                mln_body = mln_body[0].lower() + mln_body[1:]
+            # Drop the leading "Also " pattern if present (not expected here)
+            if mln_body.startswith("also "):
+                mln_body = mln_body[5:]
+            # Remove the existing "out" fluid segment, replace with merged.
+            out.clear()
+            out.append(seg(f"{merged_fluid} with {mln_body}", True))
+        elif fluid_sentence or saio_line:
             out.append(seg(" Also "))
             out.append(seg(mln_segs[0][0], True))
         else:
             out.append(seg(mln_segs[0][0], True))
 
     return out
-
 
 # ============================================================
 # IMPRESSION HELPERS
@@ -5152,9 +5172,14 @@ def fluid_mln_impression_lines(data):
     elif ff_present and saio_line:
         lines.append(f"{ff_phrase}. {saio_line}")
     elif eff_present and mln_present:
-        lines.append(f"{eff_phrase}. {_mln_fragment()}")
+        # Merge effusion + MLN.
+        lines.append(f"{eff_phrase} WITH {_mln_fragment()}")
     elif ff_present and mln_present:
-        lines.append(f"{ff_phrase}. {_mln_fragment()}")
+        # Merge fluid + MLN (fluid as primary, MLN joined by " WITH ").
+        _mln_frag = _mln_fragment()
+        # Drop the leading period from fluid phrase, uppercase the first
+        # char of the MLN fragment so it reads naturally after "WITH".
+        lines.append(f"{ff_phrase} WITH {_mln_frag}")
     elif eff_present:
         lines.append(f"{eff_phrase}.")
     elif ff_present:
@@ -5782,7 +5807,7 @@ def generate_impression(d, sex, age):
             or _liver_d.get("echotexture") == "coarse"
         )
         _mln_branch = d.get("mln", {}).get("branch", "none")
-        _mln_suspicious = _mln_branch in ("reactive", "non_reactive")
+        _mln_suspicious = _mln_branch != "none"
         _ppln_d = d.get("ppln", {})
         _ppln_suspicious = (_ppln_d.get("present", False)
                             and (_ppln_d.get("necrotic", False)
@@ -6189,7 +6214,10 @@ def build_docx_bytes(data):
         sections.append(prostate_sentence(data["prostate"], pediatric=is_ped,
                                            ub_status=ub_status))
 
-    sections.append(bowel_sentence(data["bowel"], sex, pancreas_status=p_status))
+    _mln_present = data.get("mln", {}).get("branch", "none") != "none"
+    sections.append(bowel_sentence(data["bowel"], sex,
+                                    pancreas_status=p_status,
+                                    mln_present=_mln_present))
     bw_segs = bowel_wall_sentence(data.get("bowel_wall", {}))
     if bw_segs:
         sections.append(bw_segs)
@@ -9501,7 +9529,10 @@ def render_preview_findings(data):
         secs.append(prostate_sentence(data["prostate"], pediatric=is_ped,
                                        ub_status=ub_status))
 
-    secs.append(bowel_sentence(data["bowel"], sex, pancreas_status=p_status))
+    _mln_present = data.get("mln", {}).get("branch", "none") != "none"
+    secs.append(bowel_sentence(data["bowel"], sex,
+                                pancreas_status=p_status,
+                                mln_present=_mln_present))
     bw_segs = bowel_wall_sentence(data.get("bowel_wall", {}))
     if bw_segs:
         secs.append(bw_segs)
@@ -9514,7 +9545,7 @@ def render_preview_findings(data):
         secs.append(lipoma_segs)
     aash_segs = _aash_sentence(data.get("aash", {}))
     if aash_segs:
-        sections.append(aash_segs)
+        secs.append(aash_segs)
     ing_segs = _inguinal_sentence(data.get("inguinal", {}))
     if ing_segs:
         secs.append(ing_segs)
