@@ -2425,16 +2425,15 @@ def prostate_sentence(d, pediatric=False, ub_status=None):
         s.append(seg(" is partially visualized."))
         return s
 
-    if pediatric and not _prostate_band(d):
-        s.append(seg(" is age-appropriate."))
-        return s
-
     band = _prostate_band(d)
     median_frag = _prostate_median_lobe_body_frag(d)
     cyst_frag = _prostate_cyst_body(d)
     cc = d.get("size_cc", "")
 
     if band is None:
+        if pediatric and not cc and not median_frag and not cyst_frag:
+            s.append(seg(" is age-appropriate."))
+            return s
         if median_frag:
             s.append(seg(" is normal in size"))
             s += [seg(" with "), seg(median_frag, True),
