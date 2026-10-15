@@ -2436,11 +2436,15 @@ def prostate_sentence(d, pediatric=False, ub_status=None):
             return s
         if median_frag:
             s.append(seg(" is normal in size"))
+            if cc:
+                s.append(size_seg(f"({cc}CC)"))
             s += [seg(" with "), seg(median_frag, True),
                   seg(", however the attenuation and margins are normal.")]
         else:
-            s.append(seg(" is normal in size and attenuation. No diffuse or "
-                         "focal lesion seen."))
+            s.append(seg(" is normal in size and attenuation"))
+            if cc:
+                s.append(size_seg(f"({cc}CC)"))
+            s.append(seg(". No diffuse or focal lesion seen."))
         if cyst_frag:
             s += [seg(" "), seg(cyst_frag, True)]
         return s
