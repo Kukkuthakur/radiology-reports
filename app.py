@@ -9514,7 +9514,7 @@ def render_preview_findings(data):
         secs.append(lipoma_segs)
     aash_segs = _aash_sentence(data.get("aash", {}))
     if aash_segs:
-        sections.append(aash_segs)
+        secs.append(aash_segs)
     ing_segs = _inguinal_sentence(data.get("inguinal", {}))
     if ing_segs:
         secs.append(ing_segs)
