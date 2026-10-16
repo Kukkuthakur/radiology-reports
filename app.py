@@ -807,16 +807,19 @@ SAIO_SUBHEADING_TEXT = "[Limited Scan: Extensively gaseous Epigastrium & midline
 # ============================================================
 
 BW_SEGMENT_OPTS = ["short", "long"]
-BW_LOCATION_OPTS = ["terminal_ileum", "ascending_colon",
-                    "transverse_colon", "descending_colon"]
+BW_LOCATION_OPTS = ["terminal_ileum", "ileo_caecal_junction",
+                    "ascending_colon", "transverse_colon",
+                    "descending_colon"]
 BW_LOCATION_BODY = {
     "terminal_ileum": "terminal ilium",
+    "ileo_caecal_junction": "ileo-caecal junction",
     "ascending_colon": "ascending colon",
     "transverse_colon": "transverse colon",
     "descending_colon": "descending colon",
 }
 BW_LOCATION_IMP = {
     "terminal_ileum": "TERMINAL ILEUM",
+    "ileo_caecal_junction": "ILEO-CAECAL JUNCTION",
     "ascending_colon": "ASCENDING COLON",
     "transverse_colon": "TRANSVERSE COLON",
     "descending_colon": "DESCENDING COLON",
@@ -974,7 +977,7 @@ def _new_bowel_wall():
     return {
         "present": False, "segment_type": "short", "segment_len": "",
         "locations": [],
-        "term_ileum_size": "", "ascending_size": "",
+        "term_ileum_size": "", "icj_size": "", "ascending_size": "",
         "transverse_size": "", "descending_size": "",
         "perifocal_mesentery": False, "perifocal_free_fluid": False,
         "embedded_nodes": False, "embedded_nodes_size": "",
@@ -3981,12 +3984,14 @@ def bowel_wall_sentence(d):
     loc_body_parts = []
     loc_sizes = {
         "terminal_ileum": d.get("term_ileum_size", ""),
+        "ileo_caecal_junction": d.get("icj_size", ""),
         "ascending_colon": d.get("ascending_size", ""),
         "transverse_colon": d.get("transverse_size", ""),
         "descending_colon": d.get("descending_size", ""),
     }
-    for key in ("terminal_ileum", "ascending_colon",
-                "transverse_colon", "descending_colon"):
+    for key in ("terminal_ileum", "ileo_caecal_junction",
+                "ascending_colon", "transverse_colon",
+                "descending_colon"):
         if key in locations:
             size = loc_sizes[key]
             if size:
@@ -3994,7 +3999,6 @@ def bowel_wall_sentence(d):
                                        f"(upto {size}mm)")
             else:
                 loc_body_parts.append(f"{BW_LOCATION_BODY[key]} wall thickening")
-
     if not loc_body_parts:
         return None
 
@@ -4038,12 +4042,14 @@ def _bowel_wall_impression_line(d):
     loc_imp_parts = []
     loc_sizes = {
         "terminal_ileum": d.get("term_ileum_size", ""),
+        "ileo_caecal_junction": d.get("icj_size", ""),
         "ascending_colon": d.get("ascending_size", ""),
         "transverse_colon": d.get("transverse_size", ""),
         "descending_colon": d.get("descending_size", ""),
     }
-    for key in ("terminal_ileum", "ascending_colon",
-                "transverse_colon", "descending_colon"):
+    for key in ("terminal_ileum", "ileo_caecal_junction",
+                "ascending_colon", "transverse_colon",
+                "descending_colon"):
         if key in locations:
             size = loc_sizes[key]
             if size:
@@ -8528,6 +8534,8 @@ with col_find:
                     _bw_loc_keys = [
                         ("bw_term_ileum_check", "bw_term_ileum_size",
                          "Terminal Ileum"),
+                        ("bw_icj_check", "bw_icj_size",
+                         "Ileo-Caecal Junction"),
                         ("bw_ascending_check", "bw_ascending_size",
                          "Ascending Colon"),
                         ("bw_transverse_check", "bw_transverse_size",
@@ -9403,6 +9411,7 @@ data["bowel_wall"] = {
     "segment_len": ss("bw_segment_len", ""),
     "locations": [],
     "term_ileum_size": ss("bw_term_ileum_size", ""),
+    "icj_size": ss("bw_icj_size", ""),
     "ascending_size": ss("bw_ascending_size", ""),
     "transverse_size": ss("bw_transverse_size", ""),
     "descending_size": ss("bw_descending_size", ""),
@@ -9414,6 +9423,8 @@ data["bowel_wall"] = {
 }
 if ss("bw_term_ileum_check", False):
     data["bowel_wall"]["locations"].append("terminal_ileum")
+if ss("bw_icj_check", False):
+    data["bowel_wall"]["locations"].append("ileo_caecal_junction")
 if ss("bw_ascending_check", False):
     data["bowel_wall"]["locations"].append("ascending_colon")
 if ss("bw_transverse_check", False):
