@@ -770,13 +770,13 @@ PPLN_LOCATION_IMP = {
 # ============================================================
 
 EFF_LATERALITY_OPTS = ["right", "left", "bilateral", "bilateral_asym"]
-EFF_GRADE_OPTS = ["mild", "mild_to_moderate", "moderate_to_gross"]
+EFF_GRADE_OPTS = ["trace", "mild", "mild_to_moderate", "moderate_to_gross"]
 EFF_GRADE_BODY = {
-    "mild": "mild", "mild_to_moderate": "mild to moderate",
+    "trace": "trace", "mild": "mild", "mild_to_moderate": "mild to moderate",
     "moderate_to_gross": "moderate to gross",
 }
 EFF_GRADE_UP = {
-    "mild": "MILD", "mild_to_moderate": "MILD TO MODERATE",
+    "trace": "TRACE", "mild": "MILD", "mild_to_moderate": "MILD TO MODERATE",
     "moderate_to_gross": "MODERATE TO GROSS",
 }
 
@@ -8425,6 +8425,7 @@ with col_find:
                                             "mild"),
                                  horizontal=True, key="pe_grade_right",
                                  format_func=lambda x: {
+                                     "trace": "Trace",
                                      "mild": "Mild",
                                      "mild_to_moderate": "Mild to Moderate",
                                      "moderate_to_gross":
@@ -8436,6 +8437,7 @@ with col_find:
                                  index=_idx("pe_grade_left", _g_opts, "mild"),
                                  horizontal=True, key="pe_grade_left",
                                  format_func=lambda x: {
+                                     "trace": "Trace",
                                      "mild": "Mild",
                                      "mild_to_moderate": "Mild to Moderate",
                                      "moderate_to_gross":
@@ -8448,6 +8450,7 @@ with col_find:
                                             "mild"),
                                  horizontal=True, key="pe_grade_right",
                                  format_func=lambda x: {
+                                     "trace": "Trace",
                                      "mild": "Mild",
                                      "mild_to_moderate": "Mild to Moderate",
                                      "moderate_to_gross":
@@ -8462,6 +8465,7 @@ with col_find:
                                                 "mild"),
                                      horizontal=True, key="pe_grade_right",
                                      format_func=lambda x: {
+                                         "trace": "Trace",
                                          "mild": "Mild",
                                          "mild_to_moderate": "Mild to Mod",
                                          "moderate_to_gross":
@@ -8474,6 +8478,7 @@ with col_find:
                                                 "mild"),
                                      horizontal=True, key="pe_grade_left",
                                      format_func=lambda x: {
+                                         "trace": "Trace",
                                          "mild": "Mild",
                                          "mild_to_moderate": "Mild to Mod",
                                          "moderate_to_gross":
