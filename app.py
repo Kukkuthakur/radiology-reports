@@ -1936,11 +1936,11 @@ def _cyst_body(k, side_low):
         if not desc:
             return []
         if count == "single":
-            text = (f"A complex cyst({bosniak_txt}) with {desc}, seen at the "
+            text = (f"A complex cyst{bosniak_txt} with {desc}, seen at the "
                     f"{loc_txt} of {side_phrase}.")
         else:
             word = _cyst_count_word(count)
-            text = (f"{word} complex cortical cysts({bosniak_txt}) with {desc} "
+            text = (f"{word} complex cortical cysts{bosniak_txt} with {desc} "
                     f"seen in the {side_phrase}, largest of these measuring "
                     f"{size}mm at the {loc_txt}.")
     return [seg(" "), seg(text, True)]
