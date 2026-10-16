@@ -1065,6 +1065,7 @@ def new_report(sex="F"):
             "status": "adequately_distended",
             "wall_thickened": False, "wall_mm": "",
             "wall_edematous": False, "wall_onion_peel": False,
+            "wes_sign": False,
             "calculi": "none", "calculi_count": "single",
             "calculi_size_cat": "small", "calculi_size_mm": "",
             "calculi_neck": False, "calculi_neck_size_mm": "",
@@ -1306,6 +1307,14 @@ def gall_bladder_sentence(d):
         s.append(seg(" is partially contracted (suboptimal wall visualization)."))
     elif status == "contracted":
         s.append(seg(" is contracted (suboptimal wall visualization)."))
+
+    # WES-sign branch — replace the standard wall/calculi narrative
+    if d.get("wes_sign"):
+        s.append(seg(" Wall visualization is suboptimal as the anterior GB wall "
+                     "is studded by multiple calculi casting distal acoustic "
+                     "shadow and obscuring the acoustic window", True, False, True))
+        s.append(seg("(WES Sign+).", True, False, True))
+        return s
 
     if status != "contracted":
         if d.get("wall_thickened") and d.get("wall_mm"):
@@ -5481,6 +5490,16 @@ def generate_impression(d, sex, age):
         except (ValueError, TypeError):
             wall_descriptor = ""
 
+    # WES-sign impression — supersedes the standard cholelithiasis narrative
+    _wes_on = bool(gb.get("wes_sign", False))
+    if _wes_on:
+        lines.append("CHOLELITHIASIS WITH POSITIVE WALL-ECHO-SHADOW COMPLEX "
+                     "SIGN(WES+) Adv- Lab & Clinical Correlation.")
+        # Skip the standard GB/CBD chain for this branch
+        _skip_gb_chain = True
+    else:
+        _skip_gb_chain = False
+
     # Item #10: compute acute-cholecystitis fragment once, used in the merge.
     _acute_chole_frag = ""
     _gb_over_or_calc = (gb_over or gb_has_calculi)
@@ -5508,96 +5527,100 @@ def generate_impression(d, sex, age):
     elif cbd_ihbr == "dilated":
         _ihbr_frag_up = " WITH DILATATION OF IHBR"
 
-    if cbd_has_calc and gb_has_calculi and cbd_dilated:
-        # Dilated CBD + both calculi.
-        if cbd_ihbr == "normal":
-            _head = (f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED "
-                     f"CBD UPTO {cbd_size}MM WITH NORMAL CALIBER IHBR")
-        else:
-            _head = (f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED "
-                     f"CBD UPTO {cbd_size}MM{_ihbr_frag_up}")
-        _head += _acute_chole_frag + ". " + _gbcbd_advice()
-        lines.append(_head)
-    elif cbd_has_calc and gb_has_calculi and not cbd_dilated:
-        # Normal CBD + both calculi.
-        if cbd_ihbr == "normal":
-            _head = ("CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS WITH NORMAL "
-                     "CALIBER CBD AND IHBR")
-        else:
-            _head = ("CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND NORMAL "
-                     f"CALIBER CBD{_ihbr_frag_up}")
-        _head += _acute_chole_frag + ". " + _gbcbd_advice()
-        lines.append(_head)
-    elif cbd_has_calc and cbd_dilated:
-        # CBD calculi only (no GB calculi).
-        if cbd_ihbr == "normal":
-            _head = (f"CHOLEDOCHOLITHIASIS WITH DILATED CBD UPTO "
-                     f"{cbd_size}MM WITH NORMAL CALIBER IHBR")
-        else:
-            _head = (f"CHOLEDOCHOLITHIASIS WITH DILATED CBD UPTO "
-                     f"{cbd_size}MM{_ihbr_frag_up}")
-        lines.append(_head + ". " + _gbcbd_advice())
-    elif cbd_has_calc and not cbd_dilated:
-        # CBD calculi only, normal CBD.
-        if cbd_ihbr == "normal":
-            _head = "CHOLEDOCHOLITHIASIS WITH NORMAL CALIBER CBD AND IHBR"
-        else:
-            _head = f"CHOLEDOCHOLITHIASIS WITH NORMAL CALIBER CBD{_ihbr_frag_up}"
-        lines.append(_head + ". " + _gbcbd_advice())
-        lines.append(_head)
-
-    # Item #10: duplication flag drops the cbd_dilated condition.
-    gb_calc_already_reported = cbd_has_calc and gb_has_calculi
-    if not gb_calc_already_reported:
-        if gb_over and gb_has_calculi and (gb_wall_thickened or gb_peri_fluid):
-            lines.append("OVERDISTENDED GALL BLADDER WITH CHOLELITHIASIS & "
-                         "FEATURES SUGGESTIVE OF ACUTE CHOLECYSTITIS.")
-        elif gb_over and gb_has_calculi:
-            lines.append("OVERDISTENDED GALL BLADDER WITH CHOLELITHIASIS. "
-                         "HOWEVER NO PERICHOLECYSTIC FLUID OR GB WALL "
-                         "THICKENING APPRECIATED.")
-        elif gb_contracted and gb_has_calculi:
-            lines.append("CHOLELITHIASIS WITH ?CHRONIC CHOLECYSTITIS.")
-        elif gb_has_calculi and (gb_wall_thickened or gb_peri_fluid):
-            lines.append("CHOLELITHIASIS WITH ?ACUTE CHOLECYSTITIS.")
-        elif gb_has_calculi:
-            lines.append("CHOLELITHIASIS WITH NO APPRECIABLE PERICHOLECYSTIC "
-                         "FLUID OR GB WALL THICKENING.")
-        elif gb_wall_thickened and gb_peri_fluid:
-            lines.append(f"GB WALL THICKENING {wall_descriptor}, SEEN UP TO "
-                         f"{gb['wall_mm']}MM, WITH THIN RIM OF PERICHOLECYSTIC "
-                         f"FLUID - ?ACALCULUS CHOLECYSTITIS. "
-                         f"Adv- LFT, Lab & Clinical Correlation.")
-        elif gb_wall_thickened and not gb_has_calculi:
-            lines.append("ISOLATED GB WALL THICKENING WITHOUT ANY CALCULUS - "
-                         "?ACALCULUS CHOLECYSTITIS. "
-                         "Adv- LFT, Lab and Clinical Correlation.")
-        elif gb_peri_fluid and not gb_has_calculi:
-            lines.append("THIN RIM OF PERICHOLECYSTIC FLUID - "
-                         "?SIGNIFICANCE. Adv- LFT, Lab and Clinical Correlation.")
-        elif gb_sludge and not gb_has_calculi:
-            lines.append(f"{gb['sludge'].upper()} SLUDGE SEEN IN THE GALLBLADDER "
-                         f"LUMEN. Adv- Review scan after a month.")
-        elif gb_sludge_ball and not gb_has_calculi:
-            count = gb.get("sludge_ball_count", "single")
-            wall = gb.get("sludge_ball_wall", "anterior").upper()
-            if count == "single":
-                lines.append(f"A SLUDGE BALL/POLYP SEEN IMPACTED AT THE {wall} GB "
-                             f"WALL. Adv- Review scan after a month.")
+    _wes_on = bool(gb.get("wes_sign", False))
+    if _wes_on:
+        lines.append("CHOLELITHIASIS WITH POSITIVE WALL-ECHO-SHADOW COMPLEX "
+                     "SIGN(WES+) Adv- Lab & Clinical Correlation.")
+    else:
+        if not _skip_gb_chain and cbd_has_calc and gb_has_calculi and cbd_dilated:
+            # Dilated CBD + both calculi.
+            if cbd_ihbr == "normal":
+                _head = (f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED "
+                         f"CBD UPTO {cbd_size}MM WITH NORMAL CALIBER IHBR")
             else:
-                word = "FEW" if count == "few" else "MULTIPLE"
-                lines.append(f"{word} SLUDGE BALLS/POLYPS SEEN IMPACTED AT THE "
-                             f"{wall} GB WALL. Adv- Review scan after a month.")
-
-    if gb_comet_tail:
-        if gb_has_calculi:
-            lines.append("CHOLELITHIASIS WITH GALL BLADDER "
-                         "ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
-        elif gb_sludge:
-            lines.append("GALL BLADDER SLUDGE WITH GALL BLADDER "
-                         "ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
-        else:
-            lines.append("GALL BLADDER ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
+                _head = (f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED "
+                         f"CBD UPTO {cbd_size}MM{_ihbr_frag_up}")
+            _head += _acute_chole_frag + ". " + _gbcbd_advice()
+            lines.append(_head)
+        elif cbd_has_calc and gb_has_calculi and not cbd_dilated:
+            # Normal CBD + both calculi.
+            if cbd_ihbr == "normal":
+                _head = ("CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS WITH NORMAL "
+                         "CALIBER CBD AND IHBR")
+            else:
+                _head = ("CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND NORMAL "
+                         f"CALIBER CBD{_ihbr_frag_up}")
+            _head += _acute_chole_frag + ". " + _gbcbd_advice()
+            lines.append(_head)
+        elif cbd_has_calc and cbd_dilated:
+            # CBD calculi only (no GB calculi).
+            if cbd_ihbr == "normal":
+                _head = (f"CHOLEDOCHOLITHIASIS WITH DILATED CBD UPTO "
+                         f"{cbd_size}MM WITH NORMAL CALIBER IHBR")
+            else:
+                _head = (f"CHOLEDOCHOLITHIASIS WITH DILATED CBD UPTO "
+                         f"{cbd_size}MM{_ihbr_frag_up}")
+            lines.append(_head + ". " + _gbcbd_advice())
+        elif cbd_has_calc and not cbd_dilated:
+            # CBD calculi only, normal CBD.
+            if cbd_ihbr == "normal":
+                _head = "CHOLEDOCHOLITHIASIS WITH NORMAL CALIBER CBD AND IHBR"
+            else:
+                _head = f"CHOLEDOCHOLITHIASIS WITH NORMAL CALIBER CBD{_ihbr_frag_up}"
+            lines.append(_head + ". " + _gbcbd_advice())
+                
+        # Item #10: duplication flag drops the cbd_dilated condition.
+        gb_calc_already_reported = cbd_has_calc and gb_has_calculi
+        if not gb_calc_already_reported:
+            if gb_over and gb_has_calculi and (gb_wall_thickened or gb_peri_fluid):
+                lines.append("OVERDISTENDED GALL BLADDER WITH CHOLELITHIASIS & "
+                             "FEATURES SUGGESTIVE OF ACUTE CHOLECYSTITIS.")
+            elif gb_over and gb_has_calculi:
+                lines.append("OVERDISTENDED GALL BLADDER WITH CHOLELITHIASIS. "
+                             "HOWEVER NO PERICHOLECYSTIC FLUID OR GB WALL "
+                             "THICKENING APPRECIATED.")
+            elif gb_contracted and gb_has_calculi:
+                lines.append("CHOLELITHIASIS WITH ?CHRONIC CHOLECYSTITIS.")
+            elif gb_has_calculi and (gb_wall_thickened or gb_peri_fluid):
+                lines.append("CHOLELITHIASIS WITH ?ACUTE CHOLECYSTITIS.")
+            elif gb_has_calculi:
+                lines.append("CHOLELITHIASIS WITH NO APPRECIABLE PERICHOLECYSTIC "
+                             "FLUID OR GB WALL THICKENING.")
+            elif gb_wall_thickened and gb_peri_fluid:
+                lines.append(f"GB WALL THICKENING {wall_descriptor}, SEEN UP TO "
+                             f"{gb['wall_mm']}MM, WITH THIN RIM OF PERICHOLECYSTIC "
+                             f"FLUID - ?ACALCULUS CHOLECYSTITIS. "
+                             f"Adv- LFT, Lab & Clinical Correlation.")
+            elif gb_wall_thickened and not gb_has_calculi:
+                lines.append("ISOLATED GB WALL THICKENING WITHOUT ANY CALCULUS - "
+                             "?ACALCULUS CHOLECYSTITIS. "
+                             "Adv- LFT, Lab and Clinical Correlation.")
+            elif gb_peri_fluid and not gb_has_calculi:
+                lines.append("THIN RIM OF PERICHOLECYSTIC FLUID - "
+                             "?SIGNIFICANCE. Adv- LFT, Lab and Clinical Correlation.")
+            elif gb_sludge and not gb_has_calculi:
+                lines.append(f"{gb['sludge'].upper()} SLUDGE SEEN IN THE GALLBLADDER "
+                             f"LUMEN. Adv- Review scan after a month.")
+            elif gb_sludge_ball and not gb_has_calculi:
+                count = gb.get("sludge_ball_count", "single")
+                wall = gb.get("sludge_ball_wall", "anterior").upper()
+                if count == "single":
+                    lines.append(f"A SLUDGE BALL/POLYP SEEN IMPACTED AT THE {wall} GB "
+                                 f"WALL. Adv- Review scan after a month.")
+                else:
+                    word = "FEW" if count == "few" else "MULTIPLE"
+                    lines.append(f"{word} SLUDGE BALLS/POLYPS SEEN IMPACTED AT THE "
+                                 f"{wall} GB WALL. Adv- Review scan after a month.")
+    
+        if gb_comet_tail:
+            if gb_has_calculi:
+                lines.append("CHOLELITHIASIS WITH GALL BLADDER "
+                             "ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
+            elif gb_sludge:
+                lines.append("GALL BLADDER SLUDGE WITH GALL BLADDER "
+                             "ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
+            else:
+                lines.append("GALL BLADDER ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
 
     liver = d["liver"]
     spleen = d["spleen"]
@@ -6903,7 +6926,20 @@ with col_find:
                 key="gb_status")
             wget("gb_status", "adequately_distended")
             _gbs = ss("gb_status", "adequately_distended")
-            if _gbs not in ("contracted", "operated"):
+
+            _gb_wes_opts = ["no", "yes"]
+            st.radio(
+                "WES Sign",
+                _gb_wes_opts,
+                index=_idx("gb_wes", _gb_wes_opts, "no"),
+                horizontal=True,
+                format_func=lambda x: {"no": "WES Sign — No",
+                                       "yes": "WES Sign — Yes"}[x],
+                key="gb_wes")
+            wget("gb_wes", "no")
+            _gb_wes_on = (ss("gb_wes", "no") == "yes")
+
+            if _gbs not in ("contracted", "operated") and not _gb_wes_on:
                 st.checkbox("Wall thickening present", key="gb_wall_check",
                             value=bool(_seed("gb_wall_check", False)))
                 wget("gb_wall_check", False)
@@ -9023,6 +9059,7 @@ data["liver"].update({
 
 data["gall_bladder"].update({
     "status": ss("gb_status", "adequately_distended"),
+    "wes_sign": (ss("gb_wes", "no") == "yes"),
     "wall_thickened": bool(ss("gb_wall_check", False)),
     "wall_mm": ss("gb_wall_mm", ""),
     "wall_edematous": bool(ss("gb_wall_edematous", False)),
