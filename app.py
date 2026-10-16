@@ -2259,14 +2259,17 @@ def urinary_bladder_sentence(d):
 
     if pre:
         s.append(seg("\n"))
-        s.append(seg(f"URINARY BLADDER PRE-VOID VOLUME({pre}CC)", True))
+        s.append(seg(f"PRE-VOID VOLUME - {pre}CC", True))
         s.append(seg("\n"))
         if post:
-            s.append(seg(f"POST-VOID RESIDUE -- {post}CC", True))
+            s.append(seg(f"POST-VOID RESIDUE - {post}CC", True))
+            if _pvr_significant(d):
+                s.append(seg("(Significant)", True, False, True))
+            elif _pvr_insignificant(d):
+                s.append(seg("(Insignificant)", True, False, True))
         else:
-            s.append(seg("POST VOID RESIDUE - ", True))
+            s.append(seg("POST-VOID RESIDUE - ", True))
     return s
-
 
 def _pvr_pct(d):
     pre = _parse_mm_value(d.get("pre_void_cc", ""))
