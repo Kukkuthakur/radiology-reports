@@ -3804,7 +3804,7 @@ def _ovary_single_side_block(side, side_key, pcos_body, other_present=False):
     for f in side.get("findings", []):
         phrase = _ovary_finding_phrase(f, side_key, up=False)
         if phrase:
-            out += [seg(" "), seg(phrase, True)]
+            out += [seg(" " + phrase, True)]
     if not other_present:
         other_side = "left" if side_key == "right" else "right"
         out += [seg(f" {other_side.capitalize()} ovary is not visualized.")]
@@ -3849,8 +3849,7 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False,
                 for f in findings:
                     phrase = _ovary_finding_phrase(f, side_key, up=False)
                     if phrase:
-                        s.append(seg(" "))
-                        s.append(seg(phrase, True))
+                        s.append(seg(" " + phrase, True))  # space inside phrase
 
         if pcos_body:
             s.extend(pcos_body)
@@ -3888,6 +3887,7 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False,
             r_has_findings = bool(both_r_findings)
             l_has_findings = bool(both_l_findings)
             if not r_has_findings and not l_has_findings:
+                # Both normal — single clean sentence.
                 s += [seg("BOTH OVARIES", True, True),
                       seg(" appear normal in size and echo pattern")]
                 if size_bracket:
@@ -3895,14 +3895,23 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False,
                 else:
                     s += [seg(".")]
             else:
+                # Mixed: emit one block per side, join with a single space.
+                first_block = True
                 for side_key, side, findings in (
                         ("right", r, both_r_findings),
                         ("left", l, both_l_findings)):
+                    if not first_block:
+                        s.append(seg(" "))     # ← separator between blocks
+                    first_block = False
                     if findings:
-                        for f in findings:
+                        # Start each finding as its own sentence.
+                        for i, f in enumerate(findings):
                             phrase = _ovary_finding_phrase(f, side_key, up=False)
-                            if phrase:
-                                s += [seg(" "), seg(phrase, True)]
+                            if not phrase:
+                                continue
+                            if i > 0:
+                                s.append(seg(" "))
+                            s.append(seg(phrase, True))
                     else:
                         side_bracket = _ovary_side_size_bracket(side)
                         s += [seg(f"{side_key.upper()} OVARY", True, True),
@@ -3916,6 +3925,8 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False,
         s += _ovary_single_side_block(r, "right", pcos_body,
                                       other_present=l_present)
     if l_present:
+        if s:                                  # ← add separator
+            s += [seg(" ")]
         s += _ovary_single_side_block(l, "left", pcos_body,
                                       other_present=r_present)
     return s
@@ -8330,7 +8341,7 @@ with col_find:
             if not _saio_ff_active:
                 with st.expander("Free Fluid", expanded=False):
                     _ff_kind_opts = ["none", "inter_bowel", "peritoneal", "ascites"]
-                st.radio(
+                    st.radio(
                     "Free fluid", _ff_kind_opts,
                     index=_idx("ff_kind", _ff_kind_opts, "none"),
                     horizontal=True,
