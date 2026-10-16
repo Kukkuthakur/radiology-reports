@@ -8330,7 +8330,7 @@ with col_find:
             if not _saio_ff_active:
                 with st.expander("Free Fluid", expanded=False):
                     _ff_kind_opts = ["none", "inter_bowel", "peritoneal", "ascites"]
-                st.radio(
+                    st.radio(
                     "Free fluid", _ff_kind_opts,
                     index=_idx("ff_kind", _ff_kind_opts, "none"),
                     horizontal=True,
