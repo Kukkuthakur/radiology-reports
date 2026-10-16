@@ -913,6 +913,8 @@ def _new_urinary_bladder():
         "sedimentation_extensive": False,
         "uti_suspected": False, "wall_thickening": False,
         "wall_irregular": False, "wall_mm": "",
+        "wall_sacculations": False,
+        "wall_sacculations_diverticulations": False,
         "force_empty_suboptimal": False,
     }
 
@@ -2252,12 +2254,18 @@ def urinary_bladder_sentence(d):
             w = 0
         prefix = "Mild" if w <= 8 else "Significant"
         irregular = d.get("wall_irregular", False)
+        sac = bool(d.get("wall_sacculations", False))
+        sac_div = bool(d.get("wall_sacculations_diverticulations", False))
         frag = f"{prefix} "
         if irregular:
             frag += "irregular "
-        frag += f"urinary bladder wall thickening upto {d['wall_mm']}mm is seen."
+        frag += f"urinary bladder wall thickening upto {d['wall_mm']}mm is seen"
+        if sac_div:
+            frag += " with sacculations & diverticulations"
+        elif sac:
+            frag += " with sacculations"
+        frag += "."
         s += [seg(" "), seg(frag, True)]
-
     s.extend(_ub_sedimentation_body(d))
 
     if pre:
@@ -2326,8 +2334,14 @@ def _ub_impression_lines(d, prostate_line=None):
             w = 0
         prefix = "MILD" if w <= 8 else "SIGNIFICANT"
         irregular = "IRREGULAR " if d.get("wall_irregular", False) else ""
+        sac = bool(d.get("wall_sacculations", False))
+        sac_div = bool(d.get("wall_sacculations_diverticulations", False))
         base = (f"{prefix} {irregular}URINARY BLADDER WALL THICKENING"
                 f"(UPTO {d['wall_mm']}MM)")
+        if sac_div:
+            base += " WITH SACCULATIONS & DIVERTICULATIONS"
+        elif sac:
+            base += " WITH SACCULATIONS"
         if ff and sd:
             tail = "-- ?ACUTE ON CHRONIC CYSTITIS"
         else:
@@ -2338,7 +2352,6 @@ def _ub_impression_lines(d, prostate_line=None):
         body += f" {tail}"
         out.append(body + " Adv- Urine R/M Correlation.")
         return out
-
     if sed_bits:
         sed_line = (" ".join(sed_bits) + " IN THE UB LUMEN")
         if uti:
@@ -7654,6 +7667,22 @@ with col_find:
                                 value=bool(_seed("ub_wall_irregular", False)))
                     wget("ub_wall_irregular", False)
 
+                _ub_wall_shape_opts = ["none", "sacculations",
+                                       "sacculations_diverticulations"]
+                st.radio(
+                    "Wall contour",
+                    _ub_wall_shape_opts,
+                    index=_idx("ub_wall_shape", _ub_wall_shape_opts, "none"),
+                    horizontal=True,
+                    format_func=lambda x: {
+                        "none": "None",
+                        "sacculations": "Sacculations",
+                        "sacculations_diverticulations":
+                            "Sacculations & Diverticulations",
+                    }[x],
+                    key="ub_wall_shape")
+                wget("ub_wall_shape", "none")
+
             st.markdown("**Sedimentation**")
             st.checkbox("Trace sedimentation", key="ub_sed_trace",
                         value=bool(_seed("ub_sed_trace", False)))
@@ -9219,6 +9248,10 @@ data["urinary_bladder"].update({
     "wall_thickening": bool(ss("ub_wall_check", False)),
     "wall_irregular": bool(ss("ub_wall_irregular", False)),
     "wall_mm": ss("ub_wall_mm", ""),
+    "wall_sacculations":
+        (ss("ub_wall_shape", "none") == "sacculations"),
+    "wall_sacculations_diverticulations":
+        (ss("ub_wall_shape", "none") == "sacculations_diverticulations"),
     "force_empty_suboptimal": (
         data["kidneys"]["right"]["ureter_not_traced"]
         or data["kidneys"]["left"]["ureter_not_traced"]),
