@@ -5490,16 +5490,6 @@ def generate_impression(d, sex, age):
         except (ValueError, TypeError):
             wall_descriptor = ""
 
-    # WES-sign impression — supersedes the standard cholelithiasis narrative
-    _wes_on = bool(gb.get("wes_sign", False))
-    if _wes_on:
-        lines.append("CHOLELITHIASIS WITH POSITIVE WALL-ECHO-SHADOW COMPLEX "
-                     "SIGN(WES+) Adv- Lab & Clinical Correlation.")
-        # Skip the standard GB/CBD chain for this branch
-        _skip_gb_chain = True
-    else:
-        _skip_gb_chain = False
-
     # Item #10: compute acute-cholecystitis fragment once, used in the merge.
     _acute_chole_frag = ""
     _gb_over_or_calc = (gb_over or gb_has_calculi)
@@ -5532,7 +5522,7 @@ def generate_impression(d, sex, age):
         lines.append("CHOLELITHIASIS WITH POSITIVE WALL-ECHO-SHADOW COMPLEX "
                      "SIGN(WES+) Adv- Lab & Clinical Correlation.")
     else:
-        if not _skip_gb_chain and cbd_has_calc and gb_has_calculi and cbd_dilated:
+        if cbd_has_calc and gb_has_calculi and cbd_dilated:
             # Dilated CBD + both calculi.
             if cbd_ihbr == "normal":
                 _head = (f"CHOLELITHIASIS WITH CHOLEDOCHOLITHIASIS AND DILATED "
