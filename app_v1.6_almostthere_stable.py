@@ -1920,26 +1920,29 @@ def _cyst_body(k, side_low):
     loc = k.get("cyst_location", "")
     loc_txt = _format_pole(loc) if loc else ""
     side_phrase = f"{side_low} kidney"
+    bosniak = k.get("cyst_bosniak", "")
+    bosniak_txt = f"(Bosniak Cat-{bosniak})" if bosniak else ""
     if ctype == "simple":
         if count == "single":
-            text = (f"A simple cortical cyst measuring {size}mm is seen at the "
-                    f"{loc_txt} of {side_phrase}.")
+            text = (f"A simple cortical cyst({size}mm){bosniak_txt} is seen at "
+                    f"the {loc_txt} of {side_phrase}.")
         else:
             word = _cyst_count_word(count)
-            text = (f"{word} simple cortical cysts seen in the {side_phrase}, "
-                    f"largest of these measuring {size}mm at the {loc_txt}.")
+            text = (f"{word} simple cortical cysts{bosniak_txt} seen in the "
+                    f"{side_phrase}, largest of these measuring {size}mm at the "
+                    f"{loc_txt}.")
     else:
         desc = _cyst_descriptor_phrase(k)
         if not desc:
             return []
         if count == "single":
-            text = (f"A complex cyst with {desc}, seen at the {loc_txt} of "
-                    f"{side_phrase}.")
+            text = (f"A complex cyst{bosniak_txt} with {desc}, seen at the "
+                    f"{loc_txt} of {side_phrase}.")
         else:
             word = _cyst_count_word(count)
-            text = (f"{word} complex cortical cysts with {desc} seen in the "
-                    f"{side_phrase}, largest of these measuring {size}mm at the "
-                    f"{loc_txt}.")
+            text = (f"{word} complex cortical cysts{bosniak_txt} with {desc} "
+                    f"seen in the {side_phrase}, largest of these measuring "
+                    f"{size}mm at the {loc_txt}.")
     return [seg(" "), seg(text, True)]
 
 
@@ -5033,26 +5036,60 @@ def _echogenicity_impression_lines(k):
 def _ureter_calculus_impression_line(side_key, uc):
     if uc["count"] == "none":
         return None
-    _, _, imp_adj, _, _ = URETER_LEVELS[uc["level"]]
+    _, term, imp_adj, _, _ = URETER_LEVELS[uc["level"]]
     side_up = _ureter_side_label(side_key)
+    if uc["count"] == "single":
+        noun = "A"
+    elif uc["count"] == "couple":
+        noun = "A COUPLE OF"
+    elif uc["count"] == "few":
+        noun = "FEW"
+    else:
+        noun = "MULTIPLE"
     count_word = "CALCULUS" if uc["count"] == "single" else "CALCULI"
-    return f"{side_up} {imp_adj} {count_word}"
+    base = f"{noun} {side_up} {imp_adj} {count_word}"
+
+    grade = uc["grade"]
+    if grade == "none":
+        return base
+    if grade == "no_significant":
+        return (f"{base} CAUSING NO SIGNIFICANT {side_up} SIDED {term}")
+    g = URETER_GRADES[grade]
+    return f"{base} CAUSING {side_up} SIDED {g} {term}"
 
 
 def _renal_calculi_standalone(k, side_low):
     if not k["calculi"]:
         return ""
     side_up = _ureter_side_label(side_low)
-    count_word = "CALCULUS" if len(k["calculi"]) == 1 else "CALCULI"
-    return f"{side_up} RENAL {count_word}"
+    n = len(k["calculi"])
+    if n == 1:
+        noun = "A"
+    elif n == 2:
+        noun = "A COUPLE OF"
+    elif n <= 4:
+        noun = "FEW"
+    else:
+        noun = "MULTIPLE"
+    count_word = "CALCULUS" if n == 1 else "CALCULI"
+    return f"{noun} {side_up} RENAL {count_word}"
 
 
 def _renal_calculi_clause(k, side_low):
     if not k["calculi"]:
         return None
     side_up = _ureter_side_label(side_low)
-    count_word = "CALCULUS" if len(k["calculi"]) == 1 else "CALCULI"
-    return f"{side_up} RENAL {count_word}"
+    n = len(k["calculi"])
+    if n == 1:
+        noun = "A"
+    elif n == 2:
+        noun = "A COUPLE OF"
+    elif n <= 4:
+        noun = "FEW"
+    else:
+        noun = "MULTIPLE"
+    count_word = "CALCULUS" if n == 1 else "CALCULI"
+    return f"{noun} {side_up} RENAL {count_word}"
 
 
 def _cyst_impression_clause(k, side_low, small_prefix=False):
@@ -5064,23 +5101,26 @@ def _cyst_impression_clause(k, side_low, small_prefix=False):
     loc_txt = _format_pole(loc).upper() if loc else ""
     side_up = _ureter_side_label(side_low)
     prefix = "RELATIVELY SMALL " if small_prefix else ""
+    bosniak = k.get("cyst_bosniak", "")
+    bosniak_txt = f"(BOSNIAK CAT-{bosniak})" if bosniak else ""
     if ctype == "simple":
         if count == "single":
-            base = f"{prefix}A SIMPLE CYST IN THE {loc_txt} OF {side_up} KIDNEY"
+            base = (f"{prefix}A SIMPLE CYST AT THE {loc_txt} OF {side_up} "
+                    f"KIDNEY{bosniak_txt}")
         else:
-            base = f"{prefix}FEW SIMPLE CYSTS IN THE {side_up} KIDNEY"
+            base = (f"{prefix}FEW SIMPLE CYSTS IN THE {side_up} KIDNEY"
+                    f"{bosniak_txt}")
     else:
         desc = _cyst_descriptor_phrase(k)
         if not desc:
             return None
         if count == "single":
-            base = (f"{prefix}A COMPLEX CYST WITH {desc.upper()} IN THE "
-                    f"{loc_txt} OF {side_up} KIDNEY")
+            base = (f"{prefix}A COMPLEX CYST WITH {desc.upper()} AT THE "
+                    f"{loc_txt} OF {side_up} KIDNEY{bosniak_txt}")
         else:
             base = (f"{prefix}FEW COMPLEX CYSTS WITH {desc.upper()} IN THE "
-                    f"{side_up} KIDNEY")
+                    f"{side_up} KIDNEY{bosniak_txt}")
     return base
-
 
 def _eff_impression_phrase(d):
     status = d.get("status", "none")
