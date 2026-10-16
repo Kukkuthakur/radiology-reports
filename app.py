@@ -1405,6 +1405,13 @@ def cbd_sentence(d):
     loc_word = cbd_location_word(d.get("calculi_location", "distal"))
     ihbr = d.get("ihbr", "normal")
 
+    if status == "not_visualized":
+        s.append(seg(" is not visualized"))
+        s.append(seg(" (obscured by epigastric gaseous shadows)",
+                     False, False, True))
+        s.append(seg("."))
+        return s
+
     if status == "normal":
         if size:
             s.append(seg(f" is normal in caliber({size}mm)"))
@@ -7004,54 +7011,57 @@ with col_find:
         cbd_open = organ_button("COMMON BILE DUCT", "COMMON BILE DUCT")
     if cbd_open:
         with st.container(border=True):
-            _cbd_status_opts = ["normal", "proximal", "dilated"]
+            _cbd_status_opts = ["normal", "proximal", "dilated",
+                                "not_visualized"]
             st.radio(
                 "Status", _cbd_status_opts,
                 index=_idx("cbd_status", _cbd_status_opts, "normal"),
                 horizontal=True,
                 format_func=lambda x: {"normal": "Normal",
                                        "proximal": "Proximally dilated",
-                                       "dilated": "Dilated throughout"}[x],
+                                       "dilated": "Dilated throughout",
+                                       "not_visualized": "Not visualized"}[x],
                 key="cbd_status")
             wget("cbd_status", "normal")
-            st.checkbox("Calculus in CBD", key="cbd_calc",
-                        value=bool(_seed("cbd_calc", False)))
-            wget("cbd_calc", False)
-            if ss("cbd_calc", False):
-                c_a, c_b = st.columns(2)
-                with c_a:
-                    _ccc_opts = ["single", "few"]
-                    st.radio("Count", _ccc_opts,
-                             index=_idx("cbd_calc_count", _ccc_opts, "single"),
-                             horizontal=True, format_func=lambda x: x.title(),
-                             key="cbd_calc_count")
-                    wget("cbd_calc_count", "single")
-                with c_b:
-                    st.text_input("Size (mm, largest if few)",
-                                  key="cbd_calc_size",
-                                  value=_seed("cbd_calc_size", ""))
-                    wget("cbd_calc_size", "")
-                _ccl_opts = ["proximal", "mid", "distal", "mid_distal"]
-                st.radio("Location", _ccl_opts,
-                         index=_idx("cbd_calc_location", _ccl_opts, "distal"),
-                         horizontal=True,
-                         format_func=lambda x: {"proximal": "Proximal",
-                                                "mid": "Mid",
-                                                "distal": "Distal",
-                                                "mid_distal": "Mid/Distal"}[x],
-                         key="cbd_calc_location")
-                wget("cbd_calc_location", "distal")
-            if ss("cbd_status", "normal") in ("proximal", "dilated") \
-                    or ss("cbd_calc", False):
-                _ci_opts = ["normal", "proximal", "dilated"]
-                st.radio("IHBR", _ci_opts,
-                         index=_idx("cbd_ihbr", _ci_opts, "normal"),
-                         horizontal=True,
-                         format_func=lambda x: {"normal": "Normal",
-                                                "proximal": "Proximally dilated",
-                                                "dilated": "Dilated"}[x],
-                         key="cbd_ihbr")
-                wget("cbd_ihbr", "normal")
+            if ss("cbd_status", "normal") != "not_visualized":
+                st.checkbox("Calculus in CBD", key="cbd_calc",
+                            value=bool(_seed("cbd_calc", False)))
+                wget("cbd_calc", False)
+                if ss("cbd_calc", False):
+                    c_a, c_b = st.columns(2)
+                    with c_a:
+                        _ccc_opts = ["single", "few"]
+                        st.radio("Count", _ccc_opts,
+                                 index=_idx("cbd_calc_count", _ccc_opts, "single"),
+                                 horizontal=True, format_func=lambda x: x.title(),
+                                 key="cbd_calc_count")
+                        wget("cbd_calc_count", "single")
+                    with c_b:
+                        st.text_input("Size (mm, largest if few)",
+                                      key="cbd_calc_size",
+                                      value=_seed("cbd_calc_size", ""))
+                        wget("cbd_calc_size", "")
+                    _ccl_opts = ["proximal", "mid", "distal", "mid_distal"]
+                    st.radio("Location", _ccl_opts,
+                             index=_idx("cbd_calc_location", _ccl_opts, "distal"),
+                             horizontal=True,
+                             format_func=lambda x: {"proximal": "Proximal",
+                                                    "mid": "Mid",
+                                                    "distal": "Distal",
+                                                    "mid_distal": "Mid/Distal"}[x],
+                             key="cbd_calc_location")
+                    wget("cbd_calc_location", "distal")
+                if ss("cbd_status", "normal") in ("proximal", "dilated") \
+                        or ss("cbd_calc", False):
+                    _ci_opts = ["normal", "proximal", "dilated"]
+                    st.radio("IHBR", _ci_opts,
+                             index=_idx("cbd_ihbr", _ci_opts, "normal"),
+                             horizontal=True,
+                             format_func=lambda x: {"normal": "Normal",
+                                                    "proximal": "Proximally dilated",
+                                                    "dilated": "Dilated"}[x],
+                             key="cbd_ihbr")
+                    wget("cbd_ihbr", "normal")
 
     # ------- PANCREAS -------
     pn_open = organ_button("PANCREAS", "PANCREAS")
@@ -8989,16 +8999,27 @@ data["gall_bladder"].update({
     "pericholecystic_fluid": bool(ss("gb_peri_fluid", False)),
 })
 
-data["cbd"].update({
-    "size_mm": cbd_mm,
-    "status": ss("cbd_status", "normal"),
-    "calculi": bool(ss("cbd_calc", False)),
-    "calculi_count": ss("cbd_calc_count", "single"),
-    "calculi_size_mm": ss("cbd_calc_size", ""),
-    "calculi_location": ss("cbd_calc_location", "distal"),
-    "ihbr": ss("cbd_ihbr", "normal"),
-})
-
+_cbd_status_val = ss("cbd_status", "normal")
+if _cbd_status_val == "not_visualized":
+    data["cbd"].update({
+        "size_mm": cbd_mm,
+        "status": "not_visualized",
+        "calculi": False,
+        "calculi_count": "single",
+        "calculi_size_mm": "",
+        "calculi_location": "distal",
+        "ihbr": "normal",
+    })
+else:
+    data["cbd"].update({
+        "size_mm": cbd_mm,
+        "status": _cbd_status_val,
+        "calculi": bool(ss("cbd_calc", False)),
+        "calculi_count": ss("cbd_calc_count", "single"),
+        "calculi_size_mm": ss("cbd_calc_size", ""),
+        "calculi_location": ss("cbd_calc_location", "distal"),
+        "ihbr": ss("cbd_ihbr", "normal"),
+    })
 data["pancreas"].update({
     "status": ss("pn_status", None) or "normal",
     "ee_size": ss("pn_ee_size", "normal"),
