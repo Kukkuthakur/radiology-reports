@@ -4259,7 +4259,7 @@ def _mln_impression_head(d):
     if lost_hila:
         head += " WITH LOST FATTY HILA"
     if inflamed:
-        head += " WITH FOCI OF HYPERECHOIC SURROUNDING MESENTERY"
+        head += " WITH FOCALLY HYPERECHOIC SURROUNDING MESENTERY"
     return head
 
 
