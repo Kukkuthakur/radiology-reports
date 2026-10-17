@@ -2352,13 +2352,13 @@ def _ub_impression_lines(d, prostate_line=None):
         elif sac:
             base += " WITH SACCULATIONS"
         if ff and sd:
-            tail = "-- ?ACUTE ON CHRONIC CYSTITIS"
+            tail = "?ACUTE ON CHRONIC CYSTITIS"
         else:
-            tail = "-- ?CHRONIC CYSTITIS"
+            tail = "?CHRONIC CYSTITIS"
         body = base
         if sed_bits:
             body += " WITH " + " & ".join(sed_bits) + " IN THE UB LUMEN"
-        body += f" {tail}"
+        body += f" - {tail}."
         out.append(body + " Adv- Urine R/M Correlation.")
         return out
     if sed_bits:
