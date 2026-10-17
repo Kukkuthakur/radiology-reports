@@ -5060,26 +5060,24 @@ def _echogenicity_impression_lines(k):
     if grade == "mildly_raised":
         if age_related:
             return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY - "
-                    f"?AGE RELATED. Adv- KFT Correlation."]
+                    f"?AGE RELATED."]
         return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY WITH "
-                f"PRESERVED CORTICOMEDULLARY DIFFERENTIATION. "
-                f"Adv- KFT Correlation."]
+                f"PRESERVED CORTICOMEDULLARY DIFFERENTIATION."]
     if grade == "moderately_raised":
         if cmd == "preserved":
             return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY, THE "
                     f"CORTICOMEDULLARY DIFFERENTIATION IS HOWEVER PRESERVED - "
-                    f"?MEDICAL RENAL DISEASE GRADE-II vs AKI. "
-                    f"Adv- KFT Correlation."]
+                    f"?MEDICAL RENAL DISEASE GRADE-II vs AKI."]
         return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY WITH HAZY "
                 f"CORTICOMEDULLARY DIFFERENTIATION - ?MEDICAL RENAL DISEASE "
-                f"GRADE-II/III vs AKI. Adv- KFT Correlation."]
+                f"GRADE-II/III vs AKI."]
     if cmd == "hazy":
         return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY WITH HAZY "
                 f"CORTICOMEDULLARY DIFFERENTIATION - ?MEDICAL RENAL DISEASE "
-                f"GRADE-II/III vs AKI. Adv- KFT Correlation."]
+                f"GRADE-II/III vs AKI."]
     return [f"{grade_up} {lat_up} RENAL CORTICAL ECHOGENICITY WITH LOST "
             f"CORTICOMEDULLARY DIFFERENTIATION - ?MEDICAL RENAL DISEASE "
-            f"GRADE-III/IV vs AKI. Adv- KFT Correlation."]
+            f"GRADE-III/IV vs AKI."]
 
 
 def _ureter_calculus_impression_line(side_key, uc):
@@ -5810,17 +5808,23 @@ def generate_impression(d, sex, age):
         renal_lines.append("NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS SEEN "
                            "AT THE TIME OF SCAN.")
 
-    if renal_lines and cyst_clauses:
-        joined_main = " ".join(renal_lines)
-        if not joined_main.endswith("."):
-            joined_main += "."
-        cyst_phrase = " ".join(c + "." for c in cyst_clauses)
-        lines.append(joined_main + " " + cyst_phrase)
-    elif renal_lines:
-        lines.extend(renal_lines)
-    elif cyst_clauses:
-        for c in cyst_clauses:
-            lines.append(c + ".")
+    # Assemble all kidney findings into ONE bullet, then append KFT advice
+    # once at the very end — never mid-line.
+    _kidney_findings = []
+    if renal_lines:
+        _kidney_findings.extend(renal_lines)
+    if cyst_clauses:
+        _kidney_findings.extend(c + "." for c in cyst_clauses)
+
+    if _kidney_findings:
+        _kidney_bullet = " ".join(_kidney_findings)
+        if not _kidney_bullet.endswith("."):
+            _kidney_bullet += "."
+        # Append KFT advice only if the echogenicity finding is present,
+        # since that's the only kidney finding that mandates KFT correlation.
+        if k.get("cortical_echogenicity", "normal") != "normal":
+            _kidney_bullet += " Adv- KFT Correlation."
+        lines.append(_kidney_bullet)
 
     ub = d["urinary_bladder"]
     pr = d["prostate"]
