@@ -6262,6 +6262,8 @@ def build_docx_bytes(data):
             "[Limited Scan: Extensively gaseous Epigastrium & midline]",
         "difficult_habitus":
             "[Limited Scan: Difficult patient habitus]",
+        "high_bmi":
+            "[Limited Scan: High BMI Patient]",
     }
     saio = data.get("saio", {})
     _sub_key = saio.get("subheading", "none")
@@ -6627,7 +6629,7 @@ with st.container():
         p_ref = st.text_input("Referred by", key="p_ref_input")
 
 st.markdown("**Scan Quality / Limitation**")
-_subhead_opts = ["none", "gaseous", "difficult_habitus"]
+_subhead_opts = ["none", "gaseous", "difficult_habitus", "high_bmi"]
 _top_subheading = st.radio(
     "Scan Quality / Limitation",
     _subhead_opts,
@@ -6636,8 +6638,9 @@ _top_subheading = st.radio(
     label_visibility="collapsed",
     format_func=lambda x: {
         "none": "None",
-        "gaseous": "[Limited Scan: Extensively gaseous Epigastrium & midline]",
+        "gaseous": "[Limited Scan: Extensively gaseous epigastrium & midline]",
         "difficult_habitus": "[Limited Scan: Difficult patient habitus]",
+        "high_bmi": "[Limited Scan: High BMI Patient]",
     }[x],
     key="top_subheading",
 )
@@ -9649,6 +9652,8 @@ def render_preview_findings(data):
             "[Limited Scan: Extensively gaseous Epigastrium & midline]",
         "difficult_habitus":
             "[Limited Scan: Difficult patient habitus]",
+        "high_bmi":
+            "[Limited Scan: High BMI Patient]",
     }
     saio = data.get("saio", {})
     _sub_key_prev = saio.get("subheading", "none")
