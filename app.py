@@ -9821,14 +9821,17 @@ def render_preview_findings(data):
             continue
         s = enforce_uppercase_after_period(s)
         out.append("".join(x[0] for x in s))
-        out.append("")
 
+        # PVR block belongs inside the UB section for preview purposes,
+        # immediately after the UB body and before the section gap.
         _first_txt = s[0][0] if s and isinstance(s[0][0], str) else ""
         if _first_txt.startswith("URINARY BLADDER"):
             _pvr_segs = urinary_bladder_pvr_segments(data["urinary_bladder"])
             if _pvr_segs:
                 _pvr_segs = enforce_uppercase_after_period(_pvr_segs)
                 out.append("".join(x[0] for x in _pvr_segs))
+
+        out.append("")
     addendum = (data.get("additional_body_findings") or "").strip()
     if addendum:
         out.append(addendum)
