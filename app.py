@@ -2300,18 +2300,25 @@ def urinary_bladder_sentence(d):
         s += [seg(" "), seg(frag, True)]
     s.extend(_ub_sedimentation_body(d))
 
-    if pre:
-        s.append(seg("\nPRE-VOID VOLUME - ", True))
-        s.append(seg(f"{pre}CC", True))
-        if post:
-            s.append(seg("\nPOST-VOID RESIDUE - ", True))
-            s.append(seg(f"{post}CC", True))
-            if _pvr_significant(d):
-                s.append(seg(" (Significant)", True, False, True))
-            elif _pvr_insignificant(d):
-                s.append(seg(" (Insignificant)", True, False, True))
-        else:
-            s.append(seg("\nPOST-VOID RESIDUE - ", True))
+    return s
+def urinary_bladder_pvr_segments(d):
+    """Return the PVR block as its own segment list, or None if no pre-void
+    volume was entered. Rendered as a separate paragraph so it wraps
+    independently of the UB finding paragraph."""
+    pre = str(d.get("pre_void_cc", "") or "").strip()
+    post = str(d.get("post_void_cc", "") or "").strip()
+    if not pre:
+        return None
+    s = [seg("PRE-VOID VOLUME - ", True), seg(f"{pre}CC", True)]
+    if post:
+        s.append(seg("\nPOST-VOID RESIDUE - ", True))
+        s.append(seg(f"{post}CC", True))
+        if _pvr_significant(d):
+            s.append(seg(" (Significant)", True, False, True))
+        elif _pvr_insignificant(d):
+            s.append(seg(" (Insignificant)", True, False, True))
+    else:
+        s.append(seg("\nPOST-VOID RESIDUE - ", True))
     return s
 
 def _pvr_pct(d):
@@ -6393,6 +6400,19 @@ def build_docx_bytes(data):
         _render_segments(para, segs)
         rendered_count += 1
 
+        # UB PVR block as its own paragraph, immediately after the UB body.
+        _first_txt = segs[0][0] if segs and isinstance(segs[0][0], str) else ""
+        if _first_txt.startswith("URINARY BLADDER"):
+            _pvr_segs = urinary_bladder_pvr_segments(data["urinary_bladder"])
+            if _pvr_segs:
+                _add_full_line(doc)
+                _pvr_para = doc.add_paragraph()
+                _pvr_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                _pvr_para.paragraph_format.space_after = Pt(0)
+                _pvr_para.paragraph_format.space_before = Pt(0)
+                _pvr_para.paragraph_format.line_spacing = 1.0
+                _render_segments(_pvr_para, _pvr_segs)
+
     addendum = (data.get("additional_body_findings") or "").strip()
     if addendum:
         if rendered_count > 0:
@@ -9803,6 +9823,14 @@ def render_preview_findings(data):
         s = enforce_uppercase_after_period(s)
         out.append("".join(x[0] for x in s))
         out.append("")
+
+        _first_txt = s[0][0] if s and isinstance(s[0][0], str) else ""
+        if _first_txt.startswith("URINARY BLADDER"):
+            _pvr_segs = urinary_bladder_pvr_segments(data["urinary_bladder"])
+            if _pvr_segs:
+                _pvr_segs = enforce_uppercase_after_period(_pvr_segs)
+                out.append("".join(x[0] for x in _pvr_segs))
+                out.append("")
     addendum = (data.get("additional_body_findings") or "").strip()
     if addendum:
         out.append(addendum)
