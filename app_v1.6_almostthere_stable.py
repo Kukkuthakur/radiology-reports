@@ -581,7 +581,31 @@ FIBROID_TYPE_LABELS_UP = {
         ("A PARTIALLY EXTRUSIVE SUBSEROSAL>INTRAMURAL FIBROID", "FIGO-5/4"),
 }
 PARTIALLY_EXTRUSIVE_TYPES = {"intramural_subserosal", "subserosal_intramural"}
-FIBROID_LOC_OPTIONS = ["fundal", "anterior", "posterior"]
+FIBROID_LOC_OPTIONS = ["fundal", "anterior", "posterior", "lateral", "cervical"]
+FIBROID_LATERALITY_OPTIONS = ["right", "left"]
+FIBROID_TYPE_OPTIONS = [
+    ("intramural", "Intramural"),
+    ("intramural_subserosal", "Intramural > subserosal"),
+    ("intramural_submucosal", "Intramural > submucosal"),
+    ("submucosal_intramural", "Submucosal > intramural"),
+    ("subserosal_intramural", "Subserosal > intramural"),
+]
+
+
+def _fibroid_location_body(location, laterality=""):
+    """Body phrase fragment for a fibroid lesion location."""
+    if location == "lateral":
+        side = laterality or "right"
+        return f"the {side} lateral wall of uterine myometrium"
+    return f"the {location} myometrium"
+
+
+def _fibroid_location_impression(location, laterality=""):
+    """Uppercase impression phrase fragment for a fibroid lesion location."""
+    if location == "lateral":
+        side = laterality or "right"
+        return f"THE {side.upper()} LATERAL WALL"
+    return f"THE {location.upper()} MYOMETRIUM"
 
 
 def classify_uterus_size(length_mm):
@@ -929,7 +953,8 @@ def _new_prostate():
 
 
 def _new_fibroid_lesion():
-    return {"location": "fundal", "size": ""}
+    return {"type": "intramural", "location": "fundal",
+            "laterality": "", "size": ""}
 
 
 def _new_uterus():
@@ -1941,15 +1966,13 @@ def _cyst_body(k, side_low):
     loc = k.get("cyst_location", "")
     loc_txt = _format_pole(loc) if loc else ""
     side_phrase = f"{side_low} kidney"
-    bosniak = k.get("cyst_bosniak", "")
-    bosniak_txt = f"(Bosniak Cat-{bosniak})" if bosniak else ""
     if ctype == "simple":
         if count == "single":
-            text = (f"A simple cortical cyst({size}mm){bosniak_txt} is seen at "
+            text = (f"A simple cortical cyst({size}mm) is seen at "
                     f"the {loc_txt} of {side_phrase}.")
         else:
             word = _cyst_count_word(count)
-            text = (f"{word} simple cortical cysts{bosniak_txt} seen in the "
+            text = (f"{word} simple cortical cysts seen in the "
                     f"{side_phrase}, largest of these measuring {size}mm at the "
                     f"{loc_txt}.")
     else:
@@ -1957,11 +1980,11 @@ def _cyst_body(k, side_low):
         if not desc:
             return []
         if count == "single":
-            text = (f"A complex cyst{bosniak_txt} with {desc}, seen at the "
+            text = (f"A complex cyst with {desc}, seen at the "
                     f"{loc_txt} of {side_phrase}.")
         else:
             word = _cyst_count_word(count)
-            text = (f"{word} complex cortical cysts{bosniak_txt} with {desc} "
+            text = (f"{word} complex cortical cysts with {desc} "
                     f"seen in the {side_phrase}, largest of these measuring "
                     f"{size}mm at the {loc_txt}.")
     return [seg(" "), seg(text, True)]
@@ -2588,53 +2611,59 @@ def _fibroid_body_fragment(d):
     if not d.get("fibroid"):
         return None
     count = d.get("fibroid_count", "single")
-    types = d.get("fibroid_types", []) or ["intramural"]
-    lesions = sorted(d.get("fibroid_lesions", []), key=_fibroid_lesion_sort_key)
-    while len(lesions) < len(types):
-        lesions.append(_new_fibroid_lesion())
-    lesions = lesions[:len(types)]
+    lesions = d.get("fibroid_lesions", []) or []
+    if not lesions:
+        lesions = [_new_fibroid_lesion()]
+    lesions = sorted(lesions, key=_fibroid_lesion_sort_key)
 
     body_parts = []
-    for i, t in enumerate(types):
-        lesion = lesions[i]
+    for lesion in lesions:
+        t = lesion.get("type", "intramural")
         loc = lesion.get("location", "fundal")
+        lat = lesion.get("laterality", "")
         size = lesion.get("size", "")
+        loc_body = _fibroid_location_body(loc, lat)
         is_partial_ext = t in PARTIALLY_EXTRUSIVE_TYPES
         if t == "submucosal_intramural":
             body_parts.append(
-                f"a hypoechoic heterogenous SOL measuring {size}mm in the "
-                f"{loc} myometrium, impinging upon the endometrium")
+                f"a hypoechoic heterogenous SOL measuring {size}mm in "
+                f"{loc_body}, impinging upon the endometrium")
         elif is_partial_ext:
             body_parts.append(
                 f"a partially extrusive hypoechoic heterogenous SOL measuring "
-                f"{size}mm in the {loc} myometrium")
+                f"{size}mm in {loc_body}")
         else:
             body_parts.append(
-                f"a hypoechoic heterogenous SOL in the {loc} myometrium "
+                f"a hypoechoic heterogenous SOL in {loc_body} "
                 f"measuring {size}mm")
 
-    if count == "single":
-        return [seg(" "), seg(body_parts[0], True)]
+    if count == "single" or len(body_parts) == 1:
+        _txt = body_parts[0].rstrip()
+        if not _txt.endswith("."):
+            _txt += "."
+        return [seg(" "), seg(_txt, True)]
 
     count_word = {"couple": "a couple of", "few": "few",
                   "multiple": "multiple"}.get(count, "few")
     desc_list = []
-    for i, t in enumerate(types):
-        lesion = lesions[i]
-        size = lesion.get("size", "")
+    for lesion in lesions:
+        t = lesion.get("type", "intramural")
         loc = lesion.get("location", "fundal")
+        lat = lesion.get("laterality", "")
+        size = lesion.get("size", "")
+        loc_body = _fibroid_location_body(loc, lat)
         suffix = (", impinging upon the endometrium"
                   if t == "submucosal_intramural" else "")
-        desc_list.append(f"{size}mm in {loc} myometrium{suffix}")
-    if len(desc_list) == 1:
-        joined_desc = desc_list[0]
-    elif len(desc_list) == 2:
+        desc_list.append(f"{size}mm in {loc_body}{suffix}")
+    if len(desc_list) == 2:
         joined_desc = f"{desc_list[0]} and {desc_list[1]}"
     else:
         joined_desc = ", ".join(desc_list[:-1]) + " and " + desc_list[-1]
-    return [seg(" "),
-            seg(f"{count_word} hypoechoic heterogenous SOLs in the myometrium, "
-                f"largest of these measuring {joined_desc}", True)]
+    _joined = (f"{count_word} hypoechoic heterogenous SOLs in the myometrium, "
+               f"largest of these measuring {joined_desc}").rstrip()
+    if not _joined.endswith("."):
+        _joined += "."
+    return [seg(" "), seg(_joined, True)]
 
 
 def _adenomyomas_body_fragment(d):
@@ -2719,7 +2748,15 @@ def _myometrium_body_clause(d):
 
     if has_fibroid:
         fib_segs = _fibroid_body_fragment(d) or []
-        return [seg(f"Myometrium appears {desc} with ")] + fib_segs[1:]
+        _tail = fib_segs[1:] if fib_segs else []
+        if _tail and isinstance(_tail[-1][0], str):
+            _t = _tail[-1]
+            _txt = _t[0]
+            if not _txt.rstrip().endswith("."):
+                _tail[-1] = (_txt.rstrip() + ".",
+                             _t[1], _t[2],
+                             _t[3] if len(_t) > 3 else None)
+        return [seg(f"Myometrium appears {desc} with ")] + _tail
 
     if has_adenomyomas and not has_adenomyosis:
         aden_text = _adenomyomas_body_fragment(d) or ""
@@ -3028,20 +3065,23 @@ def _fibroid_impression_fragment(d):
     if not d.get("fibroid"):
         return None
     count = d.get("fibroid_count", "single")
-    types = d.get("fibroid_types", []) or ["intramural"]
-    lesions = sorted(d.get("fibroid_lesions", []), key=_fibroid_lesion_sort_key)
-    while len(lesions) < len(types):
-        lesions.append(_new_fibroid_lesion())
-    lesions = lesions[:len(types)]
+    lesions = d.get("fibroid_lesions", []) or []
+    if not lesions:
+        lesions = [_new_fibroid_lesion()]
+    lesions = sorted(lesions, key=_fibroid_lesion_sort_key)
+    types = [lesion.get("type", "intramural") for lesion in lesions]
+    unique_types = list(dict.fromkeys(types))
 
-    if len(types) > 1:
+    if len(unique_types) > 1:
         figo_manual = d.get("fibroid_figo_manual", "")
-        if count == "single":
-            size0 = lesions[0].get("size", "") if lesions else ""
-            loc0 = lesions[0].get("location", "fundal") if lesions else "fundal"
+        if count == "single" or len(lesions) == 1:
+            l0 = lesions[0]
+            size0 = l0.get("size", "")
+            loc0_imp = _fibroid_location_impression(
+                l0.get("location", "fundal"), l0.get("laterality", ""))
             figo_part = f"(FIGO- {figo_manual})" if figo_manual else "(FIGO- 4-5)"
-            return (f"SUGGESTION OF A FIBROID({size0}MM) IN THE {loc0.upper()} "
-                    f"MYOMETRIUM {figo_part}")
+            return (f"SUGGESTION OF A FIBROID({size0}MM) IN {loc0_imp} "
+                    f"{figo_part}")
         else:
             figo_part = f"(FIGO - {figo_manual})" if figo_manual else "(FIGO - 4-5)"
             count_word = {"couple": "A COUPLE OF", "few": "FEW",
@@ -3051,27 +3091,31 @@ def _fibroid_impression_fragment(d):
 
     t = types[0]
     label, figo = FIBROID_TYPE_LABELS_UP.get(t, FIBROID_TYPE_LABELS_UP["intramural"])
-    if count == "single":
-        size = lesions[0].get("size", "") if lesions else ""
-        loc = lesions[0].get("location", "fundal") if lesions else "fundal"
-        return (f"SUGGESTION OF {label}({size}MM) IN THE {loc.upper()} "
-                f"MYOMETRIUM({figo})")
+    if count == "single" or len(lesions) == 1:
+        l0 = lesions[0]
+        size = l0.get("size", "")
+        loc_imp = _fibroid_location_impression(
+            l0.get("location", "fundal"), l0.get("laterality", ""))
+        return (f"SUGGESTION OF {label}({size}MM) IN {loc_imp}({figo})")
     else:
         count_word = {"couple": "A COUPLE OF", "few": "FEW",
                       "multiple": "MULTIPLE"}.get(count, "FEW")
-        locs = [lesion.get("location", "fundal").upper() for lesion in lesions]
-        seen = set()
         locs_u = []
-        for loc in locs:
-            if loc not in seen:
-                locs_u.append(loc)
-                seen.add(loc)
+        seen = set()
+        for lesion in lesions:
+            key = (lesion.get("location", "fundal"),
+                   lesion.get("laterality", "")
+                   if lesion.get("location") == "lateral" else "")
+            if key in seen:
+                continue
+            seen.add(key)
+            locs_u.append(_fibroid_location_impression(key[0], key[1]))
         if len(locs_u) == 1:
-            locs_txt = f"THE {locs_u[0]} MYOMETRIUM"
+            locs_txt = locs_u[0]
         elif len(locs_u) == 2:
-            locs_txt = f"THE {locs_u[0]} & {locs_u[1]} MYOMETRIUM"
+            locs_txt = f"{locs_u[0]} & {locs_u[1]}"
         else:
-            locs_txt = "THE " + ", ".join(locs_u[:-1]) + " & " + locs_u[-1] + " MYOMETRIUM"
+            locs_txt = ", ".join(locs_u[:-1]) + " & " + locs_u[-1]
         return (f"SUGGESTION OF {count_word} FIBROIDS IN {locs_txt} AS DESCRIBED "
                 f"ABOVE({figo})")
 
@@ -6262,6 +6306,8 @@ def build_docx_bytes(data):
             "[Limited Scan: Extensively gaseous Epigastrium & midline]",
         "difficult_habitus":
             "[Limited Scan: Difficult patient habitus]",
+        "high_bmi":
+            "[Limited Scan: High BMI Patient]",
     }
     saio = data.get("saio", {})
     _sub_key = saio.get("subheading", "none")
@@ -6627,7 +6673,7 @@ with st.container():
         p_ref = st.text_input("Referred by", key="p_ref_input")
 
 st.markdown("**Scan Quality / Limitation**")
-_subhead_opts = ["none", "gaseous", "difficult_habitus"]
+_subhead_opts = ["none", "gaseous", "difficult_habitus", "high_bmi"]
 _top_subheading = st.radio(
     "Scan Quality / Limitation",
     _subhead_opts,
@@ -6636,8 +6682,9 @@ _top_subheading = st.radio(
     label_visibility="collapsed",
     format_func=lambda x: {
         "none": "None",
-        "gaseous": "[Limited Scan: Extensively gaseous Epigastrium & midline]",
+        "gaseous": "[Limited Scan: Extensively gaseous epigastrium & midline]",
         "difficult_habitus": "[Limited Scan: Difficult patient habitus]",
+        "high_bmi": "[Limited Scan: High BMI Patient]",
     }[x],
     key="top_subheading",
 )
@@ -7918,54 +7965,114 @@ with col_find:
                                  horizontal=True, key="ut_fibroid_count",
                                  format_func=lambda x: x.title())
                         wget("ut_fibroid_count", "single")
-                        st.caption("Tick all applicable types.")
-                        _fib_type_keys = [
-                            ("ut_fib_type_intramural", "intramural",
-                             "Intramural"),
-                            ("ut_fib_type_intra_subser",
-                             "intramural_subserosal",
-                             "Intramural > subserosal"),
-                            ("ut_fib_type_intra_submuc",
-                             "intramural_submucosal",
-                             "Intramural > submucosal"),
-                            ("ut_fib_type_submuc_intra",
-                             "submucosal_intramural",
-                             "Submucosal > intramural"),
-                            ("ut_fib_type_subser_intra",
-                             "subserosal_intramural",
-                             "Subserosal > intramural"),
-                        ]
-                        for k, _, lbl in _fib_type_keys:
-                            st.checkbox(lbl, key=k,
-                                        value=bool(_seed(k, False)))
-                            wget(k, False)
-                        st.caption("Enter size and location per ticked type, "
-                                   "largest first.")
-                        for k, _, lbl in _fib_type_keys:
-                            if ss(k, False):
-                                c_a, c_b = st.columns([1, 2])
-                                with c_a:
-                                    st.text_input(f"{lbl} size",
-                                                  key=f"{k}_size",
-                                                  value=_seed(f"{k}_size", ""))
-                                    wget(f"{k}_size", "")
-                                with c_b:
+
+                        # Dynamic lesion list — one row per fibroid.
+                        if "ut_fib_lesion_n" not in st.session_state:
+                            st.session_state["ut_fib_lesion_n"] = 1
+                        _n_fib = st.session_state["ut_fib_lesion_n"]
+
+                        _fib_lesion_rows = []
+                        for _fi in range(_n_fib):
+                            st.markdown(f"*Fibroid {_fi + 1}*")
+                            _row_c1, _row_c2, _row_c3, _row_c4 = st.columns(
+                                [2, 1, 1, 1])
+                            with _row_c1:
+                                _type_keys = [k for k, _ in FIBROID_TYPE_OPTIONS]
+                                _type_labels = [v for _, v in FIBROID_TYPE_OPTIONS]
+                                _type_cur = _seed(
+                                    f"ut_fib_lesion_{_fi}_type", "intramural")
+                                _type_idx = (
+                                    _type_keys.index(_type_cur)
+                                    if _type_cur in _type_keys else 0)
+                                st.selectbox(
+                                    "Type", _type_keys,
+                                    index=_type_idx,
+                                    key=f"ut_fib_lesion_{_fi}_type",
+                                    format_func=lambda x: dict(
+                                        FIBROID_TYPE_OPTIONS).get(x, x),
+                                    label_visibility="collapsed")
+                                wget(f"ut_fib_lesion_{_fi}_type", "intramural")
+                            with _row_c2:
+                                _loc_cur = _seed(
+                                    f"ut_fib_lesion_{_fi}_loc", "fundal")
+                                _loc_idx = (
+                                    FIBROID_LOC_OPTIONS.index(_loc_cur)
+                                    if _loc_cur in FIBROID_LOC_OPTIONS else 0)
+                                st.selectbox(
+                                    "Location", FIBROID_LOC_OPTIONS,
+                                    index=_loc_idx,
+                                    key=f"ut_fib_lesion_{_fi}_loc",
+                                    format_func=lambda x: x.title(),
+                                    label_visibility="collapsed")
+                                wget(f"ut_fib_lesion_{_fi}_loc", "fundal")
+                            with _row_c3:
+                                if ss(f"ut_fib_lesion_{_fi}_loc",
+                                       "fundal") == "lateral":
+                                    _lat_cur = _seed(
+                                        f"ut_fib_lesion_{_fi}_lat", "right")
+                                    _lat_idx = (
+                                        FIBROID_LATERALITY_OPTIONS.index(
+                                            _lat_cur)
+                                        if _lat_cur in
+                                        FIBROID_LATERALITY_OPTIONS else 0)
                                     st.selectbox(
-                                        f"{lbl} location",
-                                        FIBROID_LOC_OPTIONS,
-                                        index=_idx(f"{k}_loc",
-                                                   FIBROID_LOC_OPTIONS,
-                                                   "fundal"),
-                                        key=f"{k}_loc",
-                                        format_func=lambda x: x.title())
-                                    wget(f"{k}_loc", "fundal")
-                        _n_types = sum(1 for k, _, _ in _fib_type_keys
-                                        if ss(k, False))
-                        if _n_types > 1:
-                            st.text_input("FIGO range (manual, e.g. 3-5)",
-                                          key="ut_fib_figo_manual",
-                                          value=_seed("ut_fib_figo_manual",
-                                                      ""))
+                                        "Side", FIBROID_LATERALITY_OPTIONS,
+                                        index=_lat_idx,
+                                        key=f"ut_fib_lesion_{_fi}_lat",
+                                        format_func=lambda x: x.title(),
+                                        label_visibility="collapsed")
+                                    wget(f"ut_fib_lesion_{_fi}_lat", "right")
+                                else:
+                                    st.session_state[
+                                        f"ut_fib_lesion_{_fi}_lat"] = ""
+                                    st.session_state[
+                                        f"_mirror_ut_fib_lesion_{_fi}_lat"] = ""
+                            with _row_c4:
+                                st.text_input(
+                                    "Size",
+                                    key=f"ut_fib_lesion_{_fi}_size",
+                                    value=_seed(
+                                        f"ut_fib_lesion_{_fi}_size", ""),
+                                    label_visibility="collapsed",
+                                    placeholder="mm")
+                                wget(f"ut_fib_lesion_{_fi}_size", "")
+
+                            _fib_lesion_rows.append({
+                                "type": ss(f"ut_fib_lesion_{_fi}_type",
+                                           "intramural"),
+                                "location": ss(f"ut_fib_lesion_{_fi}_loc",
+                                               "fundal"),
+                                "laterality": (
+                                    ss(f"ut_fib_lesion_{_fi}_lat", "right")
+                                    if ss(f"ut_fib_lesion_{_fi}_loc",
+                                          "fundal") == "lateral" else ""),
+                                "size": ss(f"ut_fib_lesion_{_fi}_size", ""),
+                            })
+
+                        st.session_state["_ut_fib_lesion_rows"] = _fib_lesion_rows
+
+                        _add_col, _rem_col = st.columns(2)
+                        with _add_col:
+                            if st.button("+ Add fibroid",
+                                         key="ut_fib_add_lesion",
+                                         use_container_width=True):
+                                st.session_state["ut_fib_lesion_n"] += 1
+                                st.rerun()
+                        with _rem_col:
+                            if (_n_fib > 1
+                                    and st.button("✕ Remove last",
+                                                  key="ut_fib_rem_lesion",
+                                                  use_container_width=True)):
+                                st.session_state["ut_fib_lesion_n"] -= 1
+                                st.rerun()
+
+                        _unique_types = list(dict.fromkeys(
+                            r["type"] for r in _fib_lesion_rows))
+                        if len(_unique_types) > 1:
+                            st.text_input(
+                                "FIGO range (manual, e.g. 3-5)",
+                                key="ut_fib_figo_manual",
+                                value=_seed("ut_fib_figo_manual", ""))
                             wget("ut_fib_figo_manual", "")
 
                     st.checkbox("Adenomyomas", key="ut_adenomyomas",
@@ -9325,26 +9432,9 @@ if p_sex == "F":
         if ss(_k, False):
             adeno_feats.append(_v)
 
-    fib_types = []
-    fib_lesions = []
-    _fib_type_keys = [
-        ("ut_fib_type_intramural", "intramural", "ut_fib_type_intramural"),
-        ("ut_fib_type_intra_subser", "intramural_subserosal",
-         "ut_fib_type_intra_subser"),
-        ("ut_fib_type_intra_submuc", "intramural_submucosal",
-         "ut_fib_type_intra_submuc"),
-        ("ut_fib_type_submuc_intra", "submucosal_intramural",
-         "ut_fib_type_submuc_intra"),
-        ("ut_fib_type_subser_intra", "subserosal_intramural",
-         "ut_fib_type_subser_intra"),
-    ]
-    for k, type_key, prefix in _fib_type_keys:
-        if ss(k, False):
-            fib_types.append(type_key)
-            fib_lesions.append({
-                "location": ss(f"{prefix}_loc", "fundal"),
-                "size": ss(f"{prefix}_size", ""),
-            })
+    fib_lesions = list(st.session_state.get("_ut_fib_lesion_rows", [])
+                       or [_new_fibroid_lesion()])
+    fib_types = [l.get("type", "intramural") for l in fib_lesions]
 
     data["uterus"].update({
         "status": ut_status,
@@ -9649,6 +9739,8 @@ def render_preview_findings(data):
             "[Limited Scan: Extensively gaseous Epigastrium & midline]",
         "difficult_habitus":
             "[Limited Scan: Difficult patient habitus]",
+        "high_bmi":
+            "[Limited Scan: High BMI Patient]",
     }
     saio = data.get("saio", {})
     _sub_key_prev = saio.get("subheading", "none")
