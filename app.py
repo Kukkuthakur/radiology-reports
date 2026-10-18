@@ -6405,9 +6405,8 @@ def build_docx_bytes(data):
         if _first_txt.startswith("URINARY BLADDER"):
             _pvr_segs = urinary_bladder_pvr_segments(data["urinary_bladder"])
             if _pvr_segs:
-                _add_full_line(doc)
                 _pvr_para = doc.add_paragraph()
-                _pvr_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                _pvr_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                 _pvr_para.paragraph_format.space_after = Pt(0)
                 _pvr_para.paragraph_format.space_before = Pt(0)
                 _pvr_para.paragraph_format.line_spacing = 1.0
@@ -9830,7 +9829,6 @@ def render_preview_findings(data):
             if _pvr_segs:
                 _pvr_segs = enforce_uppercase_after_period(_pvr_segs)
                 out.append("".join(x[0] for x in _pvr_segs))
-                out.append("")
     addendum = (data.get("additional_body_findings") or "").strip()
     if addendum:
         out.append(addendum)
