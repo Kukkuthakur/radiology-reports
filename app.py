@@ -2640,7 +2640,10 @@ def _fibroid_body_fragment(d):
                 f"measuring {size}mm")
 
     if count == "single" or len(body_parts) == 1:
-        return [seg(" "), seg(body_parts[0], True)]
+        _txt = body_parts[0].rstrip()
+        if not _txt.endswith("."):
+            _txt += "."
+        return [seg(" "), seg(_txt, True)]
 
     count_word = {"couple": "a couple of", "few": "few",
                   "multiple": "multiple"}.get(count, "few")
@@ -2658,9 +2661,11 @@ def _fibroid_body_fragment(d):
         joined_desc = f"{desc_list[0]} and {desc_list[1]}"
     else:
         joined_desc = ", ".join(desc_list[:-1]) + " and " + desc_list[-1]
-    return [seg(" "),
-            seg(f"{count_word} hypoechoic heterogenous SOLs in the myometrium, "
-                f"largest of these measuring {joined_desc}", True)]
+    _joined = (f"{count_word} hypoechoic heterogenous SOLs in the myometrium, "
+               f"largest of these measuring {joined_desc}").rstrip()
+    if not _joined.endswith("."):
+        _joined += "."
+    return [seg(" "), seg(_joined, True)]
 
 
 def _adenomyomas_body_fragment(d):
