@@ -2745,7 +2745,15 @@ def _myometrium_body_clause(d):
 
     if has_fibroid:
         fib_segs = _fibroid_body_fragment(d) or []
-        return [seg(f"Myometrium appears {desc} with ")] + fib_segs[1:]
+        _tail = fib_segs[1:] if fib_segs else []
+        if _tail and isinstance(_tail[-1][0], str):
+            _t = _tail[-1]
+            _txt = _t[0]
+            if not _txt.rstrip().endswith("."):
+                _tail[-1] = (_txt.rstrip() + ".",
+                             _t[1], _t[2],
+                             _t[3] if len(_t) > 3 else None)
+        return [seg(f"Myometrium appears {desc} with ")] + _tail
 
     if has_adenomyomas and not has_adenomyosis:
         aden_text = _adenomyomas_body_fragment(d) or ""
