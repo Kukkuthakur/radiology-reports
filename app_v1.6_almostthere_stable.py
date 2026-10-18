@@ -1766,6 +1766,22 @@ def _format_pole(pole_key):
     return POLE_LABELS.get(pole_key, pole_key.replace("_", "-"))
 
 
+def _kidney_negative_sentence(d):
+    """Return the 'no calculus / no hydronephrosis' sentence when the user
+    has requested it (negative renal line) AND both kidneys are clean."""
+    if not d.get("negative_renal_line"):
+        return None
+    r, l = d["right"], d["left"]
+    r_ok = r["status"] == "normal" and not r["calculi"] \
+        and r["hydronephrosis"] == "none"
+    l_ok = l["status"] == "normal" and not l["calculi"] \
+        and l["hydronephrosis"] == "none"
+    if not (r_ok and l_ok):
+        return None
+    return [seg(" "), seg("No calculus or hydronephrosis appreciated at the "
+                          "time of scan.")]
+
+
 def _kidney_side_has_other_finding(k):
     if k["calculi"]:
         return True
@@ -2095,6 +2111,9 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
             s.extend(_nephrocalcinosis_body(side, side_key))
             if side["ureter_calculus"]["count"] != "none":
                 s.extend(_ureter_calculus_body(side, side_key))
+        _neg = _kidney_negative_sentence(d)
+        if _neg:
+            s.extend(_neg)
         return s
 
     both_small = r_small and l_small
@@ -2113,6 +2132,9 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
             s.append(seg(f" {bracket}"))
         s.append(seg(", however with normal outline and echogenicity. "
                      "Corticomedullary differentiation is maintained."))
+        _neg = _kidney_negative_sentence(d)
+        if _neg:
+            s.extend(_neg)
         return s
 
     needs_split = (only_r_small or only_l_small
@@ -2164,6 +2186,9 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
             s.extend(_nephrocalcinosis_body(side, side_key))
             if side["ureter_calculus"]["count"] != "none":
                 s.extend(_ureter_calculus_body(side, side_key))
+        _neg = _kidney_negative_sentence(d)
+        if _neg:
+            s.extend(_neg)
         return s
 
     s.append(seg("BOTH KIDNEYS", True, True))
@@ -2192,6 +2217,9 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
         for side_key, side in (("right", r), ("left", l)):
             s.extend(_cyst_body(side, side_key))
             s.extend(_nephrocalcinosis_body(side, side_key))
+        _neg = _kidney_negative_sentence(d)
+        if _neg:
+            s.extend(_neg)
         return s
 
     for side_key, side in (("right", r), ("left", l)):
@@ -2201,6 +2229,9 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
         s.extend(_nephrocalcinosis_body(side, side_key))
         if side["ureter_calculus"]["count"] != "none":
             s.extend(_ureter_calculus_body(side, side_key))
+    _neg = _kidney_negative_sentence(d)
+    if _neg:
+        s.extend(_neg)
     return s
 
 
@@ -2300,18 +2331,25 @@ def urinary_bladder_sentence(d):
         s += [seg(" "), seg(frag, True)]
     s.extend(_ub_sedimentation_body(d))
 
-    if pre:
-        s.append(seg("\nPRE-VOID VOLUME - ", True))
-        s.append(seg(f"{pre}CC", True))
-        if post:
-            s.append(seg("\nPOST-VOID RESIDUE - ", True))
-            s.append(seg(f"{post}CC", True))
-            if _pvr_significant(d):
-                s.append(seg(" (Significant)", True, False, True))
-            elif _pvr_insignificant(d):
-                s.append(seg(" (Insignificant)", True, False, True))
-        else:
-            s.append(seg("\nPOST-VOID RESIDUE - ", True))
+    return s
+def urinary_bladder_pvr_segments(d):
+    """Return the PVR block as its own segment list, or None if no pre-void
+    volume was entered. Rendered as a separate paragraph so it wraps
+    independently of the UB finding paragraph."""
+    pre = str(d.get("pre_void_cc", "") or "").strip()
+    post = str(d.get("post_void_cc", "") or "").strip()
+    if not pre:
+        return None
+    s = [seg("PRE-VOID VOLUME - ", True), seg(f"{pre}CC", True)]
+    if post:
+        s.append(seg("\nPOST-VOID RESIDUE - ", True))
+        s.append(seg(f"{post}CC", True))
+        if _pvr_significant(d):
+            s.append(seg(" (Significant)", True, False, True))
+        elif _pvr_insignificant(d):
+            s.append(seg(" (Insignificant)", True, False, True))
+    else:
+        s.append(seg("\nPOST-VOID RESIDUE - ", True))
     return s
 
 def _pvr_pct(d):
@@ -6393,6 +6431,18 @@ def build_docx_bytes(data):
         _render_segments(para, segs)
         rendered_count += 1
 
+        # UB PVR block as its own paragraph, immediately after the UB body.
+        _first_txt = segs[0][0] if segs and isinstance(segs[0][0], str) else ""
+        if _first_txt.startswith("URINARY BLADDER"):
+            _pvr_segs = urinary_bladder_pvr_segments(data["urinary_bladder"])
+            if _pvr_segs:
+                _pvr_para = doc.add_paragraph()
+                _pvr_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                _pvr_para.paragraph_format.space_after = Pt(0)
+                _pvr_para.paragraph_format.space_before = Pt(0)
+                _pvr_para.paragraph_format.line_spacing = 1.0
+                _render_segments(_pvr_para, _pvr_segs)
+
     addendum = (data.get("additional_body_findings") or "").strip()
     if addendum:
         if rendered_count > 0:
@@ -7438,13 +7488,13 @@ with col_find:
                         st.checkbox("?Age related", key="kd_age_related",
                                     value=bool(_seed("kd_age_related", False)))
                         wget("kd_age_related", False)
-            _kd_neg_opts = ["no", "yes"]
+            _kd_neg_opts = ["yes", "no"]
             st.radio(
-                "Negative renal impression line (clinical query, no finding)",
+                "Negative renal line (body + impression)",
                 _kd_neg_opts,
-                index=_idx("kd_neg_renal", _kd_neg_opts, "no"),
+                index=_idx("kd_neg_renal", _kd_neg_opts, "yes"),
                 horizontal=True, key="kd_neg_renal")
-            wget("kd_neg_renal", "no")
+            wget("kd_neg_renal", "yes")
 
             ub_status_now = ss("ub_status", None) or "adequately_distended"
 
@@ -9353,7 +9403,7 @@ elif _echo_val == "significantly_raised":
 else:
     data["kidneys"]["cortical_cmd"] = "preserved"
 data["kidneys"]["age_related_echogenicity"] = bool(ss("kd_age_related", False))
-data["kidneys"]["negative_renal_line"] = (ss("kd_neg_renal", "no") == "yes")
+data["kidneys"]["negative_renal_line"] = (ss("kd_neg_renal", "yes") == "yes")
 
 _r_uc = data["kidneys"]["right"]["ureter_calculus"]
 _l_uc = data["kidneys"]["left"]["ureter_calculus"]
@@ -9802,6 +9852,16 @@ def render_preview_findings(data):
             continue
         s = enforce_uppercase_after_period(s)
         out.append("".join(x[0] for x in s))
+
+        # PVR block belongs inside the UB section for preview purposes,
+        # immediately after the UB body and before the section gap.
+        _first_txt = s[0][0] if s and isinstance(s[0][0], str) else ""
+        if _first_txt.startswith("URINARY BLADDER"):
+            _pvr_segs = urinary_bladder_pvr_segments(data["urinary_bladder"])
+            if _pvr_segs:
+                _pvr_segs = enforce_uppercase_after_period(_pvr_segs)
+                out.append("".join(x[0] for x in _pvr_segs))
+
         out.append("")
     addendum = (data.get("additional_body_findings") or "").strip()
     if addendum:
