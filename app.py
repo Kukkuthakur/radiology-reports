@@ -1966,15 +1966,13 @@ def _cyst_body(k, side_low):
     loc = k.get("cyst_location", "")
     loc_txt = _format_pole(loc) if loc else ""
     side_phrase = f"{side_low} kidney"
-    bosniak = k.get("cyst_bosniak", "")
-    bosniak_txt = f"(Bosniak Cat-{bosniak})" if bosniak else ""
     if ctype == "simple":
         if count == "single":
-            text = (f"A simple cortical cyst({size}mm){bosniak_txt} is seen at "
+            text = (f"A simple cortical cyst({size}mm) is seen at "
                     f"the {loc_txt} of {side_phrase}.")
         else:
             word = _cyst_count_word(count)
-            text = (f"{word} simple cortical cysts{bosniak_txt} seen in the "
+            text = (f"{word} simple cortical cysts seen in the "
                     f"{side_phrase}, largest of these measuring {size}mm at the "
                     f"{loc_txt}.")
     else:
@@ -1982,11 +1980,11 @@ def _cyst_body(k, side_low):
         if not desc:
             return []
         if count == "single":
-            text = (f"A complex cyst{bosniak_txt} with {desc}, seen at the "
+            text = (f"A complex cyst with {desc}, seen at the "
                     f"{loc_txt} of {side_phrase}.")
         else:
             word = _cyst_count_word(count)
-            text = (f"{word} complex cortical cysts{bosniak_txt} with {desc} "
+            text = (f"{word} complex cortical cysts with {desc} "
                     f"seen in the {side_phrase}, largest of these measuring "
                     f"{size}mm at the {loc_txt}.")
     return [seg(" "), seg(text, True)]
