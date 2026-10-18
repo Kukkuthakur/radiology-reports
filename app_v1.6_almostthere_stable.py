@@ -2301,17 +2301,17 @@ def urinary_bladder_sentence(d):
     s.extend(_ub_sedimentation_body(d))
 
     if pre:
-        s.append(seg("\n"))
-        s.append(seg(f"PRE-VOID VOLUME - {pre}CC", True))
-        s.append(seg("\n"))
+        s.append(seg("\nPRE-VOID VOLUME - ", True))
+        s.append(seg(f"{pre}CC", True))
         if post:
-            s.append(seg(f"POST-VOID RESIDUE - {post}CC", True))
+            s.append(seg("\nPOST-VOID RESIDUE - ", True))
+            s.append(seg(f"{post}CC", True))
             if _pvr_significant(d):
-                s.append(seg("(Significant)", True, False, True))
+                s.append(seg(" (Significant)", True, False, True))
             elif _pvr_insignificant(d):
-                s.append(seg("(Insignificant)", True, False, True))
+                s.append(seg(" (Insignificant)", True, False, True))
         else:
-            s.append(seg("POST-VOID RESIDUE - ", True))
+            s.append(seg("\nPOST-VOID RESIDUE - ", True))
     return s
 
 def _pvr_pct(d):
