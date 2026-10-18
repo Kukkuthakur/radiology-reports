@@ -5206,6 +5206,51 @@ def _renal_calculi_impression_phrase(k, side_low):
     return f"{noun} {side_up} RENAL {count_word}"
 
 
+def _renal_calculi_impression_phrase(k, side_low):
+    """Return a grammatically correct uppercase phrase for calculi count on
+    one side, e.g. 'A RIGHT RENAL CALCULUS' or 'A COUPLE OF RIGHT RENAL CALCULI'."""
+    if not k["calculi"]:
+        return None
+    side_up = _ureter_side_label(side_low)
+    n = len(k["calculi"])
+    if n == 1:
+        noun = "A"
+    elif n == 2:
+        noun = "A COUPLE OF"
+    elif n <= 4:
+        noun = "FEW"
+    else:
+        noun = "MULTIPLE"
+    count_word = "CALCULUS" if n == 1 else "CALCULI"
+    return f"{noun} {side_up} RENAL {count_word}"
+
+
+def _get_bilateral_renal_impression(r_calcs, l_calcs, suffix):
+    """Builds the exact bilateral phrasing based on calculus counts."""
+    rc, lc = len(r_calcs), len(l_calcs)
+    
+    def phrase(n, side):
+        if n == 1:
+            return f"A {side.upper()} RENAL CALCULUS"
+        elif n == 2:
+            return f"A COUPLE OF {side.upper()} RENAL CALCULI"
+        else: # 3+
+            return f"{side.upper()} NEPHROLITHIASIS"
+
+    if rc == 1 and lc == 1:
+        return f"BILATERAL RENAL CALCULI{suffix}"
+    elif rc == 2 and lc == 2:
+        return f"BILATERAL RENAL CALCULI, A COUPLE OF THEM IN EACH KIDNEY{suffix}"
+    elif rc >= 3 and lc >= 3:
+        return f"BILATERAL NEPHROLITHIASIS{suffix}"
+    else:
+        # The side with the higher count gets the leading position.
+        if rc > lc:
+            return f"{phrase(rc, 'right')} & {phrase(lc, 'left')}{suffix}"
+        else:
+            return f"{phrase(lc, 'left')} & {phrase(rc, 'right')}{suffix}"
+
+
 def _renal_calculi_standalone(k, side_low):
     if not k["calculi"]:
         return ""
@@ -5843,9 +5888,7 @@ def generate_impression(d, sex, age):
         suffix = (", HOWEVER NO HYDRONEPHROSIS SEEN AT THE TIME OF SCAN."
                   if no_hydro else ".")
         if r_calcs and l_calcs:
-            r_phrase = _renal_calculi_impression_phrase(r, "right")
-            l_phrase = _renal_calculi_impression_phrase(l, "left")
-            renal_lines.append(f"{r_phrase} & {l_phrase}{suffix}")
+            renal_lines.append(_get_bilateral_renal_impression(r_calcs, l_calcs, suffix))
         elif r_calcs:
             renal_lines.append(f"{_renal_calculi_standalone(r, 'right')}{suffix}")
         elif l_calcs:
@@ -5908,8 +5951,10 @@ def generate_impression(d, sex, age):
                     break
 
     if k.get("negative_renal_line"):
-        renal_lines.append("NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS SEEN "
-                           "AT THE TIME OF SCAN.")
+        _any_calcs = (r_present and bool(r["calculi"])) or (l_present and bool(l["calculi"]))
+        if not _any_calcs:
+            renal_lines.append("NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS SEEN "
+                               "AT THE TIME OF SCAN.")
 
     # Assemble all kidney findings into ONE bullet, then append KFT advice
     # once at the very end — never mid-line.
