@@ -5187,6 +5187,25 @@ def _ureter_calculus_impression_line(side_key, uc):
     return f"{base} CAUSING {side_up} SIDED {g} {term}"
 
 
+def _renal_calculi_impression_phrase(k, side_low):
+    """Return a grammatically correct uppercase phrase for calculi count on
+    one side, e.g. 'A RIGHT RENAL CALCULUS' or 'A COUPLE OF RIGHT RENAL CALCULI'."""
+    if not k["calculi"]:
+        return None
+    side_up = _ureter_side_label(side_low)
+    n = len(k["calculi"])
+    if n == 1:
+        noun = "A"
+    elif n == 2:
+        noun = "A COUPLE OF"
+    elif n <= 4:
+        noun = "FEW"
+    else:
+        noun = "MULTIPLE"
+    count_word = "CALCULUS" if n == 1 else "CALCULI"
+    return f"{noun} {side_up} RENAL {count_word}"
+
+
 def _renal_calculi_standalone(k, side_low):
     if not k["calculi"]:
         return ""
@@ -5824,7 +5843,9 @@ def generate_impression(d, sex, age):
         suffix = (", HOWEVER NO HYDRONEPHROSIS SEEN AT THE TIME OF SCAN."
                   if no_hydro else ".")
         if r_calcs and l_calcs:
-            renal_lines.append(f"BILATERAL RENAL CALCULI{suffix}")
+            r_phrase = _renal_calculi_impression_phrase(r, "right")
+            l_phrase = _renal_calculi_impression_phrase(l, "left")
+            renal_lines.append(f"{r_phrase} & {l_phrase}{suffix}")
         elif r_calcs:
             renal_lines.append(f"{_renal_calculi_standalone(r, 'right')}{suffix}")
         elif l_calcs:
