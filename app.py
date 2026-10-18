@@ -1766,6 +1766,22 @@ def _format_pole(pole_key):
     return POLE_LABELS.get(pole_key, pole_key.replace("_", "-"))
 
 
+def _kidney_negative_sentence(d):
+    """Return the 'no calculus / no hydronephrosis' sentence when the user
+    has requested it (negative renal line) AND both kidneys are clean."""
+    if not d.get("negative_renal_line"):
+        return None
+    r, l = d["right"], d["left"]
+    r_ok = r["status"] == "normal" and not r["calculi"] \
+        and r["hydronephrosis"] == "none"
+    l_ok = l["status"] == "normal" and not l["calculi"] \
+        and l["hydronephrosis"] == "none"
+    if not (r_ok and l_ok):
+        return None
+    return [seg(" "), seg("No calculus or hydronephrosis appreciated at the "
+                          "time of scan.")]
+
+
 def _kidney_side_has_other_finding(k):
     if k["calculi"]:
         return True
@@ -2095,6 +2111,9 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
             s.extend(_nephrocalcinosis_body(side, side_key))
             if side["ureter_calculus"]["count"] != "none":
                 s.extend(_ureter_calculus_body(side, side_key))
+        _neg = _kidney_negative_sentence(d)
+        if _neg:
+            s.extend(_neg)
         return s
 
     both_small = r_small and l_small
@@ -2113,6 +2132,9 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
             s.append(seg(f" {bracket}"))
         s.append(seg(", however with normal outline and echogenicity. "
                      "Corticomedullary differentiation is maintained."))
+        _neg = _kidney_negative_sentence(d)
+        if _neg:
+            s.extend(_neg)
         return s
 
     needs_split = (only_r_small or only_l_small
@@ -2164,6 +2186,9 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
             s.extend(_nephrocalcinosis_body(side, side_key))
             if side["ureter_calculus"]["count"] != "none":
                 s.extend(_ureter_calculus_body(side, side_key))
+        _neg = _kidney_negative_sentence(d)
+        if _neg:
+            s.extend(_neg)
         return s
 
     s.append(seg("BOTH KIDNEYS", True, True))
@@ -2192,6 +2217,9 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
         for side_key, side in (("right", r), ("left", l)):
             s.extend(_cyst_body(side, side_key))
             s.extend(_nephrocalcinosis_body(side, side_key))
+        _neg = _kidney_negative_sentence(d)
+        if _neg:
+            s.extend(_neg)
         return s
 
     for side_key, side in (("right", r), ("left", l)):
@@ -2201,6 +2229,9 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
         s.extend(_nephrocalcinosis_body(side, side_key))
         if side["ureter_calculus"]["count"] != "none":
             s.extend(_ureter_calculus_body(side, side_key))
+    _neg = _kidney_negative_sentence(d)
+    if _neg:
+        s.extend(_neg)
     return s
 
 
@@ -7457,13 +7488,13 @@ with col_find:
                         st.checkbox("?Age related", key="kd_age_related",
                                     value=bool(_seed("kd_age_related", False)))
                         wget("kd_age_related", False)
-            _kd_neg_opts = ["no", "yes"]
+            _kd_neg_opts = ["yes", "no"]
             st.radio(
-                "Negative renal impression line (clinical query, no finding)",
+                "Negative renal line (body + impression)",
                 _kd_neg_opts,
-                index=_idx("kd_neg_renal", _kd_neg_opts, "no"),
+                index=_idx("kd_neg_renal", _kd_neg_opts, "yes"),
                 horizontal=True, key="kd_neg_renal")
-            wget("kd_neg_renal", "no")
+            wget("kd_neg_renal", "yes")
 
             ub_status_now = ss("ub_status", None) or "adequately_distended"
 
@@ -9372,7 +9403,7 @@ elif _echo_val == "significantly_raised":
 else:
     data["kidneys"]["cortical_cmd"] = "preserved"
 data["kidneys"]["age_related_echogenicity"] = bool(ss("kd_age_related", False))
-data["kidneys"]["negative_renal_line"] = (ss("kd_neg_renal", "no") == "yes")
+data["kidneys"]["negative_renal_line"] = (ss("kd_neg_renal", "yes") == "yes")
 
 _r_uc = data["kidneys"]["right"]["ureter_calculus"]
 _l_uc = data["kidneys"]["left"]["ureter_calculus"]
