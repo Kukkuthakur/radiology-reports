@@ -5950,7 +5950,7 @@ def generate_impression(d, sex, age):
                                              f"THE TIME OF SCAN.")
                     break
 
-    if k.get("negative_renal_line"):
+    if k.get("negative_renal_line_impression"):
         _any_calcs = (r_present and bool(r["calculi"])) or (l_present and bool(l["calculi"]))
         if not _any_calcs:
             renal_lines.append("NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS SEEN "
@@ -7587,7 +7587,15 @@ with col_find:
                         st.checkbox("?Age related", key="kd_age_related",
                                     value=bool(_seed("kd_age_related", False)))
                         wget("kd_age_related", False)
-            index=_idx("kd_neg_renal", _kd_neg_opts, "no"),
+            
+            c_neg1, c_neg2 = st.columns(2)
+            with c_neg1:
+                st.checkbox("Negative renal line (Body)", key="kd_neg_renal_body", value=bool(_seed("kd_neg_renal_body", True)))
+                wget("kd_neg_renal_body", True)
+            with c_neg2:
+                st.checkbox("Negative renal line (Impression)", key="kd_neg_renal_imp", value=bool(_seed("kd_neg_renal_imp", False)))
+                wget("kd_neg_renal_imp", False)
+
 
             ub_status_now = ss("ub_status", None) or "adequately_distended"
 
@@ -9496,7 +9504,8 @@ elif _echo_val == "significantly_raised":
 else:
     data["kidneys"]["cortical_cmd"] = "preserved"
 data["kidneys"]["age_related_echogenicity"] = bool(ss("kd_age_related", False))
-data["kidneys"]["negative_renal_line"] = (ss("kd_neg_renal", "yes") == "yes")
+data["kidneys"]["negative_renal_line"] = bool(ss("kd_neg_renal_body", True))
+data["kidneys"]["negative_renal_line_impression"] = bool(ss("kd_neg_renal_imp", False))
 
 _r_uc = data["kidneys"]["right"]["ureter_calculus"]
 _l_uc = data["kidneys"]["left"]["ureter_calculus"]
