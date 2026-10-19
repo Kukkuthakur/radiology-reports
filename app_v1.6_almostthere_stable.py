@@ -2141,9 +2141,11 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
                    or (both_small and (echo_raised or r_has_other or l_has_other)))
     if needs_split:
         order = ["left", "right"] if only_l_small else ["right", "left"]
-        for side_key in order:
+        for i, side_key in enumerate(order):
             side = r if side_key == "right" else l
-            s.append(seg(f"{side_key.upper()} KIDNEY", True, True))
+            # If this is the second kidney, push it to a new line!
+            prefix = "\n" if i > 0 else ""
+            s.append(seg(f"{prefix}{side_key.upper()} KIDNEY", True, True))
             bracket = _size_bracket(d, (side_key == "right", side_key == "left"))
             echo_on_this = echo_raised and echo_lat in (side_key, "bilateral")
             small = (r_small if side_key == "right" else l_small)
@@ -3077,7 +3079,12 @@ def uterus_sentence(d, pediatric=False, age_years=None):
     if d.get("rpoc"):
         size_txt = d.get("rpoc_size", "")
         echo = d.get("rpoc_echo", "hypo")
-        echo_word = "hypo-echoic" if echo == "hypo" else "hyper-echoic"
+        if echo == "hypo":
+            echo_word = "hypo-echoic"
+        elif echo == "hyper":
+            echo_word = "hyper-echoic"
+        else:
+            echo_word = "mixed echogenicity"
         first_dim = _first_number(size_txt.split("x")[0] if size_txt else "")
         if first_dim is not None and first_dim > 15:
             s += [seg(" "),
@@ -3243,13 +3250,17 @@ def _cervix_impression_line(d):
     line = line.rstrip(".") + " - ?CERVICITIS. Adv - PAP Smear."
     return line
 
-
 def _rpoc_impression_line(d):
     if not d.get("rpoc"):
         return None
     size_txt = d.get("rpoc_size", "")
     echo = d.get("rpoc_echo", "hypo")
-    echo_word = "HYPOECHOIC" if echo == "hypo" else "HYPERECHOIC"
+    if echo == "hypo":
+        echo_word = "HYPOECHOIC"
+    elif echo == "hyper":
+        echo_word = "HYPERECHOIC"
+    else:
+        echo_word = "MIXED ECHOGENICITY"
     first_dim = _first_number(size_txt.split("x")[0] if size_txt else "")
     if first_dim is not None and first_dim > 15:
         size_desc = "A MODERATE SIZED"
@@ -5950,7 +5961,7 @@ def generate_impression(d, sex, age):
                                              f"THE TIME OF SCAN.")
                     break
 
-    if k.get("negative_renal_line"):
+    if k.get("negative_renal_line_impression"):
         _any_calcs = (r_present and bool(r["calculi"])) or (l_present and bool(l["calculi"]))
         if not _any_calcs:
             renal_lines.append("NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS SEEN "
@@ -6134,9 +6145,28 @@ def generate_impression(d, sex, age):
                 _base = _base[:_adv_idx].rstrip()
             lines[_longest_idx] = _base + ". " + _cect_text
 
+    # 1. If the ONLY line generated is the negative renal line, erase it
+    if len(lines) == 1 and "NO EVIDENCE OF HYDRONEPHROTIC" in lines[0]:
+        lines.clear()
+
+    # 2. If it's completely empty, return the standard normal template
     if not lines:
         return (list(IMPRESSION_NORMAL_FEMALE) if (sex == "F" and not is_pediatric)
                 else list(IMPRESSION_NORMAL_MALE))
+
+    # 3. Check for fluid/bowel involvement
+    _has_eff = d.get("pleural_effusion", {}).get("status", "none") != "none"
+    _has_ff = d.get("free_fluid", {}).get("kind", "none") != "none"
+    _has_mln = d.get("mln", {}).get("branch", "none") != "none"
+    _has_bw = d.get("bowel", {}).get("wall_thickening", False)
+    _has_saio = d.get("saio", {}).get("distension_type", "none") != "none"
+    
+    _has_fluid_or_bowel = _has_eff or _has_ff or _has_mln or _has_bw or _has_saio
+    
+    # If there's no fluid/bowel involvement, append the negative line at the bottom of the findings
+    if not _has_fluid_or_bowel:
+        if not any("NO FREE FLUID" in l for l in lines):
+            lines.append("NO FREE FLUID, LYMPHADENOPATHY, OBVIOUS BOWEL WALL THICKENING OR ANY SIGN OF INFLAMMATION SEEN AT THE TIME OF SCAN.")
 
     lines.append(IMPRESSION_REST_UNREMARKABLE)
     return [_q(l) for l in lines]
@@ -7583,13 +7613,15 @@ with col_find:
                         st.checkbox("?Age related", key="kd_age_related",
                                     value=bool(_seed("kd_age_related", False)))
                         wget("kd_age_related", False)
-            _kd_neg_opts = ["yes", "no"]
-            st.radio(
-                "Negative renal line (body + impression)",
-                _kd_neg_opts,
-                index=_idx("kd_neg_renal", _kd_neg_opts, "yes"),
-                horizontal=True, key="kd_neg_renal")
-            wget("kd_neg_renal", "yes")
+            
+            c_neg1, c_neg2 = st.columns(2)
+            with c_neg1:
+                st.checkbox("Negative renal line (Body)", key="kd_neg_renal_body", value=bool(_seed("kd_neg_renal_body", True)))
+                wget("kd_neg_renal_body", True)
+            with c_neg2:
+                st.checkbox("Negative renal line (Impression)", key="kd_neg_renal_imp", value=bool(_seed("kd_neg_renal_imp", False)))
+                wget("kd_neg_renal_imp", False)
+
 
             ub_status_now = ss("ub_status", None) or "adequately_distended"
 
@@ -8325,14 +8357,15 @@ with col_find:
                         st.text_input("Size (mm, e.g. 15x12)", key="ut_rpoc_size",
                                       value=_seed("ut_rpoc_size", ""))
                         wget("ut_rpoc_size", "")
-                        _rpoc_echo_opts = ["hypo", "hyper"]
+                        _rpoc_echo_opts = ["hypo", "hyper", "mixed"]
                         st.radio("Echo", _rpoc_echo_opts,
                                  index=_idx("ut_rpoc_echo",
                                             _rpoc_echo_opts, "hypo"),
                                  horizontal=True,
                                  format_func=lambda x: {
                                      "hypo": "Hypo-echoic",
-                                     "hyper": "Hyper-echoic"}[x],
+                                     "hyper": "Hyper-echoic",
+                                     "mixed": "Mixed echogenicity"}[x],
                                  key="ut_rpoc_echo")
                         wget("ut_rpoc_echo", "hypo")
 
@@ -9498,7 +9531,8 @@ elif _echo_val == "significantly_raised":
 else:
     data["kidneys"]["cortical_cmd"] = "preserved"
 data["kidneys"]["age_related_echogenicity"] = bool(ss("kd_age_related", False))
-data["kidneys"]["negative_renal_line"] = (ss("kd_neg_renal", "yes") == "yes")
+data["kidneys"]["negative_renal_line"] = bool(ss("kd_neg_renal_body", True))
+data["kidneys"]["negative_renal_line_impression"] = bool(ss("kd_neg_renal_imp", False))
 
 _r_uc = data["kidneys"]["right"]["ureter_calculus"]
 _l_uc = data["kidneys"]["left"]["ureter_calculus"]
