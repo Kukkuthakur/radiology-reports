@@ -6143,8 +6143,7 @@ def generate_impression(d, sex, age):
         return (list(IMPRESSION_NORMAL_FEMALE) if (sex == "F" and not is_pediatric)
                 else list(IMPRESSION_NORMAL_MALE))
 
-    # 3. If there ARE other findings (like hepatomegaly), we still need to check 
-    # if we should prepend the negative fluid/bowel line.
+    # 3. Check for fluid/bowel involvement
     _has_eff = d.get("pleural_effusion", {}).get("status", "none") != "none"
     _has_ff = d.get("free_fluid", {}).get("kind", "none") != "none"
     _has_mln = d.get("mln", {}).get("branch", "none") != "none"
@@ -6153,12 +6152,10 @@ def generate_impression(d, sex, age):
     
     _has_fluid_or_bowel = _has_eff or _has_ff or _has_mln or _has_bw or _has_saio
     
-    # If there's no fluid/bowel involvement, and we haven't already added the negative line, add it!
+    # If there's no fluid/bowel involvement, append the negative line at the bottom of the findings
     if not _has_fluid_or_bowel:
-        # Check if it's already there just to be safe
         if not any("NO FREE FLUID" in l for l in lines):
-            # Prepend it to the top of the findings
-            lines.insert(0, "NO FREE FLUID, LYMPHADENOPATHY, OBVIOUS BOWEL WALL THICKENING OR ANY SIGN OF INFLAMMATION SEEN AT THE TIME OF SCAN.")
+            lines.append("NO FREE FLUID, LYMPHADENOPATHY, OBVIOUS BOWEL WALL THICKENING OR ANY SIGN OF INFLAMMATION SEEN AT THE TIME OF SCAN.")
 
     lines.append(IMPRESSION_REST_UNREMARKABLE)
     return [_q(l) for l in lines]
