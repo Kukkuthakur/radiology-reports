@@ -6466,10 +6466,15 @@ def build_docx_bytes(data):
                                            ub_status=ub_status))
 
     _mln_present = data.get("mln", {}).get("branch", "none") != "none"
-    sections.append(bowel_sentence(data["bowel"], sex,
-                                    pancreas_status=p_status,
-                                    mln_present=_mln_present))
     bw_segs = bowel_wall_sentence(data.get("bowel_wall", {}))
+    
+    # Only render the generic bowel sentence if the structured module is off
+    if not bw_segs:
+        sections.append(bowel_sentence(data["bowel"], sex,
+                                        pancreas_status=p_status,
+                                        mln_present=_mln_present))
+    if bw_segs:
+        sections.append(bw_segs)
     if bw_segs:
         sections.append(bw_segs)
     if data["appendix"].get("status") not in ("not_assessed",):
@@ -9917,10 +9922,13 @@ def render_preview_findings(data):
                                        ub_status=ub_status))
 
     _mln_present = data.get("mln", {}).get("branch", "none") != "none"
-    secs.append(bowel_sentence(data["bowel"], sex,
-                                pancreas_status=p_status,
-                                mln_present=_mln_present))
     bw_segs = bowel_wall_sentence(data.get("bowel_wall", {}))
+    
+    # Only render the generic bowel sentence if the structured module is off
+    if not bw_segs:
+        secs.append(bowel_sentence(data["bowel"], sex,
+                                    pancreas_status=p_status,
+                                    mln_present=_mln_present))
     if bw_segs:
         secs.append(bw_segs)
     if data["appendix"].get("status") not in ("not_assessed",):
