@@ -4395,6 +4395,8 @@ def lipoma_sentence(d):
     locs = d.get("locations", ["right_flank"])
     if isinstance(locs, str):
         locs = [locs]
+    if not locs:
+        locs = ["right_flank"]  # <-- Add this safety fallback
     count = d.get("count", "single")
     size1 = d.get("size1", "")
     size2 = d.get("size2", "")
