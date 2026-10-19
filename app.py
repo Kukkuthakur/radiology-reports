@@ -6216,12 +6216,14 @@ def _add_trailing_stub(doc):
     p = doc.add_paragraph()
     p.paragraph_format.space_after = Pt(0)
     p.paragraph_format.space_before = Pt(0)
-    p.paragraph_format.line_spacing = Pt(1)
+    p.paragraph_format.line_spacing = Pt(0.5)
+    p.paragraph_format.widow_control = False
+    # This is the magic bullet. Force it to stay with the table above it.
+    p.paragraph_format.keep_with_next = True 
     run = p.add_run("")
     run.font.name = FONT_BODY
     run.font.size = Pt(1)
     return p
-
 
 _BOSNIAK_RE = re.compile(r"BOSNIAK\s+CAT-[IVX]+", re.IGNORECASE)
 _NASH_RE = re.compile(r"\(NASH\)", re.IGNORECASE)
@@ -6542,10 +6544,29 @@ def build_docx_bytes(data):
         para.paragraph_format.line_spacing = 1.0
         _add_impression_line_runs(para, line)
 
-    _add_half_line(doc)
+    # 1. REMOVE the _add_half_line(doc). We use space_before instead.
+    # Blank paragraphs push tables to page 2.
+    
+    # 2. Give the Disclaimer Table some space BEFORE it.
+    # Instead of a blank line, we add a tiny paragraph that is permanently
+    # glued to the table.
+    disc_spacer = doc.add_paragraph()
+    disc_spacer.paragraph_format.space_after = Pt(0)
+    disc_spacer.paragraph_format.space_before = Pt(0)
+    disc_spacer.paragraph_format.line_spacing = Pt(6) # 6pt gap
+    disc_spacer.paragraph_format.keep_with_next = True
+    run = disc_spacer.add_run("")
+    run.font.size = Pt(2)
 
     disc_table = doc.add_table(rows=1, cols=1)
     _set_table_borders(disc_table)
+    
+    # 3. FORCE the table to not break across pages
+    _trPr = disc_table.rows[0]._tr.get_or_add_trPr()
+    _cant_split = OxmlElement("w:cantSplit")
+    _cant_split.set(qn("w:val"), "true")
+    _trPr.append(_cant_split)
+
     cell = disc_table.cell(0, 0)
     _set_cell_margins(cell, top=10, bottom=10, left=80, right=80)
     cell.text = ""
@@ -6555,6 +6576,7 @@ def build_docx_bytes(data):
     para.paragraph_format.line_spacing = Pt(FONT_SIZE_DISCLAIMER)
     _add_run(para, DISCLAIMER_TEXT, bold=True, size=FONT_SIZE_DISCLAIMER)
 
+    # 4. THE MANDATORY STUB - NOW GLUED TO THE TABLE
     _add_trailing_stub(doc)
 
     buf = io.BytesIO()
