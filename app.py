@@ -3077,7 +3077,12 @@ def uterus_sentence(d, pediatric=False, age_years=None):
     if d.get("rpoc"):
         size_txt = d.get("rpoc_size", "")
         echo = d.get("rpoc_echo", "hypo")
-        echo_word = "hypo-echoic" if echo == "hypo" else "hyper-echoic"
+        if echo == "hypo":
+            echo_word = "hypo-echoic"
+        elif echo == "hyper":
+            echo_word = "hyper-echoic"
+        else:
+            echo_word = "mixed echogenicity"
         first_dim = _first_number(size_txt.split("x")[0] if size_txt else "")
         if first_dim is not None and first_dim > 15:
             s += [seg(" "),
@@ -3243,13 +3248,17 @@ def _cervix_impression_line(d):
     line = line.rstrip(".") + " - ?CERVICITIS. Adv - PAP Smear."
     return line
 
-
 def _rpoc_impression_line(d):
     if not d.get("rpoc"):
         return None
     size_txt = d.get("rpoc_size", "")
     echo = d.get("rpoc_echo", "hypo")
-    echo_word = "HYPOECHOIC" if echo == "hypo" else "HYPERECHOIC"
+    if echo == "hypo":
+        echo_word = "HYPOECHOIC"
+    elif echo == "hyper":
+        echo_word = "HYPERECHOIC"
+    else:
+        echo_word = "MIXED ECHOGENICITY"
     first_dim = _first_number(size_txt.split("x")[0] if size_txt else "")
     if first_dim is not None and first_dim > 15:
         size_desc = "A MODERATE SIZED"
@@ -8346,14 +8355,15 @@ with col_find:
                         st.text_input("Size (mm, e.g. 15x12)", key="ut_rpoc_size",
                                       value=_seed("ut_rpoc_size", ""))
                         wget("ut_rpoc_size", "")
-                        _rpoc_echo_opts = ["hypo", "hyper"]
+                        _rpoc_echo_opts = ["hypo", "hyper", "mixed"]
                         st.radio("Echo", _rpoc_echo_opts,
                                  index=_idx("ut_rpoc_echo",
                                             _rpoc_echo_opts, "hypo"),
                                  horizontal=True,
                                  format_func=lambda x: {
                                      "hypo": "Hypo-echoic",
-                                     "hyper": "Hyper-echoic"}[x],
+                                     "hyper": "Hyper-echoic",
+                                     "mixed": "Mixed echogenicity"}[x],
                                  key="ut_rpoc_echo")
                         wget("ut_rpoc_echo", "hypo")
 
