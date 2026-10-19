@@ -9693,7 +9693,7 @@ else:
     })
 
 data["bowel"].update({
-    "wall_thickening": bool(ss("bw_wall_thick", False)),
+    "wall_thickening": bool(ss("bw_wall_present", False)),
 })
 
 # Bowel Wall structured
