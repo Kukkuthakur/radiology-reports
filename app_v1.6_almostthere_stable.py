@@ -4395,6 +4395,8 @@ def lipoma_sentence(d):
     locs = d.get("locations", ["right_flank"])
     if isinstance(locs, str):
         locs = [locs]
+    if not locs:
+        locs = ["right_flank"]  # <-- Add this safety fallback
     count = d.get("count", "single")
     size1 = d.get("size1", "")
     size2 = d.get("size2", "")
@@ -4407,13 +4409,16 @@ def lipoma_sentence(d):
             "epigastrium": "epigastrium wall",
         }.get(l, "abdominal wall"))
     
+    # Safety fallback if empty
+    if not loc_names:
+        loc_names = ["right flank wall"]
+
     if len(loc_names) == 1:
         loc_phrase = loc_names[0]
     elif len(loc_names) == 2:
         loc_phrase = f"{loc_names[0]} & {loc_names[1]}"
     else:
         loc_phrase = ", ".join(loc_names[:-1]) + " & " + loc_names[-1]
-
     size_txt = ""
     if size1 and size2:
         size_txt = f"({size1}mm & {size2}mm)"
@@ -4587,6 +4592,10 @@ def _lipoma_impression_line(d):
             "epigastrium": "EPIGASTRIUM WALL",
         }.get(l, "ABDOMINAL WALL"))
         
+    # Safety fallback if empty
+    if not loc_names:
+        loc_names = ["RIGHT FLANK WALL"]
+
     if len(loc_names) == 1:
         loc_phrase = loc_names[0]
     elif len(loc_names) == 2:
