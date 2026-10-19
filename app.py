@@ -2141,9 +2141,11 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
                    or (both_small and (echo_raised or r_has_other or l_has_other)))
     if needs_split:
         order = ["left", "right"] if only_l_small else ["right", "left"]
-        for side_key in order:
+        for i, side_key in enumerate(order):
             side = r if side_key == "right" else l
-            s.append(seg(f"{side_key.upper()} KIDNEY", True, True))
+            # If this is the second kidney, push it to a new line!
+            prefix = "\n" if i > 0 else ""
+            s.append(seg(f"{prefix}{side_key.upper()} KIDNEY", True, True))
             bracket = _size_bracket(d, (side_key == "right", side_key == "left"))
             echo_on_this = echo_raised and echo_lat in (side_key, "bilateral")
             small = (r_small if side_key == "right" else l_small)
