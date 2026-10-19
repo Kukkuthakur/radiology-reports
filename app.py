@@ -6134,6 +6134,10 @@ def generate_impression(d, sex, age):
                 _base = _base[:_adv_idx].rstrip()
             lines[_longest_idx] = _base + ". " + _cect_text
 
+    # If the ONLY line generated is the negative renal line, erase it
+    if len(lines) == 1 and "NO EVIDENCE OF HYDRONEPHROTIC" in lines[0]:
+        lines.clear()
+
     if not lines:
         return (list(IMPRESSION_NORMAL_FEMALE) if (sex == "F" and not is_pediatric)
                 else list(IMPRESSION_NORMAL_MALE))
@@ -7583,13 +7587,7 @@ with col_find:
                         st.checkbox("?Age related", key="kd_age_related",
                                     value=bool(_seed("kd_age_related", False)))
                         wget("kd_age_related", False)
-            _kd_neg_opts = ["yes", "no"]
-            st.radio(
-                "Negative renal line (body + impression)",
-                _kd_neg_opts,
-                index=_idx("kd_neg_renal", _kd_neg_opts, "yes"),
-                horizontal=True, key="kd_neg_renal")
-            wget("kd_neg_renal", "yes")
+            index=_idx("kd_neg_renal", _kd_neg_opts, "no"),
 
             ub_status_now = ss("ub_status", None) or "adequately_distended"
 
