@@ -6006,11 +6006,13 @@ def generate_impression(d, sex, age):
             lines.append(cl)
 
     b = d["bowel"]
-    if b.get("wall_thickening"):
+    bw_line = _bowel_wall_impression_line(d.get("bowel_wall", {}))
+    
+    # Only add the generic line if the structured line is NOT present
+    if b.get("wall_thickening") and not bw_line:
         lines.append("BOWEL WALL THICKENING SEEN - ?SIGNIFICANCE. "
                      "Adv- Clinical Correlation.")
 
-    bw_line = _bowel_wall_impression_line(d.get("bowel_wall", {}))
     if bw_line:
         lines.append(bw_line)
 
