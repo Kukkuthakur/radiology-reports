@@ -1141,7 +1141,7 @@ def new_report(sex="F"):
         "appendix": _new_appendix(),
         "lipoma": {
             "present": False,
-            "location": "right_flank",
+            "locations": ["right_flank"],
             "count": "single",
             "size1": "",
             "size2": "",
@@ -4393,11 +4393,12 @@ def lipoma_sentence(d):
     if not d.get("present"):
         return None
     locs = d.get("locations", ["right_flank"])
+    if isinstance(locs, str):
+        locs = [locs]
     count = d.get("count", "single")
     size1 = d.get("size1", "")
     size2 = d.get("size2", "")
 
-    # Format the locations string (e.g., "right flank wall & left flank wall")
     loc_names = []
     for l in locs:
         loc_names.append({
@@ -4572,6 +4573,8 @@ def _lipoma_impression_line(d):
     if not d.get("present"):
         return None
     locs = d.get("locations", ["right_flank"])
+    if isinstance(locs, str):
+        locs = [locs]
     count = d.get("count", "single")
     size1 = d.get("size1", "")
     size2 = d.get("size2", "")
@@ -9047,9 +9050,13 @@ with col_find:
                 wget("lipoma_present", False)
                 if ss("lipoma_present", False):
                     _lip_loc_opts = ["right_flank", "left_flank", "epigastrium"]
+                    _lip_loc_default = _seed("lipoma_location", ["right_flank"])
+                    if isinstance(_lip_loc_default, str):
+                        _lip_loc_default = [_lip_loc_default]
+                    
                     st.multiselect(
                         "Location(s)", _lip_loc_opts,
-                        default=_seed("lipoma_location", ["right_flank"]),
+                        default=_lip_loc_default,
                         format_func=lambda x: {
                             "right_flank": "Right Flank",
                             "left_flank": "Left Flank",
