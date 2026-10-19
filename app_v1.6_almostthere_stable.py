@@ -4392,16 +4392,26 @@ def mln_impression_line(d):
 def lipoma_sentence(d):
     if not d.get("present"):
         return None
-    loc = d.get("location", "right_flank")
+    locs = d.get("locations", ["right_flank"])
     count = d.get("count", "single")
     size1 = d.get("size1", "")
     size2 = d.get("size2", "")
 
-    loc_phrase = {
-        "right_flank": "right flank region",
-        "left_flank": "left flank region",
-        "epigastrium": "epigastrium region",
-    }.get(loc, "abdominal wall")
+    # Format the locations string (e.g., "right flank wall & left flank wall")
+    loc_names = []
+    for l in locs:
+        loc_names.append({
+            "right_flank": "right flank wall",
+            "left_flank": "left flank wall",
+            "epigastrium": "epigastrium wall",
+        }.get(l, "abdominal wall"))
+    
+    if len(loc_names) == 1:
+        loc_phrase = loc_names[0]
+    elif len(loc_names) == 2:
+        loc_phrase = f"{loc_names[0]} & {loc_names[1]}"
+    else:
+        loc_phrase = ", ".join(loc_names[:-1]) + " & " + loc_names[-1]
 
     size_txt = ""
     if size1 and size2:
@@ -4412,19 +4422,19 @@ def lipoma_sentence(d):
     if count == "single":
         if size_txt:
             text = (f"A well-defined subcutaneous fat-density SOL {size_txt} "
-                    f"is seen in the {loc_phrase} -- likely lipoma.")
+                    f"is seen in the {loc_phrase} - likely lipoma.")
         else:
             text = (f"A well-defined subcutaneous fat-density SOL is seen in "
-                    f"the {loc_phrase} -- likely lipoma.")
+                    f"the {loc_phrase} - likely lipoma.")
     else:
         word = "Few" if count == "few" else "Multiple"
         if size_txt:
             text = (f"{word} well-defined subcutaneous fat-density SOLs are "
                     f"seen in the {loc_phrase}, largest of these measuring "
-                    f"{size1}mm -- likely lipomas.")
+                    f"{size1}mm - likely lipomas.")
         else:
             text = (f"{word} well-defined subcutaneous fat-density SOLs are "
-                    f"seen in the {loc_phrase} -- likely lipomas.")
+                    f"seen in the {loc_phrase} - likely lipomas.")
 
     return [seg(text, True)]
 
@@ -4561,16 +4571,25 @@ def _aash_impression_line(d):
 def _lipoma_impression_line(d):
     if not d.get("present"):
         return None
-    loc = d.get("location", "right_flank")
+    locs = d.get("locations", ["right_flank"])
     count = d.get("count", "single")
     size1 = d.get("size1", "")
     size2 = d.get("size2", "")
 
-    loc_up = {
-        "right_flank": "RIGHT FLANK",
-        "left_flank": "LEFT FLANK",
-        "epigastrium": "EPIGASTRIUM",
-    }.get(loc, "ABDOMINAL WALL")
+    loc_names = []
+    for l in locs:
+        loc_names.append({
+            "right_flank": "RIGHT FLANK WALL",
+            "left_flank": "LEFT FLANK WALL",
+            "epigastrium": "EPIGASTRIUM WALL",
+        }.get(l, "ABDOMINAL WALL"))
+        
+    if len(loc_names) == 1:
+        loc_phrase = loc_names[0]
+    elif len(loc_names) == 2:
+        loc_phrase = f"{loc_names[0]} & {loc_names[1]}"
+    else:
+        loc_phrase = ", ".join(loc_names[:-1]) + " & " + loc_names[-1]
 
     size_paren = ""
     if size1 and size2:
@@ -4579,9 +4598,9 @@ def _lipoma_impression_line(d):
         size_paren = f" ({size1}MM)"
 
     if count == "single":
-        return f"A SUBCUTANEOUS LIPOMA IN THE {loc_up}{size_paren}."
+        return f"A SUBCUTANEOUS LIPOMA IN THE {loc_phrase}{size_paren}."
     word = "FEW" if count == "few" else "MULTIPLE"
-    return f"{word} SUBCUTANEOUS LIPOMAS IN THE {loc_up}{size_paren}."
+    return f"{word} SUBCUTANEOUS LIPOMAS IN THE {loc_phrase}{size_paren}."
 
 
 def _inguinal_impression_line(d):
@@ -9028,18 +9047,16 @@ with col_find:
                 wget("lipoma_present", False)
                 if ss("lipoma_present", False):
                     _lip_loc_opts = ["right_flank", "left_flank", "epigastrium"]
-                    st.radio(
-                        "Location", _lip_loc_opts,
-                        index=_idx("lipoma_location", _lip_loc_opts,
-                                   "right_flank"),
-                        horizontal=True,
+                    st.multiselect(
+                        "Location(s)", _lip_loc_opts,
+                        default=_seed("lipoma_location", ["right_flank"]),
                         format_func=lambda x: {
                             "right_flank": "Right Flank",
                             "left_flank": "Left Flank",
                             "epigastrium": "Epigastrium",
                         }[x],
                         key="lipoma_location")
-                    wget("lipoma_location", "right_flank")
+                    wget("lipoma_location", ["right_flank"])
 
                     _lip_cnt_opts = ["single", "few", "multiple"]
                     st.radio(
@@ -9830,7 +9847,7 @@ data["appendix"] = {
 
 data["lipoma"] = {
     "present": bool(ss("lipoma_present", False)),
-    "location": ss("lipoma_location", "right_flank"),
+    "locations": ss("lipoma_location", ["right_flank"]),
     "count": ss("lipoma_count", "single"),
     "size1": ss("lipoma_size1", ""),
     "size2": ss("lipoma_size2", ""),
