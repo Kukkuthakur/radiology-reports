@@ -39,6 +39,7 @@ FONT_BODY = "Calibri"
 FONT_SIZE_BODY = 11
 FONT_SIZE_HALF = 5.5
 FONT_SIZE_TITLE = 13
+FONT_SIZE_IMPRESSION = 12
 FONT_SIZE_DISCLAIMER = 7
 
 TITLE_COLOR = RGBColor(0x1F, 0x4E, 0x79)
@@ -6347,20 +6348,20 @@ def _split_bosniak(text):
     return parts
 
 
-def _add_impression_line_runs(para, line):
+def _add_impression_line_runs(para, line, size=FONT_SIZE_BODY):
     main, adv = _split_adv(line)
     for chunk, in_parens in _tokenize_parentheticals(main):
         if in_parens:
             for sub, _is_b in _split_bosniak(chunk):
-                _add_run(para, sub, bold=True, italic=True)
+                _add_run(para, sub, bold=True, italic=True, size=size)
         else:
             for sub, is_vs in _split_vs(chunk):
                 if is_vs:
-                    _add_run(para, "vs", bold=True, italic=False)
+                    _add_run(para, "vs", bold=True, italic=False, size=size)
                 else:
-                    _add_run(para, sub.upper(), bold=True, italic=False)
+                    _add_run(para, sub.upper(), bold=True, italic=False, size=size)
     if adv:
-        _add_run(para, " " + adv, bold=True, italic=True)
+        _add_run(para, " " + adv, bold=True, italic=True, size=size)
 
 
 def enforce_uppercase_after_period(segs):
@@ -6488,7 +6489,7 @@ def build_docx_bytes(data):
         _add_run(subhead, _subhead_map[_sub_key], italic=True,
                  size=FONT_SIZE_BODY)
 
-    _add_one_and_half_line(doc)
+    _add_full_line(doc)
 
     sex, age = p["sex"], p["age"]
     age_years = parse_age(age)
@@ -6610,7 +6611,7 @@ def build_docx_bytes(data):
         para.paragraph_format.space_after = Pt(0)
         para.paragraph_format.space_before = Pt(0)
         para.paragraph_format.line_spacing = 1.0
-        _add_impression_line_runs(para, line)
+        _add_impression_line_runs(para, line, size=FONT_SIZE_IMPRESSION)
 
     # 1. REMOVE the _add_half_line(doc). We use space_before instead.
     # Blank paragraphs push tables to page 2.
