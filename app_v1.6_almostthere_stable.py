@@ -5474,6 +5474,29 @@ def fluid_mln_impression_lines(data):
 # IMPRESSION GENERATOR
 # ============================================================
 
+_HEPATOMEGALY_ONLY_TOKENS = (
+    "HEPATOMEGALY",
+    "HEPATOMEGALY FOR AGE",
+    "BORDERLINE HEPATOMEGALY",
+    "MILD HEPATOMEGALY",
+    "MODERATE HEPATOMEGALY",
+    "GROSS HEPATOMEGALY",
+)
+
+
+def _is_hepatomegaly_only_bullet(line):
+    """True only for a standalone hepatomegaly bullet with no other liver
+    finding merged into it."""
+    if not isinstance(line, str):
+        return False
+    up = line.upper()
+    if not any(tok in up for tok in _HEPATOMEGALY_ONLY_TOKENS):
+        return False
+    if " & " in up or " WITH " in up:
+        return False
+    return True
+
+
 def generate_impression(d, sex, age):
     # Template impression override
     if d.get("impression_override"):
@@ -6185,6 +6208,19 @@ def generate_impression(d, sex, age):
     if not lines:
         return (list(IMPRESSION_NORMAL_FEMALE) if (sex == "F" and not is_pediatric)
                 else list(IMPRESSION_NORMAL_MALE))
+
+    # 2b. Hepatomegaly is the least significant finding — demote it to the
+    #     bottom of the findings (just above the trailer bullets). Only do
+    #     this when at least one OTHER finding exists, so a lone hepatomegaly
+    #     report keeps it as the sole/first bullet.
+    if len(lines) > 1:
+        _hep_idx = None
+        for _i, _ln in enumerate(lines):
+            if _is_hepatomegaly_only_bullet(_ln):
+                _hep_idx = _i
+                break
+        if _hep_idx is not None and _hep_idx != len(lines) - 1:
+            lines.append(lines.pop(_hep_idx))
 
     # 3. Check for fluid/bowel involvement
     _has_eff = d.get("pleural_effusion", {}).get("status", "none") != "none"
