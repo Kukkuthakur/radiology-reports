@@ -1334,7 +1334,9 @@ def gall_bladder_sentence(d):
     elif status == "contracted":
         s.append(seg(" is contracted (suboptimal wall visualization)."))
     elif status == "operated":
-        s.append(seg(" is operated. GB FOSSA is unremarkable."))
+        s.append(seg(" is operated. "))
+        s.append(seg("GB FOSSA", True, True))
+        s.append(seg(" is unremarkable."))
         return s
 
     # WES-sign branch — replace the standard wall/calculi narrative
