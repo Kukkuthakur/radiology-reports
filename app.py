@@ -2222,6 +2222,12 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
                     and l["ureter_calculus"]["count"] != "none")
     if bilateral_uc:
         s.extend(_ureter_calculus_bilateral_body(d))
+        
+        # Check if there are any renal calculi to justify the "Also" prefix
+        _has_renal = bool(r.get("calculi") or l.get("calculi"))
+        if _has_renal:
+            s.append(seg(" Also "))
+            
         for side_key, side in (("right", r), ("left", l)):
             s.extend(_renal_calculi_body(side, side_key))
             s.extend(_cyst_body(side, side_key))
@@ -5225,7 +5231,13 @@ def _ureter_calculus_impression_line(side_key, uc):
     else:
         noun = "MULTIPLE"
     count_word = "CALCULUS" if uc["count"] == "single" else "CALCULI"
-    base = f"{noun} {side_up} {imp_adj} {count_word}"
+    
+    # Add size in parentheses for single calculi
+    size_str = ""
+    if uc["count"] == "single" and uc.get("sizes"):
+        size_str = f"({uc['sizes'][0]}MM)"
+
+    base = f"{noun} {side_up} {imp_adj} {count_word}{size_str}"
 
     grade = uc["grade"]
     if grade == "none":
@@ -5292,8 +5304,12 @@ def _get_bilateral_renal_impression(r_calcs, l_calcs, suffix):
         return f"BILATERAL RENAL CALCULI, A COUPLE OF THEM IN EACH KIDNEY{suffix}"
     elif rc >= 3 and lc >= 3:
         return f"BILATERAL NEPHROLITHIASIS{suffix}"
+    elif rc >= 3 and lc < 3:
+        return f"RIGHT NEPHROLITHIASIS & {phrase(lc, 'left')}{suffix}"
+    elif lc >= 3 and rc < 3:
+        return f"LEFT NEPHROLITHIASIS & {phrase(rc, 'right')}{suffix}"
     else:
-        # The side with the higher count gets the leading position.
+        # Mixed unilateral counts (1 & 2)
         if rc > lc:
             return f"{phrase(rc, 'right')} & {phrase(lc, 'left')}{suffix}"
         else:
@@ -5954,18 +5970,30 @@ def generate_impression(d, sex, age):
                 continue
             line = _ureter_calculus_impression_line(side_key, uc)
             if line:
-                r_renal = _renal_calculi_clause(r, "right") if r_present else None
-                l_renal = _renal_calculi_clause(l, "left") if l_present else None
-                renal_clause = None
-                if r_renal and l_renal:
-                    renal_clause = "BILATERAL RENAL CALCULI"
-                elif r_renal:
-                    renal_clause = r_renal
-                elif l_renal:
-                    renal_clause = l_renal
-                if renal_clause:
-                    line = line.rstrip(".") + " & " + renal_clause + "."
-                renal_lines.append(line)
+                r_calcs = r["calculi"] if r_present else []
+                l_calcs = l["calculi"] if l_present else []
+                
+                def renal_phrase(n, side):
+                    if n >= 3:
+                        return f"{side.upper()} NEPHROLITHIASIS"
+                    elif n == 2:
+                        return f"A COUPLE OF {side.upper()} RENAL CALCULI"
+                    elif n == 1:
+                        return f"A {side.upper()} RENAL CALCULUS"
+                    return ""
+
+                if r_calcs and l_calcs:
+                    # Use the exact phrasing: right nephrolithiasis with a couple of left renal calculi
+                    _clause = f"{renal_phrase(len(r_calcs), 'right')} WITH {renal_phrase(len(l_calcs), 'left').lower()}"
+                    line = line.rstrip(".") + " & " + _clause + "."
+                elif r_calcs:
+                    _clause = renal_phrase(len(r_calcs), 'right')
+                    line = line.rstrip(".") + " & " + _clause + "."
+                elif l_calcs:
+                    _clause = renal_phrase(len(l_calcs), 'left')
+                    line = line.rstrip(".") + " & " + _clause + "."
+                
+                renal_lines.append(line.upper())
 
     r_calcs = r["calculi"] if r_present else []
     l_calcs = l["calculi"] if l_present else []
