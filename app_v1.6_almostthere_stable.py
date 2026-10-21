@@ -1333,6 +1333,11 @@ def gall_bladder_sentence(d):
         s.append(seg(" is partially contracted (suboptimal wall visualization)."))
     elif status == "contracted":
         s.append(seg(" is contracted (suboptimal wall visualization)."))
+    elif status == "operated":
+        s.append(seg(" is operated. "))
+        s.append(seg("GB FOSSA", True, True))
+        s.append(seg(" is unremarkable."))
+        return s
 
     # WES-sign branch — replace the standard wall/calculi narrative
     if d.get("wes_sign"):
@@ -5684,14 +5689,19 @@ def generate_impression(d, sex, age):
         return ""
 
     gb = d["gall_bladder"]
-    gb_has_calculi = gb.get("calculi") == "present"
-    gb_wall_thickened = gb.get("wall_thickened") and gb.get("wall_mm")
-    gb_peri_fluid = gb.get("pericholecystic_fluid", False)
-    gb_over = gb.get("status") == "over"
-    gb_contracted = gb.get("status") == "contracted"
-    gb_sludge = gb.get("sludge", "none") != "none"
-    gb_sludge_ball = gb.get("sludge_ball", False)
-    gb_comet_tail = gb.get("comet_tail", False)
+    _gb_operated = (gb.get("status") == "operated")
+    # When GB is operated, suppress ALL GB-derived impression findings.
+    # CBD-derived logic (choledocholithiasis, dilated CBD, IHBR) is
+    # independent and continues to fire normally.
+    gb_has_calculi = (not _gb_operated) and gb.get("calculi") == "present"
+    gb_wall_thickened = ((not _gb_operated)
+                         and gb.get("wall_thickened") and gb.get("wall_mm"))
+    gb_peri_fluid = (not _gb_operated) and gb.get("pericholecystic_fluid", False)
+    gb_over = (not _gb_operated) and gb.get("status") == "over"
+    gb_contracted = (not _gb_operated) and gb.get("status") == "contracted"
+    gb_sludge = (not _gb_operated) and gb.get("sludge", "none") != "none"
+    gb_sludge_ball = (not _gb_operated) and gb.get("sludge_ball", False)
+    gb_comet_tail = (not _gb_operated) and gb.get("comet_tail", False)
     wall_descriptor = ""
     if gb_wall_thickened:
         try:
