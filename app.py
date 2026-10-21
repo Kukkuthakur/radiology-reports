@@ -2223,6 +2223,7 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
     if bilateral_uc:
         s.extend(_ureter_calculus_bilateral_body(d))
         for side_key, side in (("right", r), ("left", l)):
+            s.extend(_renal_calculi_body(side, side_key))
             s.extend(_cyst_body(side, side_key))
             s.extend(_nephrocalcinosis_body(side, side_key))
         _neg = _kidney_negative_sentence(d)
@@ -5304,16 +5305,11 @@ def _renal_calculi_standalone(k, side_low):
         return ""
     side_up = _ureter_side_label(side_low)
     n = len(k["calculi"])
+    if n >= 3:
+        return f"{side_up} NEPHROLITHIASIS"
     if n == 1:
-        noun = "A"
-    elif n == 2:
-        noun = "A COUPLE OF"
-    elif n <= 4:
-        noun = "FEW"
-    else:
-        noun = "MULTIPLE"
-    count_word = "CALCULUS" if n == 1 else "CALCULI"
-    return f"{noun} {side_up} RENAL {count_word}"
+        return f"A {side_up} RENAL CALCULUS"
+    return f"A COUPLE OF {side_up} RENAL CALCULI"
 
 
 def _renal_calculi_clause(k, side_low):
@@ -5321,16 +5317,11 @@ def _renal_calculi_clause(k, side_low):
         return None
     side_up = _ureter_side_label(side_low)
     n = len(k["calculi"])
+    if n >= 3:
+        return f"{side_up} NEPHROLITHIASIS"
     if n == 1:
-        noun = "A"
-    elif n == 2:
-        noun = "A COUPLE OF"
-    elif n <= 4:
-        noun = "FEW"
-    else:
-        noun = "MULTIPLE"
-    count_word = "CALCULUS" if n == 1 else "CALCULI"
-    return f"{noun} {side_up} RENAL {count_word}"
+        return f"A {side_up} RENAL CALCULUS"
+    return f"A COUPLE OF {side_up} RENAL CALCULI"
 
 
 def _cyst_impression_clause(k, side_low, small_prefix=False):
@@ -5918,18 +5909,44 @@ def generate_impression(d, sex, age):
 
         c1 = cons(first, k[first]["ureter_calculus"])
         c2 = cons(second, k[second]["ureter_calculus"])
+        
+        # Build the consequence string safely (avoiding None.upper())
         if c1 and c2:
-            imp = (f"BILATERAL URETERIC CALCULI ({p1} & {p2}) CAUSING "
-                   f"{c1.upper()} & {c2.upper()}.")
+            con_str = f"CAUSING {c1.upper()} & {c2.upper()}"
         elif c1:
-            imp = (f"BILATERAL URETERIC CALCULI ({p1} & {p2}) CAUSING "
-                   f"{c1.upper()}, WHILE {c2.upper()}.")
+            con_str = f"CAUSING {c1.upper()}"
         elif c2:
-            imp = (f"BILATERAL URETERIC CALCULI ({p1} & {p2}) CAUSING "
-                   f"{c2.upper()}, WHILE {c1.upper()}.")
+            con_str = f"CAUSING {c2.upper()}"
         else:
-            imp = f"BILATERAL URETERIC CALCULI ({p1} & {p2})."
-        renal_lines.append(imp)
+            con_str = ""
+            
+        imp = f"BILATERAL URETERIC CALCULI ({p1} & {p2})"
+        if con_str:
+            imp += f" {con_str}"
+            
+        # Now append the renal calculi
+        r_calcs = r["calculi"] if r_present else []
+        l_calcs = l["calculi"] if l_present else []
+        
+        def renal_phrase(n, side):
+            if n >= 3:
+                return f"{side.upper()} NEPHROLITHIASIS"
+            elif n == 2:
+                return f"A COUPLE OF {side.upper()} RENAL CALCULI"
+            elif n == 1:
+                return f"A {side.upper()} RENAL CALCULUS"
+            return ""
+            
+        if r_calcs and l_calcs:
+            imp += f" & {renal_phrase(len(r_calcs), 'right')} WITH {renal_phrase(len(l_calcs), 'left')}"
+        elif r_calcs:
+            imp += f" & {renal_phrase(len(r_calcs), 'right')}"
+        elif l_calcs:
+            imp += f" & {renal_phrase(len(l_calcs), 'left')}"
+            
+        imp += "."
+        renal_lines.append(imp.upper())
+        
     else:
         for side_key in ("right", "left"):
             uc = k[side_key]["ureter_calculus"]
@@ -5950,19 +5967,19 @@ def generate_impression(d, sex, age):
                     line = line.rstrip(".") + " & " + renal_clause + "."
                 renal_lines.append(line)
 
-    has_ureter_line = any(
-        ("URETERIC CALCULUS" in ln or "URETERIC CALCULI" in ln
-         or "URETER CALCULUS" in ln or "RENAL PELVIS CALCULUS" in ln
-         or "PELVI-URETERIC JUNCTION CALCULUS" in ln
-         or "VESICO-URETERIC JUNCTION CALCULUS" in ln
-         or "BILATERAL URETERIC CALCULI" in ln)
+    r_calcs = r["calculi"] if r_present else []
+    l_calcs = l["calculi"] if l_present else []
+    no_hydro = (r["hydronephrosis"] == "none" and l["hydronephrosis"] == "none")
+    suffix = (", HOWEVER NO HYDRONEPHROSIS SEEN AT THE TIME OF SCAN."
+              if no_hydro else ".")
+              
+    # Check if renal calculi are already mentioned in the ureteric lines
+    _already_has_renal = any(
+        ("RENAL CALCULUS" in ln or "RENAL CALCULI" in ln
+         or "NEPHROLITHIASIS" in ln)
         for ln in renal_lines)
-    if not has_ureter_line:
-        r_calcs = r["calculi"] if r_present else []
-        l_calcs = l["calculi"] if l_present else []
-        no_hydro = (r["hydronephrosis"] == "none" and l["hydronephrosis"] == "none")
-        suffix = (", HOWEVER NO HYDRONEPHROSIS SEEN AT THE TIME OF SCAN."
-                  if no_hydro else ".")
+        
+    if not _already_has_renal:
         if r_calcs and l_calcs:
             renal_lines.append(_get_bilateral_renal_impression(r_calcs, l_calcs, suffix))
         elif r_calcs:
@@ -6027,11 +6044,13 @@ def generate_impression(d, sex, age):
                     break
 
     if k.get("negative_renal_line_impression"):
-        _any_calcs = (r_present and bool(r["calculi"])) or (l_present and bool(l["calculi"]))
-        if not _any_calcs:
+        _any_calcs = ((r_present and bool(r["calculi"]))
+                      or (l_present and bool(l["calculi"])))
+        _any_hydro = ((r_present and r["hydronephrosis"] != "none")
+                      or (l_present and l["hydronephrosis"] != "none"))
+        if not _any_calcs and not _any_hydro:
             renal_lines.append("NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS SEEN "
                                "AT THE TIME OF SCAN.")
-
     # Assemble all kidney findings into ONE bullet, then append KFT advice
     # once at the very end — never mid-line.
     _kidney_findings = []
