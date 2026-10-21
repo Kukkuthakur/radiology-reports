@@ -5317,16 +5317,11 @@ def _renal_calculi_clause(k, side_low):
         return None
     side_up = _ureter_side_label(side_low)
     n = len(k["calculi"])
+    if n >= 3:
+        return f"{side_up} NEPHROLITHIASIS"
     if n == 1:
-        noun = "A"
-    elif n == 2:
-        noun = "A COUPLE OF"
-    elif n <= 4:
-        noun = "FEW"
-    else:
-        noun = "MULTIPLE"
-    count_word = "CALCULUS" if n == 1 else "CALCULI"
-    return f"{noun} {side_up} RENAL {count_word}"
+        return f"A {side_up} RENAL CALCULUS"
+    return f"A COUPLE OF {side_up} RENAL CALCULI"
 
 
 def _cyst_impression_clause(k, side_low, small_prefix=False):
@@ -5943,14 +5938,14 @@ def generate_impression(d, sex, age):
             return ""
             
         if r_calcs and l_calcs:
-            imp += f" & {renal_phrase(len(r_calcs), 'right')} WITH {renal_phrase(len(l_calcs), 'left').lower()}"
+            imp += f" & {renal_phrase(len(r_calcs), 'right')} WITH {renal_phrase(len(l_calcs), 'left')}"
         elif r_calcs:
             imp += f" & {renal_phrase(len(r_calcs), 'right')}"
         elif l_calcs:
             imp += f" & {renal_phrase(len(l_calcs), 'left')}"
             
         imp += "."
-        renal_lines.append(imp)
+        renal_lines.append(imp.upper())
         
     else:
         for side_key in ("right", "left"):
