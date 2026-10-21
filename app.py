@@ -5913,34 +5913,43 @@ def generate_impression(d, sex, age):
         p1 = side_desc(first, k[first]["ureter_calculus"])
         p2 = side_desc(second, k[second]["ureter_calculus"])
 
-        def cons(side_key, uc):
-            _, term, _, _, _ = URETER_LEVELS[uc["level"]]
-            grade = uc["grade"]
-            if grade == "none":
-                return None
-            if grade == "no_significant":
-                return f"no significant {term.lower()} seen on the {side_key}"
-            g = URETER_GRADES[grade]
-            return f"{side_key} {g.lower()} {term.lower()}"
-
-        c1 = cons(first, k[first]["ureter_calculus"])
-        c2 = cons(second, k[second]["ureter_calculus"])
+        # 1. Handle Back-pressure (Hydroureteronephrosis)
+        r_grade = r_uc["grade"]
+        l_grade = l_uc["grade"]
         
-        # Build the consequence string safely (avoiding None.upper())
-        if c1 and c2:
-            con_str = f"CAUSING {c1.upper()} & {c2.upper()}"
-        elif c1:
-            con_str = f"CAUSING {c1.upper()}"
-        elif c2:
-            con_str = f"CAUSING {c2.upper()}"
+        if r_grade == l_grade and r_grade not in ("none", "no_significant"):
+            # Merge identical grades into a bilateral statement
+            g = URETER_GRADES[r_grade]
+            _, term, _, _, _ = URETER_LEVELS[r_uc["level"]]  # Assume same level for bilateral
+            con_str = f"CAUSING BILATERAL {g} {term}"
         else:
-            con_str = ""
+            def cons(side_key, uc):
+                _, term, _, _, _ = URETER_LEVELS[uc["level"]]
+                grade = uc["grade"]
+                if grade == "none":
+                    return None
+                if grade == "no_significant":
+                    return f"no significant {term.lower()} seen on the {side_key}"
+                g = URETER_GRADES[grade]
+                return f"{side_key} {g.lower()} {term.lower()}"
+
+            c1 = cons(first, k[first]["ureter_calculus"])
+            c2 = cons(second, k[second]["ureter_calculus"])
             
+            if c1 and c2:
+                con_str = f"CAUSING {c1.upper()} & {c2.upper()}"
+            elif c1:
+                con_str = f"CAUSING {c1.upper()}"
+            elif c2:
+                con_str = f"CAUSING {c2.upper()}"
+            else:
+                con_str = ""
+                
         imp = f"BILATERAL URETERIC CALCULI ({p1} & {p2})"
         if con_str:
             imp += f" {con_str}"
             
-        # Now append the renal calculi
+        # 2. Handle Renal Calculi
         r_calcs = r["calculi"] if r_present else []
         l_calcs = l["calculi"] if l_present else []
         
@@ -5953,8 +5962,10 @@ def generate_impression(d, sex, age):
                 return f"A {side.upper()} RENAL CALCULUS"
             return ""
             
-        if r_calcs and l_calcs:
-            imp += f" & {renal_phrase(len(r_calcs), 'right')} WITH {renal_phrase(len(l_calcs), 'left')}"
+        if len(r_calcs) >= 3 and len(l_calcs) >= 3:
+            imp += " & BILATERAL NEPHROLITHIASIS"
+        elif r_calcs and l_calcs:
+            imp += f" & {renal_phrase(len(r_calcs), 'right')} WITH {renal_phrase(len(l_calcs), 'left').lower()}"
         elif r_calcs:
             imp += f" & {renal_phrase(len(r_calcs), 'right')}"
         elif l_calcs:
