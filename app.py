@@ -1692,12 +1692,6 @@ def pancreas_sentence(d, ppln=None):
                       True),
                   seg(f"{dims_vol} with clear contents {loc_phrase} and mild "
                       f"peripancreatic fat stranding with mild free fluid.")]
-        else:
-            s += [seg(f"{_lead} "),
-                  seg("hypotrophied with irregular margins & a loculated mildly thick "
-                      "walled collection", True),
-                  seg(f"{dims_vol} with internal echoes seen {loc_phrase} and mild "
-                      f"peripancreatic fat stranding with mild free fluid.")]
     elif status == "chronic":
         foci = d.get("ch_foci", False)
         mpd = d.get("ch_mpd", False)
