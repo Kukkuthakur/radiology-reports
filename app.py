@@ -6398,11 +6398,13 @@ _NASH_RE = re.compile(r"\(NASH\)", re.IGNORECASE)
 _VS_RE = re.compile(r"\bvs\b", re.IGNORECASE)
 
 
+_ADV_RE = re.compile(r"\bAdv\s*-\s*", re.IGNORECASE)
+
 def _split_adv(text):
-    idx = text.find("Adv-")
-    if idx == -1:
+    m = _ADV_RE.search(text)
+    if not m:
         return text, ""
-    return text[:idx].rstrip(), text[idx:]
+    return text[:m.start()].rstrip(), "Adv- " + text[m.end():]
 
 
 def _tokenize_parentheticals(text):
