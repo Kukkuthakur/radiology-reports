@@ -4823,10 +4823,10 @@ def _saio_impression_line(d):
     # Perforation tail when radio 4 is selected.
     if saio_ff == "mild_mod_internal_echoes":
         tail = (" - ?SUSPECTED BOWEL PERFORATION vs SUBACUTE INTESTINAL "
-                "OBSTRUCTION. Adv- Erect CXR & X-ray Abdomen Correlation.")
+                "OBSTRUCTION. Adv- Erect CXR & X-Ray Erect Abdomen Correlation.")
     else:
         tail = (" - ?SUBACUTE INTESTINAL OBSTRUCTION. "
-                "Adv- Erect CXR & X-ray Abdomen Correlation.")
+                "Adv- X-Ray Erect Abdomen Correlation.")
 
     if ff_lead_up and dist_line:
         return f"{ff_lead_up} IS SEEN WITH {dist_line}{tail}"
@@ -4940,12 +4940,12 @@ def fluid_mln_sentence(data):
         out.append(seg(fluid_sentence, True))
 
     if saio_line:
+        _saio_clean = saio_line.rstrip(".")
         if fluid_sentence:
             out.append(seg(" WITH "))
-            out.append(seg(saio_line + ".", True))
+            out.append(seg(_saio_clean + ".", True))
         else:
-            out.append(seg(" "))
-            out.append(seg(saio_line + ".", True))
+            out.append(seg(_saio_clean + ".", True))
 
     if mln_segs:
         # Merge fluid + MLN into one sentence when fluid is present (with-join).
@@ -5448,7 +5448,7 @@ def fluid_mln_impression_lines(data):
         return _full
 
     if eff_present and ff_present and saio_line:
-        lines.append(f"{eff_phrase} WITH {ff_phrase}. {saio_line}")
+        lines.append(f"{eff_phrase} WITH {ff_phrase}. {saio_line.rstrip('.')}.")
         if mln_present:
             lines.append(_mln_fragment())
         return lines
@@ -5456,9 +5456,9 @@ def fluid_mln_impression_lines(data):
     if eff_present and ff_present:
         lines.append(f"{eff_phrase} WITH {ff_phrase}.")
     elif eff_present and saio_line:
-        lines.append(f"{eff_phrase}. {saio_line}")
+        lines.append(f"{eff_phrase}. {saio_line.rstrip('.')}.")
     elif ff_present and saio_line:
-        lines.append(f"{ff_phrase}. {saio_line}")
+        lines.append(f"{ff_phrase}. {saio_line.rstrip('.')}.")
     elif eff_present and mln_present:
         # Merge effusion + MLN.
         lines.append(f"{eff_phrase} WITH {_mln_fragment()}")
@@ -6176,7 +6176,11 @@ def generate_impression(d, sex, age):
         lines.insert(0, ln)
 
     # Item #19: Fluid-only impression tail - ?ETIOLOGY
-    if fluid_lines and lines:
+    _saio_owns_fluid = (
+        d.get("saio", {}).get("distension_type", "none") != "none"
+        or d.get("saio", {}).get("saio_ff", "none") != "none"
+    )
+    if fluid_lines and lines and not _saio_owns_fluid:
         # Suppression checks
         _liver_d = d.get("liver", {})
         _spleen_d = d.get("spleen", {})
