@@ -1329,6 +1329,7 @@ def liver_sentence(d, sex, age, spleen_enlarged=False, cbd_ihbr="normal"):
         else:
             s += [seg(" Intra hepatic biliary radicals are "),
                   seg("dilated", True), seg(".")]
+    # cbd_ihbr == "suppressed" → the CBD line already prints IHBR; emit nothing here.
 
     if not spleen_enlarged:
         if d["portal_vein"] == "normal":
@@ -6702,11 +6703,31 @@ def build_docx_bytes(data):
     spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
     ub_status = data["urinary_bladder"].get("status") or "adequately_distended"
 
-    sections = [
+    _cbd_d = data["cbd"]
+    _cbd_stat = _cbd_d.get("status", "normal")
+    _cbd_has_calc = bool(_cbd_d.get("calculi")) and bool(_cbd_d.get("calculi_size_mm"))
+    _cbd_will_print_ihbr = (
+        _cbd_stat in ("proximal_only", "proximal", "dilated")
+        or _cbd_has_calc
+    )
+    _liver_ihbr = "suppressed" if _cbd_will_print_ihbr else _cbd_d.get("ihbr", "normal")
+
+    _cbd_d = data["cbd"]
+    _cbd_stat = _cbd_d.get("status", "normal")
+    _cbd_has_calc = bool(_cbd_d.get("calculi")) and bool(_cbd_d.get("calculi_size_mm"))
+    _cbd_will_print_ihbr = (
+        _cbd_stat in ("proximal_only", "proximal", "dilated")
+        or _cbd_has_calc
+    )
+    _liver_ihbr = "suppressed" if _cbd_will_print_ihbr else _cbd_d.get("ihbr", "normal")
+
+    secs = [
         liver_sentence(data["liver"], sex, age, spleen_enlarged=spleen_enlarged,
-                       cbd_ihbr=data["cbd"].get("ihbr", "normal")),
+                       cbd_ihbr=_liver_ihbr),
         gall_bladder_sentence(data["gall_bladder"]),
         cbd_sentence(data["cbd"]),
+        ...
+        ...
         pancreas_sentence(data["pancreas"], ppln=data.get("ppln")),
         spleen_sentence(data["spleen"]),
         kidneys_sentence(data["kidneys"], ub_status=ub_status, age_text=age),
