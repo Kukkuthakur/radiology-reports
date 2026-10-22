@@ -1471,10 +1471,14 @@ def cbd_sentence(d):
     loc_word = cbd_location_word(d.get("calculi_location", "distal"))
     ihbr = d.get("ihbr", "normal")
 
+    if status == "proximal_only":
+        s.append(seg(" is only proximally visualized."))
+        return s
+
     if status == "not_visualized":
         s.append(seg(" is not visualized"))
-        s.append(seg(" (obscured by epigastric gaseous shadows)",
-                     False, False, True))
+        s.append(seg(" (obscured by overlying gaseous shadows)",
+                     bold=False, italic=True))
         s.append(seg("."))
         return s
 
@@ -1526,6 +1530,15 @@ def cbd_sentence(d):
 def pancreas_sentence(d, ppln=None):
     s = [seg("PANCREAS", True, True)]
     status = d.get("status", "normal")
+    if status == "not_visualized":
+        s.append(seg(" is not visualized"))
+        s.append(seg(" (obscured by overlying gaseous shadows)",
+                     bold=False, italic=True))
+        s.append(seg("."))
+        return s
+    if status == "partially_visualized":
+        s.append(seg(" is partially visualized."))
+        return s
     if status == "normal":
         s.append(seg(" is normal in size, outline and echotexture. No focal lesion "
                      "is seen. No evidence of calcification is seen."))
@@ -7470,18 +7483,23 @@ with col_find:
     if cbd_open:
         with st.container(border=True):
             _cbd_status_opts = ["normal", "proximal", "dilated",
-                                "not_visualized"]
+                                "proximal_only", "not_visualized"]
             st.radio(
                 "Status", _cbd_status_opts,
                 index=_idx("cbd_status", _cbd_status_opts, "normal"),
                 horizontal=True,
-                format_func=lambda x: {"normal": "Normal",
-                                       "proximal": "Proximally dilated",
-                                       "dilated": "Dilated throughout",
-                                       "not_visualized": "Not visualized"}[x],
+                format_func=lambda x: {
+                    "normal": "Normal",
+                    "proximal": "Proximally dilated",
+                    "dilated": "Dilated throughout",
+                    "proximal_only": "Only proximally visualized",
+                    "not_visualized":
+                        "Not visualized (obscured by overlying gaseous "
+                        "shadows)"}[x],
                 key="cbd_status")
             wget("cbd_status", "normal")
-            if ss("cbd_status", "normal") != "not_visualized":
+            if ss("cbd_status", "normal") not in ("proximal_only",
+                                                   "not_visualized"):
                 st.checkbox("Calculus in CBD", key="cbd_calc",
                             value=bool(_seed("cbd_calc", False)))
                 wget("cbd_calc", False)
@@ -7525,21 +7543,39 @@ with col_find:
     pn_open = organ_button("PANCREAS", "PANCREAS")
     if pn_open:
         with st.container(border=True):
-            _pn_status_opts = ["early_evolving", "acute", "won_pseudocyst",
-                               "chronic"]
+            _pn_vis_opts = ["visualized", "partially_visualized",
+                            "not_visualized"]
             st.radio(
-                "Status", _pn_status_opts,
-                index=(None if ss("pn_status", None) is None
-                       else _idx("pn_status", _pn_status_opts, None)),
+                "Visibility", _pn_vis_opts,
+                index=_idx("pn_visibility", _pn_vis_opts, "visualized"),
                 horizontal=True,
                 format_func=lambda x: {
-                    "early_evolving": "Early/evolving pancreatitis",
-                    "acute": "Acute pancreatitis",
-                    "won_pseudocyst": "WON / Pseudocyst",
-                    "chronic": "Chronic pancreatitis"}[x],
-                key="pn_status")
-            wget("pn_status", None)
-            _pn = ss("pn_status", None)
+                    "visualized": "Visualized",
+                    "partially_visualized": "Partially visualized",
+                    "not_visualized":
+                        "Not visualized (obscured by overlying gaseous "
+                        "shadows)"}[x],
+                key="pn_visibility")
+            wget("pn_visibility", "visualized")
+            _pn_vis = ss("pn_visibility", "visualized")
+
+            _pn = None
+            if _pn_vis == "visualized":
+                _pn_status_opts = ["early_evolving", "acute",
+                                   "won_pseudocyst", "chronic"]
+                st.radio(
+                    "Status", _pn_status_opts,
+                    index=(None if ss("pn_status", None) is None
+                           else _idx("pn_status", _pn_status_opts, None)),
+                    horizontal=True,
+                    format_func=lambda x: {
+                        "early_evolving": "Early/evolving pancreatitis",
+                        "acute": "Acute pancreatitis",
+                        "won_pseudocyst": "WON / Pseudocyst",
+                        "chronic": "Chronic pancreatitis"}[x],
+                    key="pn_status")
+                wget("pn_status", None)
+                _pn = ss("pn_status", None)
             if _pn == "early_evolving":
                 _ee_size_opts = ["normal", "mildly_bulky"]
                 st.radio("Pancreas size", _ee_size_opts,
@@ -9568,10 +9604,10 @@ data["gall_bladder"].update({
 })
 
 _cbd_status_val = ss("cbd_status", "normal")
-if _cbd_status_val == "not_visualized":
+if _cbd_status_val in ("proximal_only", "not_visualized"):
     data["cbd"].update({
         "size_mm": cbd_mm,
-        "status": "not_visualized",
+        "status": _cbd_status_val,
         "calculi": False,
         "calculi_count": "single",
         "calculi_size_mm": "",
@@ -9588,8 +9624,16 @@ else:
         "calculi_location": ss("cbd_calc_location", "distal"),
         "ihbr": ss("cbd_ihbr", "normal"),
     })
+_pn_vis_val = ss("pn_visibility", "visualized")
+if _pn_vis_val == "partially_visualized":
+    _pn_status_val = "partially_visualized"
+elif _pn_vis_val == "not_visualized":
+    _pn_status_val = "not_visualized"
+else:
+    _pn_status_val = ss("pn_status", None) or "normal"
+
 data["pancreas"].update({
-    "status": ss("pn_status", None) or "normal",
+    "status": _pn_status_val,
     "ee_size": ss("pn_ee_size", "normal"),
     "ee_fat_stranding": bool(ss("pn_ee_fat", False)),
     "ee_fat_location": ss("pn_ee_fat_loc", "none"),
