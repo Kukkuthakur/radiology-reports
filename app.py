@@ -6352,7 +6352,7 @@ def _add_run(paragraph, text, bold=False, underline=False, font=FONT_BODY,
     rFonts = OxmlElement("w:rFonts")
     rFonts.set(qn("w:ascii"), font)
     rFonts.set(qn("w:hAnsi"), font)
-    rPr.append(rFonts)
+    rPr.insert(0, rFonts)          # ← insert at index 0, BEFORE w:color
     return run
 
 
