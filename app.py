@@ -6726,8 +6726,6 @@ def build_docx_bytes(data):
                        cbd_ihbr=_liver_ihbr),
         gall_bladder_sentence(data["gall_bladder"]),
         cbd_sentence(data["cbd"]),
-        ...
-        ...
         pancreas_sentence(data["pancreas"], ppln=data.get("ppln")),
         spleen_sentence(data["spleen"]),
         kidneys_sentence(data["kidneys"], ub_status=ub_status, age_text=age),
