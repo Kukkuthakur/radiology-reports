@@ -1008,6 +1008,8 @@ def _new_bowel_wall():
         "term_ileum_size": "", "icj_size": "", "ascending_size": "",
         "transverse_size": "", "descending_size": "",
         "perifocal_mesentery": False, "perifocal_free_fluid": False,
+        "mural_stratification_preserved": False,
+        "no_perifocal_inflammation": False,
         "embedded_nodes": False, "embedded_nodes_size": "",
         "advice": "none",
     }
@@ -4143,6 +4145,10 @@ def bowel_wall_sentence(d):
                           f"these measuring {emb_nodes_size}mm")
         else:
             extras.append("few embedded mesenteric lymph nodes")
+    if d.get("mural_stratification_preserved", False):
+        extras.append("preserved mural stratification")
+    if d.get("no_perifocal_inflammation", False):
+        extras.append("no peri-focal inflammatory fat stranding or free fluid")
 
     text = f"{seg_word} {loc_str} noted"
     if extras:
@@ -4202,6 +4208,10 @@ def _bowel_wall_impression_line(d):
                           f"THESE MEASURING {emb_nodes_size}MM")
         else:
             extras.append("FEW EMBEDDED MESENTERIC LYMPH NODES")
+    if d.get("mural_stratification_preserved", False):
+        extras.append("PRESERVED MURAL STRATIFICATION")
+    if d.get("no_perifocal_inflammation", False):
+        extras.append("NO PERI-FOCAL INFLAMMATORY FAT STRANDING OR FREE FLUID")
 
     text = f"{seg_word} {loc_str}"
     if extras:
@@ -4209,7 +4219,7 @@ def _bowel_wall_impression_line(d):
 
     tail = BW_ADVICE_TAIL.get(advice, "")
     if not tail:
-        tail = ". Adv- Lab & Clinical Correlation."
+        tail = ". Adv - Lab & Clinical Correlation."
     return text + tail
 
 
@@ -9041,20 +9051,41 @@ with col_find:
                                 wget(_sz_key, "")
 
                     st.markdown("**Associated Features**")
-                    st.checkbox("Mildly echogenic peri-focal mesentery",
-                                key="bw_perifocal_mesentery",
-                                value=bool(_seed("bw_perifocal_mesentery",
-                                                 False)))
-                    wget("bw_perifocal_mesentery", False)
-                    st.checkbox("Peri-focal free fluid",
-                                key="bw_perifocal_free_fluid",
-                                value=bool(_seed("bw_perifocal_free_fluid",
-                                                 False)))
-                    wget("bw_perifocal_free_fluid", False)
-                    st.checkbox("Few embedded mesenteric lymph nodes",
-                                key="bw_embedded_nodes",
-                                value=bool(_seed("bw_embedded_nodes", False)))
-                    wget("bw_embedded_nodes", False)
+                    c_af1, c_af2 = st.columns(2)
+                    with c_af1:
+                        st.checkbox("Mildly echogenic peri-focal mesentery",
+                                    key="bw_perifocal_mesentery",
+                                    value=bool(_seed(
+                                        "bw_perifocal_mesentery", False)))
+                        wget("bw_perifocal_mesentery", False)
+                        st.checkbox("Few embedded mesenteric lymph nodes",
+                                    key="bw_embedded_nodes",
+                                    value=bool(_seed(
+                                        "bw_embedded_nodes", False)))
+                        wget("bw_embedded_nodes", False)
+                    with c_af2:
+                        st.checkbox("Peri-focal free fluid",
+                                    key="bw_perifocal_free_fluid",
+                                    value=bool(_seed(
+                                        "bw_perifocal_free_fluid", False)))
+                        wget("bw_perifocal_free_fluid", False)
+
+                    st.markdown("**Non-inflammatory Features**")
+                    c_nf1, c_nf2 = st.columns(2)
+                    with c_nf1:
+                        st.checkbox("Preserved mural stratification",
+                                    key="bw_mural_preserved",
+                                    value=bool(_seed(
+                                        "bw_mural_preserved", False)))
+                        wget("bw_mural_preserved", False)
+                    with c_nf2:
+                        st.checkbox(
+                            "No peri-focal inflammatory fat stranding "
+                            "or free fluid",
+                            key="bw_no_perifocal_inflammation",
+                            value=bool(_seed(
+                                "bw_no_perifocal_inflammation", False)))
+                        wget("bw_no_perifocal_inflammation", False)
                     if ss("bw_embedded_nodes", False):
                         st.text_input("Largest node size (mm, e.g. 14x08)",
                                       key="bw_embedded_nodes_size",
@@ -9892,6 +9923,8 @@ data["bowel_wall"] = {
     "descending_size": ss("bw_descending_size", ""),
     "perifocal_mesentery": bool(ss("bw_perifocal_mesentery", False)),
     "perifocal_free_fluid": bool(ss("bw_perifocal_free_fluid", False)),
+    "mural_stratification_preserved": bool(ss("bw_mural_preserved", False)),
+    "no_perifocal_inflammation": bool(ss("bw_no_perifocal_inflammation", False)),
     "embedded_nodes": bool(ss("bw_embedded_nodes", False)),
     "embedded_nodes_size": ss("bw_embedded_nodes_size", ""),
     "advice": ss("bw_advice", "none"),
