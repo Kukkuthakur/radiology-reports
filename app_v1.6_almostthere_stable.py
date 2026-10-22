@@ -502,6 +502,25 @@ POLE_OPTIONS = ["upper", "upper_mid", "mid", "lower_mid", "lower"]
 SMALL_KIDNEY_MM = 82
 SMALL_KIDNEY_MIN_AGE = 15
 
+CALCULUS_TINY_MAX_MM = 3.0
+CALCULUS_SMALL_MAX_MM = 4.0
+CALCULUS_LARGE_MIN_MM = 10.0
+
+
+def calculus_size_qualifier(size_mm):
+    """Return 'tiny' (≤3mm), 'small' (3.1–4mm), 'large' (>10mm), or ''."""
+    v = _parse_mm_value(size_mm)
+    if v is None:
+        return ""
+    if v <= CALCULUS_TINY_MAX_MM:
+        return "tiny"
+    if v <= CALCULUS_SMALL_MAX_MM:
+        return "small"
+    if v > CALCULUS_LARGE_MIN_MM:
+        return "large"
+    return ""
+    
+
 ECHO_GRADE_WORD = {
     "mildly_raised": "mildly raised",
     "moderately_raised": "moderately raised",
@@ -1813,8 +1832,10 @@ def _renal_calculi_body(k, side_low):
     side_phrase = f"{side_low} kidney"
     if n == 1:
         c = calcs[0]
+        _qual = calculus_size_qualifier(c["size_mm"])
+        _qual_txt = f"{_qual} " if _qual else ""
         out.append(seg(
-            f"A calculus measuring {c['size_mm']}mm is seen at the "
+            f"A {_qual_txt}calculus measuring {c['size_mm']}mm is seen at the "
             f"{_format_pole(c['pole'])} of {side_phrase}", True))
         out.append(seg(".", True))
         return out
@@ -1834,7 +1855,9 @@ def _renal_calculi_body(k, side_low):
         sizes = g["sizes"]
         pole_txt = _format_pole(g["pole"])
         if len(sizes) == 1:
-            return f"{sizes[0]}mm at the {pole_txt}"
+            _q = calculus_size_qualifier(sizes[0])
+            _p = f"{_q} " if _q else ""
+            return f"{_p}{sizes[0]}mm at the {pole_txt}"
         elif len(sizes) == 2:
             return f"{sizes[0]}mm & {sizes[1]}mm, both at the {pole_txt}"
         else:
@@ -1870,8 +1893,10 @@ def _ureter_calculus_body(d_side, side_key):
     s = [seg(" ")]
     if uc["count"] == "single":
         size_txt = sizes[0] if sizes else ""
-        s.append(seg(f"A calculus measuring {size_txt}mm seen {prep} the "
-                     f"{side_low} {body_level}", True))
+        _qual = calculus_size_qualifier(size_txt)
+        _qual_txt = f"{_qual} " if _qual else ""
+        s.append(seg(f"A {_qual_txt}calculus measuring {size_txt}mm seen "
+                     f"{prep} the {side_low} {body_level}", True))
     elif uc["count"] == "couple":
         a = sizes[0] if len(sizes) > 0 else ""
         b = sizes[1] if len(sizes) > 1 else ""
@@ -1879,9 +1904,12 @@ def _ureter_calculus_body(d_side, side_key):
                      f"{body_level}, measuring {a}mm & {b}mm", True))
     elif uc["count"] in ("few", "multiple"):
         size_txt = sizes[0] if sizes else ""
+        _qual = calculus_size_qualifier(size_txt)
+        _qual_txt = f"{_qual} " if _qual else ""
         word = "Few" if uc["count"] == "few" else "Multiple"
         s.append(seg(f"{word} calculi seen {prep} the {side_low} "
-                     f"{body_level}, largest of these measuring {size_txt}mm", True))
+                     f"{body_level}, largest of these measuring "
+                     f"{_qual_txt}{size_txt}mm", True))
     if grade == "none":
         s.append(seg(".", True))
     elif grade == "no_significant":
@@ -5247,7 +5275,10 @@ def _ureter_calculus_impression_line(side_key, uc):
     if uc["count"] == "single" and uc.get("sizes"):
         size_str = f"({uc['sizes'][0]}MM)"
 
-    base = f"{noun} {side_up} {imp_adj} {count_word}{size_str}"
+    _qual = (calculus_size_qualifier(uc["sizes"][0])
+             if uc["count"] == "single" and uc.get("sizes") else "")
+    _qual_up = f"{_qual.upper()} " if _qual else ""
+    base = f"{noun} {_qual_up}{side_up} {imp_adj} {count_word}{size_str}"
 
     grade = uc["grade"]
     if grade == "none":
@@ -5334,7 +5365,9 @@ def _renal_calculi_standalone(k, side_low):
     if n >= 3:
         return f"{side_up} NEPHROLITHIASIS"
     if n == 1:
-        return f"A {side_up} RENAL CALCULUS"
+        _qual = calculus_size_qualifier(k["calculi"][0]["size_mm"])
+        _qual_up = f"{_qual.upper()} " if _qual else ""
+        return f"A {_qual_up}{side_up} RENAL CALCULUS"
     return f"A COUPLE OF {side_up} RENAL CALCULI"
 
 
@@ -5348,6 +5381,22 @@ def _renal_calculi_clause(k, side_low):
     if n == 1:
         return f"A {side_up} RENAL CALCULUS"
     return f"A COUPLE OF {side_up} RENAL CALCULI"
+
+
+def _renal_calcs_impression_phrase(calcs, side_low):
+    """Impression phrase for a side's renal calculi, with size qualifier
+    applied for a solitary calculus."""
+    n = len(calcs)
+    side_up = _ureter_side_label(side_low)
+    if n >= 3:
+        return f"{side_up} NEPHROLITHIASIS"
+    if n == 2:
+        return f"A COUPLE OF {side_up} RENAL CALCULI"
+    if n == 1:
+        _qual = calculus_size_qualifier(calcs[0]["size_mm"])
+        _qual_up = f"{_qual.upper()} " if _qual else ""
+        return f"A {_qual_up}{side_up} RENAL CALCULUS"
+    return ""
 
 
 def _cyst_impression_clause(k, side_low, small_prefix=False):
@@ -5962,24 +6011,17 @@ def generate_impression(d, sex, age):
         # 2. Handle Renal Calculi
         r_calcs = r["calculi"] if r_present else []
         l_calcs = l["calculi"] if l_present else []
-        
-        def renal_phrase(n, side):
-            if n >= 3:
-                return f"{side.upper()} NEPHROLITHIASIS"
-            elif n == 2:
-                return f"A COUPLE OF {side.upper()} RENAL CALCULI"
-            elif n == 1:
-                return f"A {side.upper()} RENAL CALCULUS"
-            return ""
-            
+
         if len(r_calcs) >= 3 and len(l_calcs) >= 3:
             imp += " & BILATERAL NEPHROLITHIASIS"
         elif r_calcs and l_calcs:
-            imp += f" & {renal_phrase(len(r_calcs), 'right')} WITH {renal_phrase(len(l_calcs), 'left').lower()}"
+            imp += (f" & {_renal_calcs_impression_phrase(r_calcs, 'right')}"
+                    f" WITH "
+                    f"{_renal_calcs_impression_phrase(l_calcs, 'left').lower()}")
         elif r_calcs:
-            imp += f" & {renal_phrase(len(r_calcs), 'right')}"
+            imp += f" & {_renal_calcs_impression_phrase(r_calcs, 'right')}"
         elif l_calcs:
-            imp += f" & {renal_phrase(len(l_calcs), 'left')}"
+            imp += f" & {_renal_calcs_impression_phrase(l_calcs, 'left')}"
             
         imp += "."
         renal_lines.append(imp.upper())
@@ -5993,27 +6035,19 @@ def generate_impression(d, sex, age):
             if line:
                 r_calcs = r["calculi"] if r_present else []
                 l_calcs = l["calculi"] if l_present else []
-                
-                def renal_phrase(n, side):
-                    if n >= 3:
-                        return f"{side.upper()} NEPHROLITHIASIS"
-                    elif n == 2:
-                        return f"A COUPLE OF {side.upper()} RENAL CALCULI"
-                    elif n == 1:
-                        return f"A {side.upper()} RENAL CALCULUS"
-                    return ""
 
                 if r_calcs and l_calcs:
-                    # Use the exact phrasing: right nephrolithiasis with a couple of left renal calculi
-                    _clause = f"{renal_phrase(len(r_calcs), 'right')} WITH {renal_phrase(len(l_calcs), 'left').lower()}"
+                    _clause = (f"{_renal_calcs_impression_phrase(r_calcs, 'right')}"
+                               f" WITH "
+                               f"{_renal_calcs_impression_phrase(l_calcs, 'left').lower()}")
                     line = line.rstrip(".") + " & " + _clause + "."
                 elif r_calcs:
-                    _clause = renal_phrase(len(r_calcs), 'right')
+                    _clause = _renal_calcs_impression_phrase(r_calcs, 'right')
                     line = line.rstrip(".") + " & " + _clause + "."
                 elif l_calcs:
-                    _clause = renal_phrase(len(l_calcs), 'left')
+                    _clause = _renal_calcs_impression_phrase(l_calcs, 'left')
                     line = line.rstrip(".") + " & " + _clause + "."
-                
+
                 renal_lines.append(line.upper())
 
     r_calcs = r["calculi"] if r_present else []
