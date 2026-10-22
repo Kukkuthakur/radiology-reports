@@ -6639,14 +6639,12 @@ def build_docx_bytes(data):
 
     _mln_present = data.get("mln", {}).get("branch", "none") != "none"
     bw_segs = bowel_wall_sentence(data.get("bowel_wall", {}))
-    
+
     # Only render the generic bowel sentence if the structured module is off
     if not bw_segs:
         sections.append(bowel_sentence(data["bowel"], sex,
                                         pancreas_status=p_status,
                                         mln_present=_mln_present))
-    if bw_segs:
-        sections.append(bw_segs)
     if bw_segs:
         sections.append(bw_segs)
     if data["appendix"].get("status") not in ("not_assessed",):
