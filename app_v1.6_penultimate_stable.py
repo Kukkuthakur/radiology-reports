@@ -6761,7 +6761,7 @@ def build_docx_bytes(data):
 # STREAMLIT UI
 # ============================================================
 
-st.set_page_config(page_title="डॉ. प्रणव एवं डॉ. गौरव इमेजिंग, आगरा", layout="wide")
+st.set_page_config(page_title="Dr. Kotwal's Xpert Imaging, Jammu", layout="wide")
 init_db()
 
 st.markdown(
@@ -6960,7 +6960,7 @@ st.markdown(
 
 st.markdown(
     """
-    <div class="pg-title">डॉ. प्रणव एवं डॉ. गौरव इमेजिंग, आगरा</div>
+    <div class="pg-title">Dr. Kotwal's Xpert Imaging, Jammu</div>
     <div class="pg-tagline">Precision Imaging. Trusted Diagnostics. Agra.</div>
     """,
     unsafe_allow_html=True,
