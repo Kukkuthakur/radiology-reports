@@ -5383,6 +5383,22 @@ def _renal_calculi_clause(k, side_low):
     return f"A COUPLE OF {side_up} RENAL CALCULI"
 
 
+def _renal_calcs_impression_phrase(calcs, side_low):
+    """Impression phrase for a side's renal calculi, with size qualifier
+    applied for a solitary calculus."""
+    n = len(calcs)
+    side_up = _ureter_side_label(side_low)
+    if n >= 3:
+        return f"{side_up} NEPHROLITHIASIS"
+    if n == 2:
+        return f"A COUPLE OF {side_up} RENAL CALCULI"
+    if n == 1:
+        _qual = calculus_size_qualifier(calcs[0]["size_mm"])
+        _qual_up = f"{_qual.upper()} " if _qual else ""
+        return f"A {_qual_up}{side_up} RENAL CALCULUS"
+    return ""
+
+
 def _cyst_impression_clause(k, side_low, small_prefix=False):
     if k.get("cyst_type", "none") == "none":
         return None
@@ -5995,24 +6011,17 @@ def generate_impression(d, sex, age):
         # 2. Handle Renal Calculi
         r_calcs = r["calculi"] if r_present else []
         l_calcs = l["calculi"] if l_present else []
-        
-        def renal_phrase(n, side):
-            if n >= 3:
-                return f"{side.upper()} NEPHROLITHIASIS"
-            elif n == 2:
-                return f"A COUPLE OF {side.upper()} RENAL CALCULI"
-            elif n == 1:
-                return f"A {side.upper()} RENAL CALCULUS"
-            return ""
-            
+
         if len(r_calcs) >= 3 and len(l_calcs) >= 3:
             imp += " & BILATERAL NEPHROLITHIASIS"
         elif r_calcs and l_calcs:
-            imp += f" & {renal_phrase(len(r_calcs), 'right')} WITH {renal_phrase(len(l_calcs), 'left').lower()}"
+            imp += (f" & {_renal_calcs_impression_phrase(r_calcs, 'right')}"
+                    f" WITH "
+                    f"{_renal_calcs_impression_phrase(l_calcs, 'left').lower()}")
         elif r_calcs:
-            imp += f" & {renal_phrase(len(r_calcs), 'right')}"
+            imp += f" & {_renal_calcs_impression_phrase(r_calcs, 'right')}"
         elif l_calcs:
-            imp += f" & {renal_phrase(len(l_calcs), 'left')}"
+            imp += f" & {_renal_calcs_impression_phrase(l_calcs, 'left')}"
             
         imp += "."
         renal_lines.append(imp.upper())
@@ -6026,27 +6035,19 @@ def generate_impression(d, sex, age):
             if line:
                 r_calcs = r["calculi"] if r_present else []
                 l_calcs = l["calculi"] if l_present else []
-                
-                def renal_phrase(n, side):
-                    if n >= 3:
-                        return f"{side.upper()} NEPHROLITHIASIS"
-                    elif n == 2:
-                        return f"A COUPLE OF {side.upper()} RENAL CALCULI"
-                    elif n == 1:
-                        return f"A {side.upper()} RENAL CALCULUS"
-                    return ""
 
                 if r_calcs and l_calcs:
-                    # Use the exact phrasing: right nephrolithiasis with a couple of left renal calculi
-                    _clause = f"{renal_phrase(len(r_calcs), 'right')} WITH {renal_phrase(len(l_calcs), 'left').lower()}"
+                    _clause = (f"{_renal_calcs_impression_phrase(r_calcs, 'right')}"
+                               f" WITH "
+                               f"{_renal_calcs_impression_phrase(l_calcs, 'left').lower()}")
                     line = line.rstrip(".") + " & " + _clause + "."
                 elif r_calcs:
-                    _clause = renal_phrase(len(r_calcs), 'right')
+                    _clause = _renal_calcs_impression_phrase(r_calcs, 'right')
                     line = line.rstrip(".") + " & " + _clause + "."
                 elif l_calcs:
-                    _clause = renal_phrase(len(l_calcs), 'left')
+                    _clause = _renal_calcs_impression_phrase(l_calcs, 'left')
                     line = line.rstrip(".") + " & " + _clause + "."
-                
+
                 renal_lines.append(line.upper())
 
     r_calcs = r["calculi"] if r_present else []
