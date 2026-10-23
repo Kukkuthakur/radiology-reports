@@ -3157,34 +3157,42 @@ def uterus_sentence(d, pediatric=False, age_years=None):
         else:
             s += [seg(" is "), seg(orientation, True)]
 
-        if size_word:
-            s += [seg(" and "), seg(f"{size_word} in size", True)]
-            if size:
-                s.append(size_seg(f"({size}mm)"))
-            if globular:
-                s.append(seg(" with globular shape."))
-            else:
-                s.append(seg(" with normal shape."))
-        else:
-            if size:
-                s.append(seg(f", normal in size({size}mm)"))
-            else:
-                s.append(seg(", normal in size"))
-            if globular:
-                s.append(seg(" with globular shape."))
-            else:
-                s.append(seg(" & shape."))
-
         if low_lying:
+            # Low-lying path drops "shape" entirely and joins size with "&".
+            if size_word:
+                s += [seg(" & "), seg(f"{size_word} in size", True)]
+                if size:
+                    s.append(size_seg(f"({size}mm)"))
+            else:
+                if size:
+                    s.append(seg(f" & normal in size({size}mm)"))
+                else:
+                    s.append(seg(" & normal in size"))
             cervix_state = d.get("cervix_visualized", "partially")
             cervix_word = ("partially visualized" if cervix_state == "partially"
                            else "not visualized")
-            grade_word = "GRADE-II" if cervix_state == "partially" else "GRADE-II/III"
-            s += [seg(" and "),
+            s += [seg("; appears "),
                   seg("low-lying with positive transverse uterus sign, cervix is "
-                      f"{cervix_word} in the retro-vesical space on TAS - likely "
-                      f"{grade_word.lower()} uterine prolapse", True)]
-            s.append(seg(" with normal shape."))
+                      f"{cervix_word} in the retro-vesical space on TAS", True),
+                  seg(".")]
+        else:
+            if size_word:
+                s += [seg(" and "), seg(f"{size_word} in size", True)]
+                if size:
+                    s.append(size_seg(f"({size}mm)"))
+                if globular:
+                    s.append(seg(" with globular shape."))
+                else:
+                    s.append(seg(" with normal shape."))
+            else:
+                if size:
+                    s.append(seg(f", normal in size({size}mm)"))
+                else:
+                    s.append(seg(", normal in size"))
+                if globular:
+                    s.append(seg(" with globular shape."))
+                else:
+                    s.append(seg(" & shape."))
 
     if gravid:
         if d.get("fibroid"):
