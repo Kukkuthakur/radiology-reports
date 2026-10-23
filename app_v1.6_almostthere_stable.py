@@ -506,6 +506,8 @@ CALCULUS_TINY_MAX_MM = 3.0
 CALCULUS_SMALL_MAX_MM = 4.0
 CALCULUS_LARGE_MIN_MM = 10.0
 
+CBD_DILATED_MM = 6.0
+
 
 def calculus_size_qualifier(size_mm):
     """Return 'tiny' (≤3mm), 'small' (3.1–4mm), 'large' (>10mm), or ''."""
@@ -1327,6 +1329,7 @@ def liver_sentence(d, sex, age, spleen_enlarged=False, cbd_ihbr="normal"):
         else:
             s += [seg(" Intra hepatic biliary radicals are "),
                   seg("dilated", True), seg(".")]
+    # cbd_ihbr == "suppressed" → the CBD line already prints IHBR; emit nothing here.
 
     if not spleen_enlarged:
         if d["portal_vein"] == "normal":
@@ -1471,10 +1474,42 @@ def cbd_sentence(d):
     loc_word = cbd_location_word(d.get("calculi_location", "distal"))
     ihbr = d.get("ihbr", "normal")
 
+    if status == "proximal_only":
+        _cal_num = _parse_mm_value(size)
+        _cal_word = ("dilated" if (_cal_num is not None
+                                    and _cal_num > CBD_DILATED_MM)
+                     else "normal")
+        if size:
+            s.append(seg(f" is only proximally visualized & appears "
+                         f"{_cal_word} in caliber({size}mm)"))
+        else:
+            s.append(seg(f" is only proximally visualized & appears "
+                         f"{_cal_word} in caliber"))
+
+        if calculi and calculi_size:
+            if calculi_count == "single":
+                s.append(seg(f", with suggestion of a calculus measuring "
+                             f"{calculi_size}mm in the {loc_word}", True))
+            else:
+                s.append(seg(f", with suggestion of few calculi in the "
+                             f"{loc_word}, largest of these measuring "
+                             f"{calculi_size}mm", True))
+        s.append(seg("."))
+
+        if ihbr == "normal":
+            s.append(seg(" Intra hepatic biliary radicals are normal."))
+        elif ihbr == "proximal":
+            s += [seg(" "), seg("Intra hepatic biliary radicals are "
+                                 "proximally dilated.", True)]
+        elif ihbr == "dilated":
+            s += [seg(" "), seg("Intra hepatic biliary radicals are dilated.",
+                                 True)]
+        return s
+
     if status == "not_visualized":
         s.append(seg(" is not visualized"))
-        s.append(seg(" (obscured by epigastric gaseous shadows)",
-                     False, False, True))
+        s.append(seg(" (obscured by overlying gaseous shadows)",
+                     bold=False, italic=True))
         s.append(seg("."))
         return s
 
@@ -1526,9 +1561,21 @@ def cbd_sentence(d):
 def pancreas_sentence(d, ppln=None):
     s = [seg("PANCREAS", True, True)]
     status = d.get("status", "normal")
+    partial = bool(d.get("partially_visualized", False))
+
+    if status == "not_visualized":
+        s.append(seg(" is not visualized"))
+        s.append(seg(" (obscured by overlying gaseous shadows)",
+                     bold=False, italic=True))
+        s.append(seg("."))
+        return s
+
+    _lead = " is partially visualized & appears" if partial else " is"
+
     if status == "normal":
-        s.append(seg(" is normal in size, outline and echotexture. No focal lesion "
-                     "is seen. No evidence of calcification is seen."))
+        s.append(seg(f"{_lead} normal in size, outline and echotexture. "
+                     f"No focal lesion is seen. No evidence of calcification "
+                     f"is seen."))
     elif status == "early_evolving":
         ee_size = d.get("ee_size", "normal")
         fat = d.get("ee_fat_stranding", False)
@@ -1536,11 +1583,12 @@ def pancreas_sentence(d, ppln=None):
         fat_loc = d.get("ee_fat_location", "none")
         fluid_loc = d.get("ee_fluid_location", "none")
         if ee_size == "mildly_bulky":
-            s += [seg(" is "), seg("mildly bulky in size", True),
+            s += [seg(f"{_lead} "), seg("mildly bulky in size", True),
                   seg(" with normal echotexture.")]
         else:
-            s.append(seg(" is normal in size, outline and echotexture. No focal "
-                         "lesion is seen. No evidence of calcification is seen."))
+            s.append(seg(f"{_lead} normal in size, outline and echotexture. "
+                         f"No focal lesion is seen. No evidence of "
+                         f"calcification is seen."))
         loc_phrase_map = {
             "head_neck": "around the head and neck region",
             "body": "around the body region",
@@ -1583,7 +1631,7 @@ def pancreas_sentence(d, ppln=None):
         ac_echo_loc = d.get("ac_echo_location", "none")
         ac_margins = d.get("ac_margins", "normal")
         if ac_size == "bulky":
-            s += [seg(" is "), seg("bulky in size", True)]
+            s += [seg(f"{_lead} "), seg("bulky in size", True)]
             if ac_echo == "normal" and ac_margins == "normal":
                 s.append(seg(" with normal echotexture."))
             elif ac_echo == "hypoechoic":
@@ -1604,24 +1652,25 @@ def pancreas_sentence(d, ppln=None):
                 s.append(seg("."))
         else:
             if ac_echo == "normal" and ac_margins == "normal":
-                s.append(seg(" is normal in size, outline and echotexture. No focal "
-                             "lesion is seen."))
+                s.append(seg(f"{_lead} normal in size, outline and echotexture. "
+                             f"No focal lesion is seen."))
             elif ac_echo == "hypoechoic":
                 if ac_echo_loc == "head_neck":
-                    s += [seg(" appears "),
+                    s += [seg(f"{_lead} "),
                           seg("hypoechoic and heterogeneous in the head and neck "
                               "region", True)]
                 elif ac_echo_loc == "body":
-                    s += [seg(" appears "),
+                    s += [seg(f"{_lead} "),
                           seg("hypoechoic and heterogeneous in the body region", True)]
                 else:
-                    s += [seg(" echotexture appears "),
+                    s += [seg(f"{_lead} "),
                           seg("hypoechoic and heterogeneous", True)]
                 if ac_margins == "irregular":
                     s.append(seg(" with irregular/fuzzy margins", True))
                 s.append(seg("."))
             elif ac_margins == "irregular":
-                s += [seg(" shows "), seg("irregular/fuzzy margins", True), seg(".")]
+                s += [seg(f"{_lead} "),
+                      seg("irregular/fuzzy margins", True), seg(".")]
         s += [seg(" "), seg("Mild to moderate peri-pancreatic fat stranding and mild "
                              "free fluid is seen.", True)]
     elif status == "won_pseudocyst":
@@ -1633,19 +1682,19 @@ def pancreas_sentence(d, ppln=None):
                       else "overlying the body of the pancreas")
         dims_vol = f"({dims}mm; Vol= {vol}cc)"
         if wp_type == "won":
-            s += [seg(" is "),
+            s += [seg(f"{_lead} "),
                   seg("irregularly defined and obscured by a thick-walled collection",
                       True),
                   seg(f"{dims_vol} {loc_phrase} with debris within and significant "
                       f"peripancreatic fat stranding and mild free fluid.")]
         elif wp_type == "pseudocyst":
-            s += [seg(" appears "),
+            s += [seg(f"{_lead} "),
                   seg("hypotrophied with irregular margins with a loculated collection",
                       True),
                   seg(f"{dims_vol} with clear contents {loc_phrase} and mild "
                       f"peripancreatic fat stranding with mild free fluid.")]
         else:
-            s += [seg(" appears "),
+            s += [seg(f"{_lead} "),
                   seg("hypotrophied with irregular margins & a loculated mildly thick "
                       "walled collection", True),
                   seg(f"{dims_vol} with internal echoes seen {loc_phrase} and mild "
@@ -1655,7 +1704,8 @@ def pancreas_sentence(d, ppln=None):
         mpd = d.get("ch_mpd", False)
         mpd_size = d.get("ch_mpd_size", "")
         fat = d.get("ch_fat", False)
-        s += [seg(" is "), seg("poorly defined and appears hypotrophied", True)]
+        s += [seg(f"{_lead} "),
+              seg("poorly defined and appears hypotrophied", True)]
         if foci and mpd and fat:
             s += [seg(", studded with foci of calcification and dilated MPD"
                       f"(upto {mpd_size} mm). "),
@@ -6653,9 +6703,27 @@ def build_docx_bytes(data):
     spleen_enlarged = data["spleen"]["size_descriptor"] != "normal"
     ub_status = data["urinary_bladder"].get("status") or "adequately_distended"
 
+    _cbd_d = data["cbd"]
+    _cbd_stat = _cbd_d.get("status", "normal")
+    _cbd_has_calc = bool(_cbd_d.get("calculi")) and bool(_cbd_d.get("calculi_size_mm"))
+    _cbd_will_print_ihbr = (
+        _cbd_stat in ("proximal_only", "proximal", "dilated")
+        or _cbd_has_calc
+    )
+    _liver_ihbr = "suppressed" if _cbd_will_print_ihbr else _cbd_d.get("ihbr", "normal")
+
+    _cbd_d = data["cbd"]
+    _cbd_stat = _cbd_d.get("status", "normal")
+    _cbd_has_calc = bool(_cbd_d.get("calculi")) and bool(_cbd_d.get("calculi_size_mm"))
+    _cbd_will_print_ihbr = (
+        _cbd_stat in ("proximal_only", "proximal", "dilated")
+        or _cbd_has_calc
+    )
+    _liver_ihbr = "suppressed" if _cbd_will_print_ihbr else _cbd_d.get("ihbr", "normal")
+
     sections = [
         liver_sentence(data["liver"], sex, age, spleen_enlarged=spleen_enlarged,
-                       cbd_ihbr=data["cbd"].get("ihbr", "normal")),
+                       cbd_ihbr=_liver_ihbr),
         gall_bladder_sentence(data["gall_bladder"]),
         cbd_sentence(data["cbd"]),
         pancreas_sentence(data["pancreas"], ppln=data.get("ppln")),
@@ -7470,15 +7538,19 @@ with col_find:
     if cbd_open:
         with st.container(border=True):
             _cbd_status_opts = ["normal", "proximal", "dilated",
-                                "not_visualized"]
+                                "proximal_only", "not_visualized"]
             st.radio(
                 "Status", _cbd_status_opts,
                 index=_idx("cbd_status", _cbd_status_opts, "normal"),
                 horizontal=True,
-                format_func=lambda x: {"normal": "Normal",
-                                       "proximal": "Proximally dilated",
-                                       "dilated": "Dilated throughout",
-                                       "not_visualized": "Not visualized"}[x],
+                format_func=lambda x: {
+                    "normal": "Normal",
+                    "proximal": "Proximally dilated",
+                    "dilated": "Dilated throughout",
+                    "proximal_only": "Only proximally visualized",
+                    "not_visualized":
+                        "Not visualized (obscured by overlying gaseous "
+                        "shadows)"}[x],
                 key="cbd_status")
             wget("cbd_status", "normal")
             if ss("cbd_status", "normal") != "not_visualized":
@@ -7525,21 +7597,39 @@ with col_find:
     pn_open = organ_button("PANCREAS", "PANCREAS")
     if pn_open:
         with st.container(border=True):
-            _pn_status_opts = ["early_evolving", "acute", "won_pseudocyst",
-                               "chronic"]
+            _pn_vis_opts = ["visualized", "partially_visualized",
+                            "not_visualized"]
             st.radio(
-                "Status", _pn_status_opts,
-                index=(None if ss("pn_status", None) is None
-                       else _idx("pn_status", _pn_status_opts, None)),
+                "Visibility", _pn_vis_opts,
+                index=_idx("pn_visibility", _pn_vis_opts, "visualized"),
                 horizontal=True,
                 format_func=lambda x: {
-                    "early_evolving": "Early/evolving pancreatitis",
-                    "acute": "Acute pancreatitis",
-                    "won_pseudocyst": "WON / Pseudocyst",
-                    "chronic": "Chronic pancreatitis"}[x],
-                key="pn_status")
-            wget("pn_status", None)
-            _pn = ss("pn_status", None)
+                    "visualized": "Visualized",
+                    "partially_visualized": "Partially visualized",
+                    "not_visualized":
+                        "Not visualized (obscured by overlying gaseous "
+                        "shadows)"}[x],
+                key="pn_visibility")
+            wget("pn_visibility", "visualized")
+            _pn_vis = ss("pn_visibility", "visualized")
+
+            _pn = None
+            if _pn_vis != "not_visualized":
+                _pn_status_opts = ["early_evolving", "acute",
+                                   "won_pseudocyst", "chronic"]
+                st.radio(
+                    "Status", _pn_status_opts,
+                    index=(None if ss("pn_status", None) is None
+                           else _idx("pn_status", _pn_status_opts, None)),
+                    horizontal=True,
+                    format_func=lambda x: {
+                        "early_evolving": "Early/evolving pancreatitis",
+                        "acute": "Acute pancreatitis",
+                        "won_pseudocyst": "WON / Pseudocyst",
+                        "chronic": "Chronic pancreatitis"}[x],
+                    key="pn_status")
+                wget("pn_status", None)
+                _pn = ss("pn_status", None)
             if _pn == "early_evolving":
                 _ee_size_opts = ["normal", "mildly_bulky"]
                 st.radio("Pancreas size", _ee_size_opts,
@@ -9588,8 +9678,16 @@ else:
         "calculi_location": ss("cbd_calc_location", "distal"),
         "ihbr": ss("cbd_ihbr", "normal"),
     })
+_pn_vis_val = ss("pn_visibility", "visualized")
+if _pn_vis_val == "not_visualized":
+    _pn_status_val = "not_visualized"
+else:
+    _pn_status_val = ss("pn_status", None) or "normal"
+_pn_partial_val = (_pn_vis_val == "partially_visualized")
+
 data["pancreas"].update({
-    "status": ss("pn_status", None) or "normal",
+    "status": _pn_status_val,
+    "partially_visualized": _pn_partial_val,
     "ee_size": ss("pn_ee_size", "normal"),
     "ee_fat_stranding": bool(ss("pn_ee_fat", False)),
     "ee_fat_location": ss("pn_ee_fat_loc", "none"),
