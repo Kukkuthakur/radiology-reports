@@ -2958,10 +2958,10 @@ def _myometrium_body_clause(d):
                 seg(f" -- {qualifier}.", True)]
 
 
-def _cervix_body_fragments(d):
-    bulky = bool(d.get("cervix_bulky"))
-    elongated = bool(d.get("cervix_elongated"))
-    nab = d.get("nabothian", "none")
+def _cervix_body_fragments(d, rpoc_mode=False):
+    bulky = bool(d.get("cervix_bulky")) and not rpoc_mode
+    elongated = bool(d.get("cervix_elongated")) and not rpoc_mode
+    nab = d.get("nabothian", "none") if not rpoc_mode else "none"
     coll = d.get("cervix_collection", "none")
 
     nab_txt = None
@@ -2981,16 +2981,16 @@ def _cervix_body_fragments(d):
         extras = [t for t in (nab_txt, coll_txt) if t]
         head = f"Cervix appears bulky{size_txt}"
         if not extras:
-            out.append(seg(f"{head}."))
+            out.append(seg(f"{head}.", True))
         elif len(extras) == 1:
-            out.append(seg(f"{head} with {extras[0]}."))
+            out.append(seg(f"{head} with {extras[0]}.", True))
         elif len(extras) == 2:
-            out.append(seg(f"{head} with {extras[0]} & {extras[1]}."))
+            out.append(seg(f"{head} with {extras[0]} & {extras[1]}.", True))
         else:
             head_line = f"{head} with {extras[0]} & {extras[1]}."
             tail_line = "Also " + " & ".join(extras[2:]) + " seen."
-            out.append(seg(head_line))
-            out.append(seg(" " + tail_line))
+            out.append(seg(head_line, True))
+            out.append(seg(" " + tail_line, True))
     else:
         if elongated:
             out.append(seg("Cervix appears elongated."))
@@ -3010,7 +3010,6 @@ def _cervix_body_fragments(d):
                 out.append(seg(" " + tail_line))
 
     return out
-
 
 def _endometrial_body_segments(d):
     endo_mm = d.get("endometrial_thickness_mm", "")
@@ -3240,11 +3239,10 @@ def uterus_sentence(d, pediatric=False, age_years=None):
                       f"the fundal endometrium showing color flow & aliasing on "
                       f"CD study.", True)]
 
-    if not d.get("rpoc"):
-        cervix_frags = _cervix_body_fragments(d)
-        if cervix_frags:
-            s += [seg(" ")]
-            s.extend(cervix_frags)
+    cervix_frags = _cervix_body_fragments(d, rpoc_mode=bool(d.get("rpoc")))
+    if cervix_frags:
+        s += [seg(" ")]
+        s.extend(cervix_frags)
 
     return s
 
@@ -3345,11 +3343,10 @@ def _adenomyomas_impression_fragment(d):
 
 
 def _cervix_impression_line(d):
-    if d.get("rpoc"):
-        return None
-    bulky = bool(d.get("cervix_bulky"))
-    elongated = bool(d.get("cervix_elongated"))
-    nab = d.get("nabothian", "none")
+    rpoc_mode = bool(d.get("rpoc"))
+    bulky = bool(d.get("cervix_bulky")) and not rpoc_mode
+    elongated = bool(d.get("cervix_elongated")) and not rpoc_mode
+    nab = d.get("nabothian", "none") if not rpoc_mode else "none"
     coll = d.get("cervix_collection", "none")
     cervicitis_radio = bool(d.get("cervicitis_suspected"))
 
@@ -3375,6 +3372,23 @@ def _cervix_impression_line(d):
         if cervicitis_radio and extras:
             line = line.rstrip(".") + " - ?CERVICITIS. Adv - PAP Smear."
         return line
+
+    bulky_size = d.get("cervix_bulky_size_mm", "")
+    size_txt = f"({bulky_size}MM)" if bulky_size else ""
+    head = f"BULKY CERVIX{size_txt}"
+    if not extras:
+        line = head + "."
+    elif len(extras) == 1:
+        line = f"{head} WITH {extras[0]}."
+    elif len(extras) == 2:
+        line = f"{head} WITH {extras[0]} & {extras[1]}."
+    else:
+        line = f"{head} WITH {extras[0]} & {extras[1]}."
+        tail = "ALSO " + " & ".join(extras[2:]) + " SEEN."
+        line = line + " " + tail
+
+    line = line.rstrip(".") + " - ?CERVICITIS. Adv - PAP Smear."
+    return line
 
     bulky_size = d.get("cervix_bulky_size_mm", "")
     size_txt = f"({bulky_size}MM)" if bulky_size else ""
@@ -3558,11 +3572,11 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
     _pm = (d.get("status") == "post_menopausal")
 
     rpoc_line = _rpoc_impression_line(d)
-    cervix_line = _cervix_impression_line(d) if not rpoc_line else None
+    cervix_line = _cervix_impression_line(d)
     pre_lines = []
     if rpoc_line:
         pre_lines.append(rpoc_line)
-    elif cervix_line:
+    if cervix_line:
         pre_lines.append(cervix_line)
 
     if d.get("gravid"):
