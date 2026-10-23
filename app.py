@@ -1533,6 +1533,14 @@ def cbd_sentence(d):
         if size:
             s.append(seg(f" upto {size}mm", True))
 
+    # Distal smooth tapering modifier — emitted between size and calculus.
+    if d.get("distal_taper"):
+        taper_mm = str(d.get("distal_taper_mm", "") or "").strip()
+        taper_paren = f"(Distal CBD= {taper_mm} mm)" if taper_mm else ""
+        s.append(seg(" However reveals "))
+        s.append(seg(f"distal smooth tapering{taper_paren}", True))
+        s.append(seg(". No intra-luminal calculus is seen"))
+
     if calculi and calculi_size:
         if calculi_count == "single":
             s.append(seg(f", with suggestion of a calculus measuring {calculi_size}mm "
