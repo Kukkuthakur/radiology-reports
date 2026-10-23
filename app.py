@@ -6293,8 +6293,17 @@ def generate_impression(d, sex, age):
 
     prostate_line = _prostate_impression_line(pr)
     ub_lines = _ub_impression_lines(ub, prostate_line=prostate_line)
+    _prostate_consumed = False
+    if prostate_line:
+        _prostate_wo_dot = prostate_line.rstrip(".")
+        for _ln in ub_lines:
+            if _prostate_wo_dot in _ln:
+                _prostate_consumed = True
+                break
     for ln in ub_lines:
         lines.append(ln)
+    if prostate_line and not _prostate_consumed:
+        lines.append(prostate_line)
 
     if sex == "F":
         uterus_lines = _uterus_impression_lines(d["uterus"], age_years,
