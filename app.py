@@ -10448,30 +10448,54 @@ with col_prev:
     st.subheader("✏️ Impression (editable)")
     st.caption("Edit any line. Auto-updates with findings unless you type here.")
     auto_imp_str = "\n".join(auto_impression)
-
-    if "_auto_imp_hash" not in st.session_state:
-        st.session_state["impression_box"] = auto_imp_str
-        st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
-        st.session_state["_last_set_content"] = auto_imp_str
-
     new_auto_hash = _h(auto_imp_str)
-    if new_auto_hash != st.session_state["_auto_imp_hash"]:
-        cur_widget = st.session_state.get("impression_box", "")
-        if cur_widget == st.session_state["_last_set_content"]:
-            st.session_state["impression_box"] = auto_imp_str
-            st.session_state["_last_set_content"] = auto_imp_str
-        st.session_state["_auto_imp_hash"] = new_auto_hash
 
-    edited_imp = st.text_area("Impression lines (one per line)",
-                              height=200, label_visibility="collapsed",
-                              key="impression_box")
+    # Version-keyed widget: bumping the version forces Streamlit to
+    # create a fresh text_area, which lets us seed it from auto without
+    # ever mutating an instantiated widget (avoids the
+    # StreamlitWidgetAlreadyInstantiatedError).
+
+    if "_imp_ver" not in st.session_state:
+        st.session_state["_imp_ver"] = 0
+    if "_imp_auto_hash" not in st.session_state:
+        st.session_state["_imp_auto_hash"] = new_auto_hash
+    if "_imp_widget_current" not in st.session_state:
+        # Track the last value we auto-seeded; user edits deviate from this.
+        st.session_state["_imp_widget_current"] = auto_imp_str
+
+    # Bump version only if auto changed AND user has not manually edited
+    # since the last auto-seed.
+    _user_text_key = f"impression_box_v{st.session_state['_imp_ver']}"
+    _user_text = st.session_state.get(_user_text_key, None)
+
+    _user_has_edited = (
+        _user_text is not None
+        and _user_text != st.session_state["_imp_widget_current"]
+    )
+
+    if (new_auto_hash != st.session_state["_imp_auto_hash"]
+            and not _user_has_edited):
+        st.session_state["_imp_ver"] += 1
+        st.session_state["_imp_auto_hash"] = new_auto_hash
+        st.session_state["_imp_widget_current"] = auto_imp_str
+        # widget key will change on the NEXT line, giving us a fresh box
+        _user_text_key = f"impression_box_v{st.session_state['_imp_ver']}"
+
+    # Seed the fresh widget's default (only applied if the key is absent).
+    if _user_text_key not in st.session_state:
+        st.session_state[_user_text_key] = auto_imp_str
+
+    edited_imp = st.text_area(
+        "Impression lines (one per line)",
+        height=200, label_visibility="collapsed",
+        key=_user_text_key,
+    )
 
     if st.button("↺ Reset to auto-generated impression", key="reset_imp_btn"):
-        st.session_state["impression_box"] = auto_imp_str
-        st.session_state["_last_set_content"] = auto_imp_str
-        st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
+        st.session_state["_imp_ver"] += 1
+        st.session_state["_imp_auto_hash"] = new_auto_hash
+        st.session_state["_imp_widget_current"] = auto_imp_str
         st.rerun()
-
     st.markdown("---")
     c_a, c_b = st.columns(2)
     with c_a:
