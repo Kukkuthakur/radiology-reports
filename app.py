@@ -6721,7 +6721,7 @@ def build_docx_bytes(data):
     )
     _liver_ihbr = "suppressed" if _cbd_will_print_ihbr else _cbd_d.get("ihbr", "normal")
 
-    secs = [
+    sections = [
         liver_sentence(data["liver"], sex, age, spleen_enlarged=spleen_enlarged,
                        cbd_ihbr=_liver_ihbr),
         gall_bladder_sentence(data["gall_bladder"]),
