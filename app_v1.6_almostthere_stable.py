@@ -1547,6 +1547,11 @@ def cbd_sentence(d):
         if ihbr == "normal":
             if status == "normal" and calculi:
                 s.append(seg(" However IHBR are normal in caliber."))
+            elif d.get("distal_taper"):
+                # taper clause already ended with "No intra-luminal calculus
+                # is seen." — drop the "However" so it reads continuously.
+                s.append(seg(" No significant dilatation of IHBR appreciated "
+                             "at the time of scan."))
             else:
                 s.append(seg(" However no significant dilatation of IHBR appreciated "
                              "at the time of scan."))
@@ -2482,6 +2487,10 @@ def urinary_bladder_pvr_segments(d):
             s.append(seg(" (Insignificant)", True, False, True))
     else:
         s.append(seg("\nPOST-VOID RESIDUE - ", True))
+        s.append(seg(
+            " Fair assessment of Post-Void residue is not possible since "
+            "Pre-Void volume is too low.",
+            True, False, True))
     return s
 
 def _pvr_pct(d):
@@ -2529,6 +2538,39 @@ def _ub_impression_lines(d, prostate_line=None):
     if extensive:
         sed_bits.append("EXTENSIVE SEDIMENTATION")
 
+    pre = str(d.get("pre_void_cc", "") or "").strip()
+    post = str(d.get("post_void_cc", "") or "").strip()
+    status = d.get("status")
+
+    # --- PVR bullets: computed up-front so they fire unconditionally,
+    #     regardless of wall-thickening or sedimentation early branches. ---
+    pvr_lines = []
+    if status == "over" and pre:
+        pvr_lines.append(
+            f"OVERDISTENDED URINARY BLADDER(PRE-VOID VOLUME={pre}CC).")
+    elif pre and not post:
+        pvr_lines.append(
+            "POST-VOID RESIDUE COULD NOT BE ASSESSED FAIRLY SINCE "
+            "PRE-VOID VOLUME IS TOO LOW AT THE TIME OF SCAN.")
+
+    if pre and post:
+        if _pvr_significant(d):
+            pvr_txt = "SIGNIFICANT POST VOID RESIDUE"
+            pct = _pvr_pct(d)
+            if pct is not None and pct >= 80.0:
+                pvr_txt += "(>80%)"
+            if prostate_line:
+                pvr_lines.append(f"{pvr_txt} WITH {prostate_line.rstrip('.')}.")
+            else:
+                pvr_lines.append(pvr_txt + ".")
+        elif _pvr_insignificant(d):
+            if prostate_line:
+                prostate_wo_dot = prostate_line.rstrip('.')
+                pvr_lines.append(f"{prostate_wo_dot}, HOWEVER THE POST-VOID "
+                                 f"RESIDUE IS INSIGNIFICANT.")
+            else:
+                pvr_lines.append("INSIGNIFICANT POST-VOID RESIDUE.")
+
     if wall:
         try:
             w = float(d["wall_mm"])
@@ -2553,41 +2595,17 @@ def _ub_impression_lines(d, prostate_line=None):
             body += " WITH " + " & ".join(sed_bits) + " IN THE UB LUMEN"
         body += f" - {tail}."
         out.append(body + " Adv- Urine R/M Correlation.")
+        out.extend(pvr_lines)
         return out
+
     if sed_bits:
         sed_line = (" ".join(sed_bits) + " IN THE UB LUMEN")
         if uti:
             sed_line += " - ?UTI"
         out.append(sed_line + ". Adv- Urine R/M Correlation.")
 
-    pre = str(d.get("pre_void_cc", "") or "").strip()
-    post = str(d.get("post_void_cc", "") or "").strip()
-    status = d.get("status")
-
-    if status == "over" and pre:
-        out.append(f"OVERDISTENDED URINARY BLADDER(PRE-VOID VOLUME={pre}CC).")
-    elif pre and not post:
-        out.append(f"URINARY BLADDER PRE-VOID VOLUME({pre}CC)")
-
-    if pre and post:
-        if _pvr_significant(d):
-            pvr_txt = "SIGNIFICANT POST VOID RESIDUE"
-            pct = _pvr_pct(d)
-            if pct is not None and pct >= 80.0:
-                pvr_txt += "(>80%)"
-            if prostate_line:
-                out.append(f"{pvr_txt} WITH {prostate_line.rstrip('.')}.")
-            else:
-                out.append(pvr_txt + ".")
-        elif _pvr_insignificant(d):
-            if prostate_line:
-                prostate_wo_dot = prostate_line.rstrip('.')
-                out.append(f"{prostate_wo_dot}, HOWEVER THE POST-VOID RESIDUE "
-                           f"IS INSIGNIFICANT.")
-            else:
-                out.append("INSIGNIFICANT POST-VOID RESIDUE.")
+    out.extend(pvr_lines)
     return out
-
 
 # ============================================================
 # PROSTATE
@@ -2945,10 +2963,10 @@ def _myometrium_body_clause(d):
                 seg(f" -- {qualifier}.", True)]
 
 
-def _cervix_body_fragments(d):
-    bulky = bool(d.get("cervix_bulky"))
-    elongated = bool(d.get("cervix_elongated"))
-    nab = d.get("nabothian", "none")
+def _cervix_body_fragments(d, rpoc_mode=False):
+    bulky = bool(d.get("cervix_bulky")) and not rpoc_mode
+    elongated = bool(d.get("cervix_elongated")) and not rpoc_mode
+    nab = d.get("nabothian", "none") if not rpoc_mode else "none"
     coll = d.get("cervix_collection", "none")
 
     nab_txt = None
@@ -2968,36 +2986,41 @@ def _cervix_body_fragments(d):
         extras = [t for t in (nab_txt, coll_txt) if t]
         head = f"Cervix appears bulky{size_txt}"
         if not extras:
-            out.append(seg(f"{head}."))
+            out.append(seg(f"{head}.", True))
         elif len(extras) == 1:
-            out.append(seg(f"{head} with {extras[0]}."))
+            out.append(seg(f"{head} with {extras[0]}.", True))
         elif len(extras) == 2:
-            out.append(seg(f"{head} with {extras[0]} & {extras[1]}."))
+            out.append(seg(f"{head} with {extras[0]} & {extras[1]}.", True))
         else:
             head_line = f"{head} with {extras[0]} & {extras[1]}."
             tail_line = "Also " + " & ".join(extras[2:]) + " seen."
-            out.append(seg(head_line))
-            out.append(seg(" " + tail_line))
+            out.append(seg(head_line, True))
+            out.append(seg(" " + tail_line, True))
     else:
         if elongated:
             out.append(seg("Cervix appears elongated."))
-        extras = [t for t in (nab_txt, coll_txt) if t]
-        if extras:
-            if len(extras) == 1:
-                out.append(seg(f"{extras[0].capitalize()} seen in the cervix."))
-            elif len(extras) == 2:
+
+        # Build display phrases: nabothian needs "seen in the cervix" suffix,
+        # collection already ends with "in the cervical canal".
+        nab_phrase = f"{nab_txt} seen in the cervix" if nab_txt else None
+        coll_phrase = coll_txt  # already self-contained
+
+        extras_disp = [p for p in (nab_phrase, coll_phrase) if p]
+        if extras_disp:
+            if len(extras_disp) == 1:
+                out.append(seg(f"{extras_disp[0].capitalize()}.", True))
+            elif len(extras_disp) == 2:
                 out.append(seg(
-                    f"{extras[0].capitalize()} seen in the cervix with "
-                    f"{extras[1]}."))
+                    f"{extras_disp[0].capitalize()} with "
+                    f"{extras_disp[1]}.", True))
             else:
-                head_line = (f"{extras[0].capitalize()} seen in the cervix with "
-                             f"{extras[1]} & {extras[2]}.")
-                tail_line = "Also " + " & ".join(extras[3:]) + " seen."
-                out.append(seg(head_line))
-                out.append(seg(" " + tail_line))
+                head_line = (f"{extras_disp[0].capitalize()} with "
+                             f"{extras_disp[1]} & {extras_disp[2]}.")
+                tail_line = "Also " + " & ".join(extras_disp[3:]) + " seen."
+                out.append(seg(head_line, True))
+                out.append(seg(" " + tail_line, True))
 
     return out
-
 
 def _endometrial_body_segments(d):
     endo_mm = d.get("endometrial_thickness_mm", "")
@@ -3139,34 +3162,42 @@ def uterus_sentence(d, pediatric=False, age_years=None):
         else:
             s += [seg(" is "), seg(orientation, True)]
 
-        if size_word:
-            s += [seg(" and "), seg(f"{size_word} in size", True)]
-            if size:
-                s.append(size_seg(f"({size}mm)"))
-            if globular:
-                s.append(seg(" with globular shape."))
-            else:
-                s.append(seg(" with normal shape."))
-        else:
-            if size:
-                s.append(seg(f", normal in size({size}mm)"))
-            else:
-                s.append(seg(", normal in size"))
-            if globular:
-                s.append(seg(" with globular shape."))
-            else:
-                s.append(seg(" & shape."))
-
         if low_lying:
+            # Low-lying path drops "shape" entirely and joins size with "&".
+            if size_word:
+                s += [seg(" & "), seg(f"{size_word} in size", True)]
+                if size:
+                    s.append(size_seg(f"({size}mm)"))
+            else:
+                if size:
+                    s.append(seg(f" & normal in size({size}mm)"))
+                else:
+                    s.append(seg(" & normal in size"))
             cervix_state = d.get("cervix_visualized", "partially")
             cervix_word = ("partially visualized" if cervix_state == "partially"
                            else "not visualized")
-            grade_word = "GRADE-II" if cervix_state == "partially" else "GRADE-II/III"
-            s += [seg(" and "),
+            s += [seg("; appears "),
                   seg("low-lying with positive transverse uterus sign, cervix is "
-                      f"{cervix_word} in the retro-vesical space on TAS - likely "
-                      f"{grade_word.lower()} uterine prolapse", True)]
-            s.append(seg(" with normal shape."))
+                      f"{cervix_word} in the retro-vesical space on TAS", True),
+                  seg(".")]
+        else:
+            if size_word:
+                s += [seg(" and "), seg(f"{size_word} in size", True)]
+                if size:
+                    s.append(size_seg(f"({size}mm)"))
+                if globular:
+                    s.append(seg(" with globular shape."))
+                else:
+                    s.append(seg(" with normal shape."))
+            else:
+                if size:
+                    s.append(seg(f", normal in size({size}mm)"))
+                else:
+                    s.append(seg(", normal in size"))
+                if globular:
+                    s.append(seg(" with globular shape."))
+                else:
+                    s.append(seg(" & shape."))
 
     if gravid:
         if d.get("fibroid"):
@@ -3227,11 +3258,10 @@ def uterus_sentence(d, pediatric=False, age_years=None):
                       f"the fundal endometrium showing color flow & aliasing on "
                       f"CD study.", True)]
 
-    if not d.get("rpoc"):
-        cervix_frags = _cervix_body_fragments(d)
-        if cervix_frags:
-            s += [seg(" ")]
-            s.extend(cervix_frags)
+    cervix_frags = _cervix_body_fragments(d, rpoc_mode=bool(d.get("rpoc")))
+    if cervix_frags:
+        s += [seg(" ")]
+        s.extend(cervix_frags)
 
     return s
 
@@ -3332,11 +3362,10 @@ def _adenomyomas_impression_fragment(d):
 
 
 def _cervix_impression_line(d):
-    if d.get("rpoc"):
-        return None
-    bulky = bool(d.get("cervix_bulky"))
-    elongated = bool(d.get("cervix_elongated"))
-    nab = d.get("nabothian", "none")
+    rpoc_mode = bool(d.get("rpoc"))
+    bulky = bool(d.get("cervix_bulky")) and not rpoc_mode
+    elongated = bool(d.get("cervix_elongated")) and not rpoc_mode
+    nab = d.get("nabothian", "none") if not rpoc_mode else "none"
     coll = d.get("cervix_collection", "none")
     cervicitis_radio = bool(d.get("cervicitis_suspected"))
 
@@ -3362,6 +3391,23 @@ def _cervix_impression_line(d):
         if cervicitis_radio and extras:
             line = line.rstrip(".") + " - ?CERVICITIS. Adv - PAP Smear."
         return line
+
+    bulky_size = d.get("cervix_bulky_size_mm", "")
+    size_txt = f"({bulky_size}MM)" if bulky_size else ""
+    head = f"BULKY CERVIX{size_txt}"
+    if not extras:
+        line = head + "."
+    elif len(extras) == 1:
+        line = f"{head} WITH {extras[0]}."
+    elif len(extras) == 2:
+        line = f"{head} WITH {extras[0]} & {extras[1]}."
+    else:
+        line = f"{head} WITH {extras[0]} & {extras[1]}."
+        tail = "ALSO " + " & ".join(extras[2:]) + " SEEN."
+        line = line + " " + tail
+
+    line = line.rstrip(".") + " - ?CERVICITIS. Adv - PAP Smear."
+    return line
 
     bulky_size = d.get("cervix_bulky_size_mm", "")
     size_txt = f"({bulky_size}MM)" if bulky_size else ""
@@ -3545,11 +3591,11 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
     _pm = (d.get("status") == "post_menopausal")
 
     rpoc_line = _rpoc_impression_line(d)
-    cervix_line = _cervix_impression_line(d) if not rpoc_line else None
+    cervix_line = _cervix_impression_line(d)
     pre_lines = []
     if rpoc_line:
         pre_lines.append(rpoc_line)
-    elif cervix_line:
+    if cervix_line:
         pre_lines.append(cervix_line)
 
     if d.get("gravid"):
@@ -5902,6 +5948,38 @@ def generate_impression(d, sex, age):
     elif cbd_ihbr == "dilated":
         _ihbr_frag_up = " WITH DILATATION OF IHBR"
 
+    # Distal smooth tapering — independent impression bullet.
+    if d["cbd"].get("distal_taper"):
+        _taper_status = d["cbd"].get("status", "normal")
+        _taper_size = str(d["cbd"].get("size_mm", "") or "").strip()
+        _taper_dist = str(d["cbd"].get("distal_taper_mm", "") or "").strip()
+
+        if _taper_status == "proximal":
+            if _taper_size:
+                _head = f"PROXIMALLY DILATED CBD(UPTO {_taper_size}MM)"
+            else:
+                _head = "PROXIMALLY DILATED CBD"
+        elif _taper_status == "dilated":
+            if _taper_size:
+                _head = f"DILATED CBD(UPTO {_taper_size}MM)"
+            else:
+                _head = "DILATED CBD"
+        else:  # normal
+            if _taper_size:
+                _head = f"NORMAL CALIBER CBD({_taper_size}MM)"
+            else:
+                _head = "NORMAL CALIBER CBD"
+
+        if _taper_dist:
+            _taper_paren = f"(DISTAL CBD= {_taper_dist} MM)"
+        else:
+            _taper_paren = ""
+
+        lines.append(
+            f"{_head} WITH DISTAL SMOOTH TAPERING{_taper_paren}. "
+            f"NO INTRA-LUMINAL CALCULUS IS SEEN."
+        )
+
     _wes_on = bool(gb.get("wes_sign", False))
     if _wes_on:
         lines.append("CHOLELITHIASIS WITH POSITIVE WALL-ECHO-SHADOW COMPLEX "
@@ -7676,6 +7754,17 @@ with col_find:
                                                     "mid_distal": "Mid/Distal"}[x],
                              key="cbd_calc_location")
                     wget("cbd_calc_location", "distal")
+
+                st.checkbox("Distal smooth tapering",
+                            key="cbd_distal_taper",
+                            value=bool(_seed("cbd_distal_taper", False)))
+                wget("cbd_distal_taper", False)
+                if ss("cbd_distal_taper", False):
+                    st.text_input("Distal CBD (mm)",
+                                  key="cbd_distal_taper_mm",
+                                  value=_seed("cbd_distal_taper_mm", ""))
+                    wget("cbd_distal_taper_mm", "")
+
                 if ss("cbd_status", "normal") in ("proximal", "dilated") \
                         or ss("cbd_calc", False):
                     _ci_opts = ["normal", "proximal", "dilated"]
@@ -9790,6 +9879,8 @@ if _cbd_status_val == "not_visualized":
         "calculi_size_mm": "",
         "calculi_location": "distal",
         "ihbr": "normal",
+        "distal_taper": False,
+        "distal_taper_mm": "",
     })
 else:
     data["cbd"].update({
@@ -9800,6 +9891,8 @@ else:
         "calculi_size_mm": ss("cbd_calc_size", ""),
         "calculi_location": ss("cbd_calc_location", "distal"),
         "ihbr": ss("cbd_ihbr", "normal"),
+        "distal_taper": bool(ss("cbd_distal_taper", False)),
+        "distal_taper_mm": ss("cbd_distal_taper_mm", ""),
     })
 _pn_vis_val = ss("pn_visibility", "visualized")
 if _pn_vis_val == "not_visualized":
