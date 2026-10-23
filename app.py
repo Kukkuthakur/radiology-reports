@@ -2482,6 +2482,10 @@ def urinary_bladder_pvr_segments(d):
             s.append(seg(" (Insignificant)", True, False, True))
     else:
         s.append(seg("\nPOST-VOID RESIDUE - ", True))
+        s.append(seg(
+            " Fair assessment of Post-Void residue is not possible since "
+            "Pre-Void volume is too low.",
+            True, False, True))
     return s
 
 def _pvr_pct(d):
@@ -2529,6 +2533,39 @@ def _ub_impression_lines(d, prostate_line=None):
     if extensive:
         sed_bits.append("EXTENSIVE SEDIMENTATION")
 
+    pre = str(d.get("pre_void_cc", "") or "").strip()
+    post = str(d.get("post_void_cc", "") or "").strip()
+    status = d.get("status")
+
+    # --- PVR bullets: computed up-front so they fire unconditionally,
+    #     regardless of wall-thickening or sedimentation early branches. ---
+    pvr_lines = []
+    if status == "over" and pre:
+        pvr_lines.append(
+            f"OVERDISTENDED URINARY BLADDER(PRE-VOID VOLUME={pre}CC).")
+    elif pre and not post:
+        pvr_lines.append(
+            "POST-VOID RESIDUE COULD NOT BE ASSESSED FAIRLY SINCE "
+            "PRE-VOID VOLUME IS TOO LOW AT THE TIME OF SCAN.")
+
+    if pre and post:
+        if _pvr_significant(d):
+            pvr_txt = "SIGNIFICANT POST VOID RESIDUE"
+            pct = _pvr_pct(d)
+            if pct is not None and pct >= 80.0:
+                pvr_txt += "(>80%)"
+            if prostate_line:
+                pvr_lines.append(f"{pvr_txt} WITH {prostate_line.rstrip('.')}.")
+            else:
+                pvr_lines.append(pvr_txt + ".")
+        elif _pvr_insignificant(d):
+            if prostate_line:
+                prostate_wo_dot = prostate_line.rstrip('.')
+                pvr_lines.append(f"{prostate_wo_dot}, HOWEVER THE POST-VOID "
+                                 f"RESIDUE IS INSIGNIFICANT.")
+            else:
+                pvr_lines.append("INSIGNIFICANT POST-VOID RESIDUE.")
+
     if wall:
         try:
             w = float(d["wall_mm"])
@@ -2553,41 +2590,17 @@ def _ub_impression_lines(d, prostate_line=None):
             body += " WITH " + " & ".join(sed_bits) + " IN THE UB LUMEN"
         body += f" - {tail}."
         out.append(body + " Adv- Urine R/M Correlation.")
+        out.extend(pvr_lines)
         return out
+
     if sed_bits:
         sed_line = (" ".join(sed_bits) + " IN THE UB LUMEN")
         if uti:
             sed_line += " - ?UTI"
         out.append(sed_line + ". Adv- Urine R/M Correlation.")
 
-    pre = str(d.get("pre_void_cc", "") or "").strip()
-    post = str(d.get("post_void_cc", "") or "").strip()
-    status = d.get("status")
-
-    if status == "over" and pre:
-        out.append(f"OVERDISTENDED URINARY BLADDER(PRE-VOID VOLUME={pre}CC).")
-    elif pre and not post:
-        out.append(f"URINARY BLADDER PRE-VOID VOLUME({pre}CC)")
-
-    if pre and post:
-        if _pvr_significant(d):
-            pvr_txt = "SIGNIFICANT POST VOID RESIDUE"
-            pct = _pvr_pct(d)
-            if pct is not None and pct >= 80.0:
-                pvr_txt += "(>80%)"
-            if prostate_line:
-                out.append(f"{pvr_txt} WITH {prostate_line.rstrip('.')}.")
-            else:
-                out.append(pvr_txt + ".")
-        elif _pvr_insignificant(d):
-            if prostate_line:
-                prostate_wo_dot = prostate_line.rstrip('.')
-                out.append(f"{prostate_wo_dot}, HOWEVER THE POST-VOID RESIDUE "
-                           f"IS INSIGNIFICANT.")
-            else:
-                out.append("INSIGNIFICANT POST-VOID RESIDUE.")
+    out.extend(pvr_lines)
     return out
-
 
 # ============================================================
 # PROSTATE
