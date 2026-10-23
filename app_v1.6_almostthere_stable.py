@@ -946,6 +946,8 @@ def _new_kidney_side():
         "recently_passed_calculus_suspected": False,
         "nephrocalcinosis": "none", "contralateral_normal_clause": False,
         "is_small": False,
+        "peri_nephric_fat": False,
+        "peri_nephric_fluid": False,
     }
 
 
@@ -1143,6 +1145,8 @@ def new_report(sex="F"):
             "portal_vein_mm": "",
             "accessory_spleen": False, "accessory_size_mm": "",
             "accessory_location": "hilum",
+            "peri_splenic_fat": False,
+            "peri_splenic_fluid": False,
         },
         "kidneys": {
             "right": _new_kidney_side(), "left": _new_kidney_side(),
@@ -1814,6 +1818,17 @@ def spleen_sentence(d):
         size_phrase = f"({asize}mm) " if asize else ""
         s += [seg(" "), seg(f"An accessory spleen {size_phrase}is seen "
                              f"{loc_phrase}.", True)]
+
+    _fat = bool(d.get("peri_splenic_fat", False))
+    _fluid = bool(d.get("peri_splenic_fluid", False))
+    if _fat or _fluid:
+        if _fat and _fluid:
+            _peri_txt = "Mild peri-splenic fat stranding and free fluid seen."
+        elif _fat:
+            _peri_txt = "Mild peri-splenic fat stranding seen."
+        else:
+            _peri_txt = "Mild peri-splenic free fluid seen."
+        s += [seg(" "), seg(_peri_txt, True)]
     return s
 
 
@@ -1869,6 +1884,8 @@ def _kidney_side_has_other_finding(k):
     if k["hydronephrosis"] != "none":
         return True
     if k["nephrocalcinosis"] != "none":
+        return True
+    if k.get("peri_nephric_fat", False) or k.get("peri_nephric_fluid", False):
         return True
     return False
 
@@ -2115,6 +2132,22 @@ def _nephrocalcinosis_body(k, side_low):
                           f"{side_low} renal cortex", True), seg(".", True)]
 
 
+def _peri_nephric_body(k, side_low):
+    fat = bool(k.get("peri_nephric_fat", False))
+    fluid = bool(k.get("peri_nephric_fluid", False))
+    if not fat and not fluid:
+        return []
+    side_phrase = f"{side_low} kidney"
+    if fat and fluid:
+        text = (f"Mild peri-nephric fat stranding and free fluid seen around "
+                f"the {side_phrase}.")
+    elif fat:
+        text = f"Mild peri-nephric fat stranding seen around the {side_phrase}."
+    else:
+        text = f"Mild peri-nephric free fluid seen around the {side_phrase}."
+    return [seg(" "), seg(text, True)]
+
+
 def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
     s = []
     r, l = d["right"], d["left"]
@@ -2197,6 +2230,7 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
             s.extend(_nephrocalcinosis_body(side, side_key))
             if side["ureter_calculus"]["count"] != "none":
                 s.extend(_ureter_calculus_body(side, side_key))
+            s.extend(_peri_nephric_body(side, side_key))
         _neg = _kidney_negative_sentence(d)
         if _neg:
             s.extend(_neg)
@@ -2274,6 +2308,7 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
             s.extend(_nephrocalcinosis_body(side, side_key))
             if side["ureter_calculus"]["count"] != "none":
                 s.extend(_ureter_calculus_body(side, side_key))
+            s.extend(_peri_nephric_body(side, side_key))
         _neg = _kidney_negative_sentence(d)
         if _neg:
             s.extend(_neg)
@@ -2312,6 +2347,7 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
             s.extend(_renal_calculi_body(side, side_key))
             s.extend(_cyst_body(side, side_key))
             s.extend(_nephrocalcinosis_body(side, side_key))
+            s.extend(_peri_nephric_body(side, side_key))
         _neg = _kidney_negative_sentence(d)
         if _neg:
             s.extend(_neg)
@@ -2324,6 +2360,7 @@ def kidneys_sentence(d, ub_status="adequately_distended", age_text=None):
         s.extend(_nephrocalcinosis_body(side, side_key))
         if side["ureter_calculus"]["count"] != "none":
             s.extend(_ureter_calculus_body(side, side_key))
+        s.extend(_peri_nephric_body(side, side_key))
     _neg = _kidney_negative_sentence(d)
     if _neg:
         s.extend(_neg)
@@ -5122,9 +5159,9 @@ def _spleen_impression_line(spleen):
             tail = "."
 
         if has_foci:
-            return [f"{spleno_term} WITH {pv_clause} & {focal_clause}{tail}"]
+            out.append(f"{spleno_term} WITH {pv_clause} & {focal_clause}{tail}")
         else:
-            return [f"{spleno_term} WITH {pv_clause}{tail}"]
+            out.append(f"{spleno_term} WITH {pv_clause}{tail}")
     else:
         if spleen_focal == "hyperechoic_foci":
             out.append("MULTIPLE HYPERECHOIC FOCI SCATTERED ACROSS SPLENIC "
@@ -5138,6 +5175,18 @@ def _spleen_impression_line(spleen):
                        if spleen_count == "multiple"
                        else "FEW HYPOECHOIC FOCI SCATTERED ACROSS SPLENIC "
                             "PARENCHYMA - ?OLD GRANULOMATOUS ETIOLOGY.")
+
+    _fat = bool(spleen.get("peri_splenic_fat", False))
+    _fluid = bool(spleen.get("peri_splenic_fluid", False))
+    if _fat or _fluid:
+        if _fat and _fluid:
+            _peri = "MILD PERI-SPLENIC FAT STRANDING & FREE FLUID"
+        elif _fat:
+            _peri = "MILD PERI-SPLENIC FAT STRANDING"
+        else:
+            _peri = "MILD PERI-SPLENIC FREE FLUID"
+        out.append(f"{_peri} - ?SUSPICIOUS. Adv- S.Amylase/Lipase Correlation.")
+
     return out
 
 
@@ -6186,11 +6235,48 @@ def generate_impression(d, sex, age):
                                "AT THE TIME OF SCAN.")
     # Assemble all kidney findings into ONE bullet, then append KFT advice
     # once at the very end — never mid-line.
+    _r_peri_fat = bool(r.get("peri_nephric_fat", False))
+    _r_peri_fluid = bool(r.get("peri_nephric_fluid", False))
+    _l_peri_fat = bool(l.get("peri_nephric_fat", False))
+    _l_peri_fluid = bool(l.get("peri_nephric_fluid", False))
+    _r_peri = r_present and (_r_peri_fat or _r_peri_fluid)
+    _l_peri = l_present and (_l_peri_fat or _l_peri_fluid)
+
+    def _peri_phrase(fat, fluid):
+        if fat and fluid:
+            return "FAT STRANDING & FREE FLUID"
+        if fat:
+            return "FAT STRANDING"
+        return "FREE FLUID"
+
+    _peri_frags = []
+    if _r_peri and _l_peri:
+        if (_r_peri_fat, _r_peri_fluid) == (_l_peri_fat, _l_peri_fluid):
+            _peri_frags.append(
+                f"MILD BILATERAL PERI-NEPHRIC "
+                f"{_peri_phrase(_r_peri_fat, _r_peri_fluid)}")
+        else:
+            _peri_frags.append(
+                f"MILD PERI-NEPHRIC {_peri_phrase(_r_peri_fat, _r_peri_fluid)} "
+                f"AROUND THE RIGHT KIDNEY & "
+                f"{_peri_phrase(_l_peri_fat, _l_peri_fluid)} AROUND THE LEFT "
+                f"KIDNEY")
+    elif _r_peri:
+        _peri_frags.append(
+            f"MILD PERI-NEPHRIC {_peri_phrase(_r_peri_fat, _r_peri_fluid)} "
+            f"AROUND THE RIGHT KIDNEY")
+    elif _l_peri:
+        _peri_frags.append(
+            f"MILD PERI-NEPHRIC {_peri_phrase(_l_peri_fat, _l_peri_fluid)} "
+            f"AROUND THE LEFT KIDNEY")
+
     _kidney_findings = []
     if renal_lines:
         _kidney_findings.extend(renal_lines)
     if cyst_clauses:
         _kidney_findings.extend(c + "." for c in cyst_clauses)
+    if _peri_frags:
+        _kidney_findings.extend(f + "." for f in _peri_frags)
 
     if _kidney_findings:
         _kidney_bullet = " ".join(_kidney_findings)
@@ -6207,8 +6293,17 @@ def generate_impression(d, sex, age):
 
     prostate_line = _prostate_impression_line(pr)
     ub_lines = _ub_impression_lines(ub, prostate_line=prostate_line)
+    _prostate_consumed = False
+    if prostate_line:
+        _prostate_wo_dot = prostate_line.rstrip(".")
+        for _ln in ub_lines:
+            if _prostate_wo_dot in _ln:
+                _prostate_consumed = True
+                break
     for ln in ub_lines:
         lines.append(ln)
+    if prostate_line and not _prostate_consumed:
+        lines.append(prostate_line)
 
     if sex == "F":
         uterus_lines = _uterus_impression_lines(d["uterus"], age_years,
@@ -7839,6 +7934,19 @@ with col_find:
                              key="sp_acc_loc")
                     wget("sp_acc_loc", "hilum")
 
+            st.markdown("**Peri-splenic findings**")
+            c_spf, c_spfl = st.columns(2)
+            with c_spf:
+                st.checkbox("Mild peri-splenic fat stranding",
+                            key="sp_peri_fat",
+                            value=bool(_seed("sp_peri_fat", False)))
+                wget("sp_peri_fat", False)
+            with c_spfl:
+                st.checkbox("Mild peri-splenic free fluid",
+                            key="sp_peri_fluid",
+                            value=bool(_seed("sp_peri_fluid", False)))
+                wget("sp_peri_fluid", False)
+
     # ------- KIDNEYS -------
     kd_open = organ_button("KIDNEYS", "KIDNEYS")
     if kd_open:
@@ -8143,6 +8251,21 @@ with col_find:
                                 value=bool(_seed(
                                     f"kd_{side[0]}_uc_not_traced", False)))
                             wget(f"kd_{side[0]}_uc_not_traced", False)
+
+                    st.markdown("**Peri-nephric findings**")
+                    c_pn_fat, c_pn_fluid = st.columns(2)
+                    with c_pn_fat:
+                        st.checkbox("Mild peri-nephric fat stranding",
+                                    key=f"kd_{side[0]}_peri_fat",
+                                    value=bool(_seed(
+                                        f"kd_{side[0]}_peri_fat", False)))
+                        wget(f"kd_{side[0]}_peri_fat", False)
+                    with c_pn_fluid:
+                        st.checkbox("Mild peri-nephric free fluid",
+                                    key=f"kd_{side[0]}_peri_fluid",
+                                    value=bool(_seed(
+                                        f"kd_{side[0]}_peri_fluid", False)))
+                        wget(f"kd_{side[0]}_peri_fluid", False)
 
                     st.checkbox(
                         f"Contralateral "
@@ -9716,6 +9839,8 @@ data["spleen"].update({
     "accessory_spleen": bool(ss("sp_acc", False)),
     "accessory_size_mm": ss("sp_acc_size", ""),
     "accessory_location": ss("sp_acc_loc", "hilum"),
+    "peri_splenic_fat": bool(ss("sp_peri_fat", False)),
+    "peri_splenic_fluid": bool(ss("sp_peri_fluid", False)),
 })
 
 for side in ("right", "left"):
@@ -9802,6 +9927,8 @@ for side in ("right", "left"):
             "hydronephrosis_no_obstructive_calculus": hydro_nocalc,
             "recently_passed_calculus_suspected": hydro_rpc,
             "contralateral_normal_clause": contra,
+            "peri_nephric_fat": bool(ss(f"kd_{sd}_peri_fat", False)),
+            "peri_nephric_fluid": bool(ss(f"kd_{sd}_peri_fluid", False)),
         })
     else:
         data["kidneys"][side].update({
@@ -10330,30 +10457,54 @@ with col_prev:
     st.subheader("✏️ Impression (editable)")
     st.caption("Edit any line. Auto-updates with findings unless you type here.")
     auto_imp_str = "\n".join(auto_impression)
-
-    if "_auto_imp_hash" not in st.session_state:
-        st.session_state["impression_box"] = auto_imp_str
-        st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
-        st.session_state["_last_set_content"] = auto_imp_str
-
     new_auto_hash = _h(auto_imp_str)
-    if new_auto_hash != st.session_state["_auto_imp_hash"]:
-        cur_widget = st.session_state.get("impression_box", "")
-        if cur_widget == st.session_state["_last_set_content"]:
-            st.session_state["impression_box"] = auto_imp_str
-            st.session_state["_last_set_content"] = auto_imp_str
-        st.session_state["_auto_imp_hash"] = new_auto_hash
 
-    edited_imp = st.text_area("Impression lines (one per line)",
-                              height=200, label_visibility="collapsed",
-                              key="impression_box")
+    # Version-keyed widget: bumping the version forces Streamlit to
+    # create a fresh text_area, which lets us seed it from auto without
+    # ever mutating an instantiated widget (avoids the
+    # StreamlitWidgetAlreadyInstantiatedError).
+
+    if "_imp_ver" not in st.session_state:
+        st.session_state["_imp_ver"] = 0
+    if "_imp_auto_hash" not in st.session_state:
+        st.session_state["_imp_auto_hash"] = new_auto_hash
+    if "_imp_widget_current" not in st.session_state:
+        # Track the last value we auto-seeded; user edits deviate from this.
+        st.session_state["_imp_widget_current"] = auto_imp_str
+
+    # Bump version only if auto changed AND user has not manually edited
+    # since the last auto-seed.
+    _user_text_key = f"impression_box_v{st.session_state['_imp_ver']}"
+    _user_text = st.session_state.get(_user_text_key, None)
+
+    _user_has_edited = (
+        _user_text is not None
+        and _user_text != st.session_state["_imp_widget_current"]
+    )
+
+    if (new_auto_hash != st.session_state["_imp_auto_hash"]
+            and not _user_has_edited):
+        st.session_state["_imp_ver"] += 1
+        st.session_state["_imp_auto_hash"] = new_auto_hash
+        st.session_state["_imp_widget_current"] = auto_imp_str
+        # widget key will change on the NEXT line, giving us a fresh box
+        _user_text_key = f"impression_box_v{st.session_state['_imp_ver']}"
+
+    # Seed the fresh widget's default (only applied if the key is absent).
+    if _user_text_key not in st.session_state:
+        st.session_state[_user_text_key] = auto_imp_str
+
+    edited_imp = st.text_area(
+        "Impression lines (one per line)",
+        height=200, label_visibility="collapsed",
+        key=_user_text_key,
+    )
 
     if st.button("↺ Reset to auto-generated impression", key="reset_imp_btn"):
-        st.session_state["impression_box"] = auto_imp_str
-        st.session_state["_last_set_content"] = auto_imp_str
-        st.session_state["_auto_imp_hash"] = _h(auto_imp_str)
+        st.session_state["_imp_ver"] += 1
+        st.session_state["_imp_auto_hash"] = new_auto_hash
+        st.session_state["_imp_widget_current"] = auto_imp_str
         st.rerun()
-
     st.markdown("---")
     c_a, c_b = st.columns(2)
     with c_a:
