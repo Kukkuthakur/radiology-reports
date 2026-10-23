@@ -1547,6 +1547,11 @@ def cbd_sentence(d):
         if ihbr == "normal":
             if status == "normal" and calculi:
                 s.append(seg(" However IHBR are normal in caliber."))
+            elif d.get("distal_taper"):
+                # taper clause already ended with "No intra-luminal calculus
+                # is seen." — drop the "However" so it reads continuously.
+                s.append(seg(" No significant dilatation of IHBR appreciated "
+                             "at the time of scan."))
             else:
                 s.append(seg(" However no significant dilatation of IHBR appreciated "
                              "at the time of scan."))
@@ -5943,6 +5948,38 @@ def generate_impression(d, sex, age):
     elif cbd_ihbr == "dilated":
         _ihbr_frag_up = " WITH DILATATION OF IHBR"
 
+    # Distal smooth tapering — independent impression bullet.
+    if d["cbd"].get("distal_taper"):
+        _taper_status = d["cbd"].get("status", "normal")
+        _taper_size = str(d["cbd"].get("size_mm", "") or "").strip()
+        _taper_dist = str(d["cbd"].get("distal_taper_mm", "") or "").strip()
+
+        if _taper_status == "proximal":
+            if _taper_size:
+                _head = f"PROXIMALLY DILATED CBD(UPTO {_taper_size}MM)"
+            else:
+                _head = "PROXIMALLY DILATED CBD"
+        elif _taper_status == "dilated":
+            if _taper_size:
+                _head = f"DILATED CBD(UPTO {_taper_size}MM)"
+            else:
+                _head = "DILATED CBD"
+        else:  # normal
+            if _taper_size:
+                _head = f"NORMAL CALIBER CBD({_taper_size}MM)"
+            else:
+                _head = "NORMAL CALIBER CBD"
+
+        if _taper_dist:
+            _taper_paren = f"(DISTAL CBD= {_taper_dist} MM)"
+        else:
+            _taper_paren = ""
+
+        lines.append(
+            f"{_head} WITH DISTAL SMOOTH TAPERING{_taper_paren}. "
+            f"NO INTRA-LUMINAL CALCULUS IS SEEN."
+        )
+
     _wes_on = bool(gb.get("wes_sign", False))
     if _wes_on:
         lines.append("CHOLELITHIASIS WITH POSITIVE WALL-ECHO-SHADOW COMPLEX "
@@ -7717,6 +7754,17 @@ with col_find:
                                                     "mid_distal": "Mid/Distal"}[x],
                              key="cbd_calc_location")
                     wget("cbd_calc_location", "distal")
+
+                st.checkbox("Distal smooth tapering",
+                            key="cbd_distal_taper",
+                            value=bool(_seed("cbd_distal_taper", False)))
+                wget("cbd_distal_taper", False)
+                if ss("cbd_distal_taper", False):
+                    st.text_input("Distal CBD (mm)",
+                                  key="cbd_distal_taper_mm",
+                                  value=_seed("cbd_distal_taper_mm", ""))
+                    wget("cbd_distal_taper_mm", "")
+
                 if ss("cbd_status", "normal") in ("proximal", "dilated") \
                         or ss("cbd_calc", False):
                     _ci_opts = ["normal", "proximal", "dilated"]
@@ -9831,6 +9879,8 @@ if _cbd_status_val == "not_visualized":
         "calculi_size_mm": "",
         "calculi_location": "distal",
         "ihbr": "normal",
+        "distal_taper": False,
+        "distal_taper_mm": "",
     })
 else:
     data["cbd"].update({
@@ -9841,6 +9891,8 @@ else:
         "calculi_size_mm": ss("cbd_calc_size", ""),
         "calculi_location": ss("cbd_calc_location", "distal"),
         "ihbr": ss("cbd_ihbr", "normal"),
+        "distal_taper": bool(ss("cbd_distal_taper", False)),
+        "distal_taper_mm": ss("cbd_distal_taper_mm", ""),
     })
 _pn_vis_val = ss("pn_visibility", "visualized")
 if _pn_vis_val == "not_visualized":
