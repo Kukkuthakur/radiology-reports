@@ -2994,20 +2994,26 @@ def _cervix_body_fragments(d, rpoc_mode=False):
     else:
         if elongated:
             out.append(seg("Cervix appears elongated."))
-        extras = [t for t in (nab_txt, coll_txt) if t]
-        if extras:
-            if len(extras) == 1:
-                out.append(seg(f"{extras[0].capitalize()} seen in the cervix."))
-            elif len(extras) == 2:
+
+        # Build display phrases: nabothian needs "seen in the cervix" suffix,
+        # collection already ends with "in the cervical canal".
+        nab_phrase = f"{nab_txt} seen in the cervix" if nab_txt else None
+        coll_phrase = coll_txt  # already self-contained
+
+        extras_disp = [p for p in (nab_phrase, coll_phrase) if p]
+        if extras_disp:
+            if len(extras_disp) == 1:
+                out.append(seg(f"{extras_disp[0].capitalize()}.", True))
+            elif len(extras_disp) == 2:
                 out.append(seg(
-                    f"{extras[0].capitalize()} seen in the cervix with "
-                    f"{extras[1]}."))
+                    f"{extras_disp[0].capitalize()} with "
+                    f"{extras_disp[1]}.", True))
             else:
-                head_line = (f"{extras[0].capitalize()} seen in the cervix with "
-                             f"{extras[1]} & {extras[2]}.")
-                tail_line = "Also " + " & ".join(extras[3:]) + " seen."
-                out.append(seg(head_line))
-                out.append(seg(" " + tail_line))
+                head_line = (f"{extras_disp[0].capitalize()} with "
+                             f"{extras_disp[1]} & {extras_disp[2]}.")
+                tail_line = "Also " + " & ".join(extras_disp[3:]) + " seen."
+                out.append(seg(head_line, True))
+                out.append(seg(" " + tail_line, True))
 
     return out
 
