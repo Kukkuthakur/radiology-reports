@@ -2939,8 +2939,15 @@ def _myometrium_body_clause(d):
     else:
         desc = _myometrium_descriptor_body(d)
 
+    # "homogenous" = normal → plain. Any heterogeneous variant → the whole
+    # myometrium sentence is rendered bold-italic.
+    _myo_abnormal = (desc != "homogenous")
+
+    def _b(txt):
+        return seg(txt, True) if _myo_abnormal else seg(txt)
+
     if not has_fibroid and not has_adenomyomas and not has_adenomyosis:
-        return [seg(f"Myometrium appears {desc} and no focal lesion is seen.")]
+        return [_b(f"Myometrium appears {desc} and no focal lesion is seen.")]
 
     if has_fibroid:
         fib_segs = _fibroid_body_fragment(d) or []
@@ -2952,19 +2959,22 @@ def _myometrium_body_clause(d):
                 _tail[-1] = (_txt.rstrip() + ".",
                              _t[1], _t[2],
                              _t[3] if len(_t) > 3 else None)
-        return [seg(f"Myometrium appears {desc} with ")] + _tail
+        return [_b(f"Myometrium appears {desc} with ")] + _tail
 
     if has_adenomyomas and not has_adenomyosis:
         aden_text = _adenomyomas_body_fragment(d) or ""
-        return [seg(f"Myometrium appears {desc} with "), seg(aden_text, True)]
+        return [_b(f"Myometrium appears {desc} with "), seg(aden_text, True)]
 
     aden_frags = _adenomyosis_features_body(d)
     conf = _adenomyosis_confidence(d)
     qualifier = "likely adenomyosis" if conf == "likely" else "?early adenomyosis"
     if aden_frags:
         body = " ".join(aden_frags)
-        out = [seg(f"Myometrium appears {desc} with "), seg(body, True),
-               seg(f" -- {qualifier}.", True)]
+        return [_b(f"Myometrium appears {desc} with "), seg(body, True),
+                seg(f" -- {qualifier}.", True)]
+    else:
+        return [_b(f"Myometrium appears {desc} and no focal lesion is seen."),
+                seg(f" -- {qualifier}.", True)]
         return out
     else:
         return [seg(f"Myometrium appears {desc} and no focal lesion is seen."),
@@ -3241,9 +3251,9 @@ def uterus_sentence(d, pediatric=False, age_years=None):
         s.append(seg(" No collection seen in the endometrial canal."))
     elif coll in ("mild", "moderate"):
         if het:
-            s.append(seg(" " + ENDOMETRIAL_COLLECTION_HET[coll]))
+            s.append(seg(" " + ENDOMETRIAL_COLLECTION_HET[coll], True))
         else:
-            s.append(seg(" " + ENDOMETRIAL_COLLECTION_LABELS[coll]))
+            s.append(seg(" " + ENDOMETRIAL_COLLECTION_LABELS[coll], True))
 
     if d.get("rpoc"):
         size_txt = d.get("rpoc_size", "")
