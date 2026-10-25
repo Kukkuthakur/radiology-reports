@@ -3632,6 +3632,13 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
             head = (f"GRAVID UTERUS (SINGLE & ALIVE: {gravid_type}={length_v} MM; "
                     f"GA={wk} WEEKS {dy} DAYS)")
             lines.append(join_findings(head, findings))
+        _endo_coll_val = d.get("endometrial_collection", "none")
+        if _endo_coll_val in ("mild", "moderate"):
+            _endo_het = bool(d.get("endometrial_collection_het", False))
+            if _endo_het:
+                lines.append(ENDOMETRIAL_COLLECTION_HET_IMPRESSION[_endo_coll_val])
+            else:
+                lines.append(ENDOMETRIAL_COLLECTION_IMPRESSION[_endo_coll_val])
         return pre_lines + lines
 
     if d.get("low_lying"):
@@ -3668,6 +3675,13 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
             if cl:
                 findings.append(cl.rstrip("."))
         lines.append(join_findings(primary, findings))
+        _endo_coll_val = d.get("endometrial_collection", "none")
+        if _endo_coll_val in ("mild", "moderate"):
+            _endo_het = bool(d.get("endometrial_collection_het", False))
+            if _endo_het:
+                lines.append(ENDOMETRIAL_COLLECTION_HET_IMPRESSION[_endo_coll_val])
+            else:
+                lines.append(ENDOMETRIAL_COLLECTION_IMPRESSION[_endo_coll_val])
         return pre_lines + lines
     if _pm:
         # Skip the size-based uterus line; jump straight to findings.
@@ -3697,6 +3711,13 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
             _endo_line = _endometrial_impression_pathways(d, ovaries)
             if _endo_line:
                 lines.append(_endo_line)
+        _endo_coll_val = d.get("endometrial_collection", "none")
+        if _endo_coll_val in ("mild", "moderate"):
+            _endo_het = bool(d.get("endometrial_collection_het", False))
+            if _endo_het:
+                lines.append(ENDOMETRIAL_COLLECTION_HET_IMPRESSION[_endo_coll_val])
+            else:
+                lines.append(ENDOMETRIAL_COLLECTION_IMPRESSION[_endo_coll_val])
         return pre_lines + lines
 
     cls = _uterus_size_class(d)
@@ -3768,6 +3789,17 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
         endo_line = _endometrial_impression_pathways(d, ovaries)
         if endo_line:
             lines.append(endo_line)
+
+    # ── Endometrial collection ── fires independently of endometrial
+    #    thickness. Uses the *_HET variant when "Heterogeneous collection"
+    #    is ticked, otherwise the plain *_IMPRESSION variant.
+    _endo_coll_val = d.get("endometrial_collection", "none")
+    if _endo_coll_val in ("mild", "moderate"):
+        _endo_het = bool(d.get("endometrial_collection_het", False))
+        if _endo_het:
+            lines.append(ENDOMETRIAL_COLLECTION_HET_IMPRESSION[_endo_coll_val])
+        else:
+            lines.append(ENDOMETRIAL_COLLECTION_IMPRESSION[_endo_coll_val])
 
     if d.get("neg_sol"):
         irr = bool(d.get("neg_sol_irregular"))
