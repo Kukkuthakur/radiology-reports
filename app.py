@@ -2939,15 +2939,18 @@ def _myometrium_body_clause(d):
     else:
         desc = _myometrium_descriptor_body(d)
 
-    # "homogenous" = normal → plain. Any heterogeneous variant → the whole
-    # myometrium sentence is rendered bold-italic.
+    # "homogenous" = normal → plain. Any heterogeneous variant → only the
+    # phrase "Myometrium appears <desc>" is rendered bold-italic; the rest
+    # of the sentence stays plain.
     _myo_abnormal = (desc != "homogenous")
 
-    def _b(txt):
-        return seg(txt, True) if _myo_abnormal else seg(txt)
+    def _head():
+        """Bold-italic 'Myometrium appears <desc>'; plain when homogenous."""
+        return seg(f"Myometrium appears {desc}", True) if _myo_abnormal \
+            else seg(f"Myometrium appears {desc}")
 
     if not has_fibroid and not has_adenomyomas and not has_adenomyosis:
-        return [_b(f"Myometrium appears {desc} and no focal lesion is seen.")]
+        return [_head(), seg(" and no focal lesion is seen.")]
 
     if has_fibroid:
         fib_segs = _fibroid_body_fragment(d) or []
@@ -2959,21 +2962,21 @@ def _myometrium_body_clause(d):
                 _tail[-1] = (_txt.rstrip() + ".",
                              _t[1], _t[2],
                              _t[3] if len(_t) > 3 else None)
-        return [_b(f"Myometrium appears {desc} with ")] + _tail
+        return [_head(), seg(" with ")] + _tail
 
     if has_adenomyomas and not has_adenomyosis:
         aden_text = _adenomyomas_body_fragment(d) or ""
-        return [_b(f"Myometrium appears {desc} with "), seg(aden_text, True)]
+        return [_head(), seg(" with "), seg(aden_text, True)]
 
     aden_frags = _adenomyosis_features_body(d)
     conf = _adenomyosis_confidence(d)
     qualifier = "likely adenomyosis" if conf == "likely" else "?early adenomyosis"
     if aden_frags:
         body = " ".join(aden_frags)
-        return [_b(f"Myometrium appears {desc} with "), seg(body, True),
+        return [_head(), seg(" with "), seg(body, True),
                 seg(f" -- {qualifier}.", True)]
     else:
-        return [_b(f"Myometrium appears {desc} and no focal lesion is seen."),
+        return [_head(), seg(" and no focal lesion is seen."),
                 seg(f" -- {qualifier}.", True)]
 
 def _cervix_body_fragments(d, rpoc_mode=False):
