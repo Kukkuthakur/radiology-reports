@@ -6084,7 +6084,7 @@ def generate_impression(d, sex, age):
                 lines.append("CHOLELITHIASIS WITH ?CHRONIC CHOLECYSTITIS.")
             elif gb_has_calculi and (gb_wall_thickened or gb_peri_fluid):
                 lines.append("CHOLELITHIASIS WITH ?ACUTE CHOLECYSTITIS.")
-            elif gb_has_calculi:
+            elif gb_has_calculi and not gb_comet_tail:
                 lines.append("CHOLELITHIASIS WITH NO APPRECIABLE PERICHOLECYSTIC "
                              "FLUID OR GB WALL THICKENING.")
             elif gb_wall_thickened and gb_peri_fluid:
