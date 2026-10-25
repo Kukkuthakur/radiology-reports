@@ -1533,6 +1533,14 @@ def cbd_sentence(d):
         if size:
             s.append(seg(f" upto {size}mm", True))
 
+    # Distal smooth tapering modifier — emitted between size and calculus.
+    if d.get("distal_taper"):
+        taper_mm = str(d.get("distal_taper_mm", "") or "").strip()
+        taper_paren = f"(Distal CBD= {taper_mm} mm)" if taper_mm else ""
+        s.append(seg(" However reveals "))
+        s.append(seg(f"distal smooth tapering{taper_paren}", True))
+        s.append(seg(". No intra-luminal calculus is seen"))
+
     if calculi and calculi_size:
         if calculi_count == "single":
             s.append(seg(f", with suggestion of a calculus measuring {calculi_size}mm "
@@ -2931,8 +2939,18 @@ def _myometrium_body_clause(d):
     else:
         desc = _myometrium_descriptor_body(d)
 
+    # "homogenous" = normal → plain. Any heterogeneous variant → only the
+    # phrase "Myometrium appears <desc>" is rendered bold-italic; the rest
+    # of the sentence stays plain.
+    _myo_abnormal = (desc != "homogenous")
+
+    def _head():
+        """Bold-italic 'Myometrium appears <desc>'; plain when homogenous."""
+        return seg(f"Myometrium appears {desc}", True) if _myo_abnormal \
+            else seg(f"Myometrium appears {desc}")
+
     if not has_fibroid and not has_adenomyomas and not has_adenomyosis:
-        return [seg(f"Myometrium appears {desc} and no focal lesion is seen.")]
+        return [_head(), seg(" and no focal lesion is seen.")]
 
     if has_fibroid:
         fib_segs = _fibroid_body_fragment(d) or []
@@ -2944,24 +2962,22 @@ def _myometrium_body_clause(d):
                 _tail[-1] = (_txt.rstrip() + ".",
                              _t[1], _t[2],
                              _t[3] if len(_t) > 3 else None)
-        return [seg(f"Myometrium appears {desc} with ")] + _tail
+        return [_head(), seg(" with ")] + _tail
 
     if has_adenomyomas and not has_adenomyosis:
         aden_text = _adenomyomas_body_fragment(d) or ""
-        return [seg(f"Myometrium appears {desc} with "), seg(aden_text, True)]
+        return [_head(), seg(" with "), seg(aden_text, True)]
 
     aden_frags = _adenomyosis_features_body(d)
     conf = _adenomyosis_confidence(d)
     qualifier = "likely adenomyosis" if conf == "likely" else "?early adenomyosis"
     if aden_frags:
         body = " ".join(aden_frags)
-        out = [seg(f"Myometrium appears {desc} with "), seg(body, True),
-               seg(f" -- {qualifier}.", True)]
-        return out
-    else:
-        return [seg(f"Myometrium appears {desc} and no focal lesion is seen."),
+        return [_head(), seg(" with "), seg(body, True),
                 seg(f" -- {qualifier}.", True)]
-
+    else:
+        return [_head(), seg(" and no focal lesion is seen."),
+                seg(f" -- {qualifier}.", True)]
 
 def _cervix_body_fragments(d, rpoc_mode=False):
     bulky = bool(d.get("cervix_bulky")) and not rpoc_mode
@@ -3233,9 +3249,9 @@ def uterus_sentence(d, pediatric=False, age_years=None):
         s.append(seg(" No collection seen in the endometrial canal."))
     elif coll in ("mild", "moderate"):
         if het:
-            s.append(seg(" " + ENDOMETRIAL_COLLECTION_HET[coll]))
+            s.append(seg(" " + ENDOMETRIAL_COLLECTION_HET[coll], True))
         else:
-            s.append(seg(" " + ENDOMETRIAL_COLLECTION_LABELS[coll]))
+            s.append(seg(" " + ENDOMETRIAL_COLLECTION_LABELS[coll], True))
 
     if d.get("rpoc"):
         size_txt = d.get("rpoc_size", "")
@@ -3616,6 +3632,13 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
             head = (f"GRAVID UTERUS (SINGLE & ALIVE: {gravid_type}={length_v} MM; "
                     f"GA={wk} WEEKS {dy} DAYS)")
             lines.append(join_findings(head, findings))
+        _endo_coll_val = d.get("endometrial_collection", "none")
+        if _endo_coll_val in ("mild", "moderate"):
+            _endo_het = bool(d.get("endometrial_collection_het", False))
+            if _endo_het:
+                lines.append(ENDOMETRIAL_COLLECTION_HET_IMPRESSION[_endo_coll_val])
+            else:
+                lines.append(ENDOMETRIAL_COLLECTION_IMPRESSION[_endo_coll_val])
         return pre_lines + lines
 
     if d.get("low_lying"):
@@ -3652,6 +3675,13 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
             if cl:
                 findings.append(cl.rstrip("."))
         lines.append(join_findings(primary, findings))
+        _endo_coll_val = d.get("endometrial_collection", "none")
+        if _endo_coll_val in ("mild", "moderate"):
+            _endo_het = bool(d.get("endometrial_collection_het", False))
+            if _endo_het:
+                lines.append(ENDOMETRIAL_COLLECTION_HET_IMPRESSION[_endo_coll_val])
+            else:
+                lines.append(ENDOMETRIAL_COLLECTION_IMPRESSION[_endo_coll_val])
         return pre_lines + lines
     if _pm:
         # Skip the size-based uterus line; jump straight to findings.
@@ -3681,6 +3711,13 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
             _endo_line = _endometrial_impression_pathways(d, ovaries)
             if _endo_line:
                 lines.append(_endo_line)
+        _endo_coll_val = d.get("endometrial_collection", "none")
+        if _endo_coll_val in ("mild", "moderate"):
+            _endo_het = bool(d.get("endometrial_collection_het", False))
+            if _endo_het:
+                lines.append(ENDOMETRIAL_COLLECTION_HET_IMPRESSION[_endo_coll_val])
+            else:
+                lines.append(ENDOMETRIAL_COLLECTION_IMPRESSION[_endo_coll_val])
         return pre_lines + lines
 
     cls = _uterus_size_class(d)
@@ -3752,6 +3789,17 @@ def _uterus_impression_lines(d, age_years, ovaries=None):
         endo_line = _endometrial_impression_pathways(d, ovaries)
         if endo_line:
             lines.append(endo_line)
+
+    # ── Endometrial collection ── fires independently of endometrial
+    #    thickness. Uses the *_HET variant when "Heterogeneous collection"
+    #    is ticked, otherwise the plain *_IMPRESSION variant.
+    _endo_coll_val = d.get("endometrial_collection", "none")
+    if _endo_coll_val in ("mild", "moderate"):
+        _endo_het = bool(d.get("endometrial_collection_het", False))
+        if _endo_het:
+            lines.append(ENDOMETRIAL_COLLECTION_HET_IMPRESSION[_endo_coll_val])
+        else:
+            lines.append(ENDOMETRIAL_COLLECTION_IMPRESSION[_endo_coll_val])
 
     if d.get("neg_sol"):
         irr = bool(d.get("neg_sol_irregular"))
