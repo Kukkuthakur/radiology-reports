@@ -6352,13 +6352,16 @@ def generate_impression(d, sex, age):
                     break
 
     if k.get("negative_renal_line_impression"):
-        _any_calcs = ((r_present and bool(r["calculi"]))
-                      or (l_present and bool(l["calculi"])))
+        _any_renal_calcs = ((r_present and bool(r["calculi"]))
+                            or (l_present and bool(l["calculi"])))
+        _any_ureter_calcs = (
+            (r_present and r["ureter_calculus"]["count"] != "none")
+            or (l_present and l["ureter_calculus"]["count"] != "none"))
         _any_hydro = ((r_present and r["hydronephrosis"] != "none")
                       or (l_present and l["hydronephrosis"] != "none"))
-        if not _any_calcs and not _any_hydro:
-            renal_lines.append("NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS SEEN "
-                               "AT THE TIME OF SCAN.")
+        if not _any_renal_calcs and not _any_ureter_calcs and not _any_hydro:
+            renal_lines.append("NO EVIDENCE OF HYDRONEPHROTIC CHANGES/CALCULUS "
+                               "SEEN AT THE TIME OF SCAN.")
     # Assemble all kidney findings into ONE bullet, then append KFT advice
     # once at the very end — never mid-line.
     _r_peri_fat = bool(r.get("peri_nephric_fat", False))
@@ -6587,8 +6590,13 @@ def generate_impression(d, sex, age):
                 _base = _base[:_adv_idx].rstrip()
             lines[_longest_idx] = _base + ". " + _cect_text
 
-    # 1. If the ONLY line generated is the negative renal line, erase it
-    if len(lines) == 1 and "NO EVIDENCE OF HYDRONEPHROTIC" in lines[0]:
+    # 1. If the user did NOT explicitly tick "Negative renal line (Impression)"
+    #    and the negative renal line is the ONLY bullet, fall back to the
+    #    standard normal template — the clean-abdomen case reads better that
+    #    way. If the user DID tick it, the line is intentional; keep it.
+    if (len(lines) == 1
+            and "NO EVIDENCE OF HYDRONEPHROTIC" in lines[0]
+            and not d.get("kidneys", {}).get("negative_renal_line_impression")):
         lines.clear()
 
     # 2. If it's completely empty, return the standard normal template
