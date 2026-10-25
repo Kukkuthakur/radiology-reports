@@ -2975,11 +2975,6 @@ def _myometrium_body_clause(d):
     else:
         return [_b(f"Myometrium appears {desc} and no focal lesion is seen."),
                 seg(f" -- {qualifier}.", True)]
-        return out
-    else:
-        return [seg(f"Myometrium appears {desc} and no focal lesion is seen."),
-                seg(f" -- {qualifier}.", True)]
-
 
 def _cervix_body_fragments(d, rpoc_mode=False):
     bulky = bool(d.get("cervix_bulky")) and not rpoc_mode
