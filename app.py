@@ -4216,6 +4216,13 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False,
 
         if pcos_body:
             s.extend(pcos_body)
+            if size_bracket:
+                # size_bracket already ends with "." — strip it so the
+                # bracket reads naturally between the PCOS sentence and
+                # any cyst findings, then re-add the period after the
+                # last appended fragment.
+                _sb = size_bracket.rstrip(".")
+                s += [seg(" "), seg(_sb + ".", True)]
             _append_findings()
         elif r_eff_bulky and l_eff_bulky:
             s += [seg("BOTH OVARIES", True, True),
