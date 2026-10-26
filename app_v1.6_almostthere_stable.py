@@ -15,6 +15,15 @@ import html
 import hashlib
 import sqlite3
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def _now_ist():
+    """Return the current time in IST, tz-aware. Use this everywhere a
+    timestamp will be shown to the user or written into a filename."""
+    return datetime.now(IST)
 
 import streamlit as st
 from docx import Document
@@ -922,7 +931,7 @@ def save_report(data):
                  VALUES (?, ?, ?, ?, ?, ?, ?)""",
               (data["patient"]["name"], data["patient"]["age"], data["patient"]["sex"],
                data["patient"]["date"], data["patient"]["referred_by"],
-               datetime.now().isoformat(), json.dumps(data)))
+               _now_ist().isoformat(), json.dumps(data)))
     conn.commit()
     conn.close()
 
@@ -1101,7 +1110,7 @@ def _new_inguinal():
 def new_report(sex="F"):
     return {
         "patient": {"name": "", "age": "", "sex": sex,
-                    "date": datetime.now().strftime("%d-%b-%y"), "referred_by": ""},
+                    "date": _now_ist().strftime("%d-%b-%y"), "referred_by": ""},
         "liver": {"size_mm": "", "size_descriptor": "normal", "outline": "normal",
                   "echotexture": "normal", "steatosis_grade": None,
                   "volume_redistribution": False,
@@ -7323,11 +7332,29 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+def _on_name_commit():
+    """Fire when the patient name text_input is committed (Enter / blur).
+    Freeze a stable report timestamp the first time a non-empty name is
+    seen; reset it when the name is cleared so a new patient starts
+    fresh. Does NOT re-stamp on name-change mid-session (that would
+    defeat the point of freezing)."""
+    cur = st.session_state.get("p_name_input", "")
+    if not cur.strip():
+        st.session_state.pop("patient_ts", None)
+        st.session_state.pop("_ts_for_name", None)
+        return
+    if "_ts_for_name" not in st.session_state:
+        st.session_state["patient_ts"] = _now_ist()
+        st.session_state["_ts_for_name"] = cur
+
+
 with st.container():
     c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 2, 3],
                                      vertical_alignment="bottom")
     with c1:
-        p_name = st.text_input("Name", key="p_name_input")
+        p_name = st.text_input("Name", key="p_name_input",
+                               on_change=_on_name_commit)
     with c2:
         p_age = st.text_input("Age (years)", key="p_age_input",
                               help="Enter age in years, e.g. 25 or 0.5")
@@ -7335,7 +7362,7 @@ with st.container():
         p_sex = st.radio("Sex", ["F", "M"], horizontal=True, key="p_sex_input")
     with c4:
         p_date = st.text_input("Date",
-                                value=datetime.now().strftime("%d-%b-%y"),
+                                value=_now_ist().strftime("%d-%b-%y"),
                                 key="p_date_input")
     with c5:
         p_ref = st.text_input("Referred by", key="p_ref_input")
@@ -10697,8 +10724,9 @@ with col_prev:
             }
         final_data["additional_body_findings"] = addendum_text or ""
         docx_bytes = build_docx_bytes(final_data)
+        _ts = st.session_state.get("patient_ts") or _now_ist()
         fname = (f"{p_name or 'report'}_"
-                 f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx")
+                 f"{_ts.strftime('%Y%m%d_%H%M%S')}.docx")
         fname = "".join(ch for ch in fname if ch.isalnum() or ch in "._-")
         st.download_button(
             "⬇️ Download .docx", docx_bytes, file_name=fname,
