@@ -964,6 +964,8 @@ def _new_urinary_bladder():
         "wall_sacculations": False,
         "wall_sacculations_diverticulations": False,
         "force_empty_suboptimal": False,
+        "negative_ub_line": False,
+        "negative_ub_rgu_advice": False,
     }
 
 
@@ -5808,6 +5810,16 @@ def generate_impression(d, sex, age):
     is_pediatric = age_years is not None and age_years < 18
     small_rule_active = age_years is not None and age_years > SMALL_KIDNEY_MIN_AGE
 
+    # --- Negative UB line (unconditional, top of impression) ---
+    _ub_neg = d.get("urinary_bladder", {})
+    if _ub_neg.get("negative_ub_line"):
+        _ub_neg_txt = ("NO SEDIMENTATION/DEBRIS, CALCULUS OR UB WALL "
+                       "THICKENING APPRECIATED AT THE TIME OF SCAN.")
+        if _ub_neg.get("negative_ub_rgu_advice"):
+            _ub_neg_txt += (" Adv- RGU/MCU Correlation to rule out "
+                            "urethral etiology.")
+        lines.append(_ub_neg_txt)
+
     p = d["pancreas"]
     p_status = p.get("status", "normal")
     if p_status == "early_evolving":
@@ -8441,6 +8453,24 @@ with col_find:
                         value=bool(_seed("ub_catheterized", False)))
             wget("ub_catheterized", False)
 
+            # --- Negative UB line ---
+            _neg_ub_opts = ["no", "yes"]
+            st.radio(
+                "Negative UB line", _neg_ub_opts,
+                index=_idx("ub_neg_line", _neg_ub_opts, "no"),
+                horizontal=True,
+                format_func=lambda x: {
+                    "no": "Negative UB line — No",
+                    "yes": "Negative UB line — Yes"}[x],
+                key="ub_neg_line")
+            wget("ub_neg_line", "no")
+            if ss("ub_neg_line", "no") == "yes":
+                st.checkbox(
+                    "Adv- RGU/MCU Correlation to rule out urethral etiology",
+                    key="ub_neg_rgu",
+                    value=bool(_seed("ub_neg_rgu", False)))
+                wget("ub_neg_rgu", False)
+
             st.text_input("Pre-void volume (CC)", key="ub_pre_void",
                           value=_seed("ub_pre_void", ""))
             wget("ub_pre_void", "")
@@ -10153,6 +10183,8 @@ data["urinary_bladder"].update({
     "force_empty_suboptimal": (
         data["kidneys"]["right"]["ureter_not_traced"]
         or data["kidneys"]["left"]["ureter_not_traced"]),
+    "negative_ub_line": (ss("ub_neg_line", "no") == "yes"),
+    "negative_ub_rgu_advice": bool(ss("ub_neg_rgu", False)),
 })
 
 if p_sex == "F":
