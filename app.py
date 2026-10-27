@@ -3401,8 +3401,11 @@ def _cervix_impression_line(d):
 
     nab_txt = None
     if nab != "none":
-        word = {"one": "A", "few": "FEW", "multiple": "MULTIPLE"}.get(nab, "FEW")
-        nab_txt = f"{word} NABOTHIAN CYSTS IN THE CERVIX"
+        if nab == "one":
+            nab_txt = "A NABOTHIAN CYST IN THE CERVIX"
+        else:
+            word = {"few": "FEW", "multiple": "MULTIPLE"}.get(nab, "FEW")
+            nab_txt = f"{word} NABOTHIAN CYSTS IN THE CERVIX"
     coll_txt = None
     if coll != "none":
         coll_txt = f"{coll.upper()} COLLECTION IN THE CERVICAL CANAL"
