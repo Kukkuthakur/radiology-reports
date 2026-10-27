@@ -4190,10 +4190,20 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False,
 
     postmeno = (age_years is not None and age_years >= 48)
 
+    # Manual override: if the user has entered any ovary data (size or
+    # volume) despite the patient being post-menopausal age, treat the
+    # ovaries as visualized rather than forcing the "likely atrophic" line.
+    _any_ovary_data = (
+        (r.get("size_text", "") or "").strip() != ""
+        or (r.get("volume_cc", "") or "").strip() != ""
+        or (l.get("size_text", "") or "").strip() != ""
+        or (l.get("volume_cc", "") or "").strip() != ""
+    )
+
     if not r_present and not l_present:
         if uterus_not_visualized:
             return []
-        if postmeno and not uterus_operated:
+        if postmeno and not uterus_operated and not _any_ovary_data:
             return [seg("BOTH OVARIES", True, True),
                     seg(" are not visualized"),
                     seg("(likely atrophic)", italic=True),
@@ -10248,8 +10258,15 @@ if p_sex == "F":
     if ut_status == "post_menopausal":
         _r_ov_status = ss("ov_r_status", "normal")
         _l_ov_status = ss("ov_l_status", "normal")
+        _ov_has_data = (
+            (ss("ov_r_size", "") or "").strip() != ""
+            or (ss("ov_r_vol", "") or "").strip() != ""
+            or (ss("ov_l_size", "") or "").strip() != ""
+            or (ss("ov_l_vol", "") or "").strip() != ""
+        )
         if (_r_ov_status == "normal" and _l_ov_status == "normal"
-                and not ss("_ov_user_touched", False)):
+                and not ss("_ov_user_touched", False)
+                and not _ov_has_data):
             _auto_ovaries_not_vis = True
     # ------------------------------------
 
