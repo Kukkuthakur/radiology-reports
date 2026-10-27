@@ -2998,8 +2998,11 @@ def _cervix_body_fragments(d, rpoc_mode=False):
 
     nab_txt = None
     if nab != "none":
-        word = {"one": "A", "few": "Few", "multiple": "Multiple"}.get(nab, "Few")
-        nab_txt = f"{word.lower()} nabothian cysts"
+        if nab == "one":
+            nab_txt = "A NABOTHIAN CYST IN THE CERVIX"
+        else:
+            word = {"few": "FEW", "multiple": "MULTIPLE"}.get(nab, "FEW")
+            nab_txt = f"{word} NABOTHIAN CYSTS IN THE CERVIX"
 
     coll_txt = None
     if coll != "none":
