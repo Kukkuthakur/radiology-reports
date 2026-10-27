@@ -6907,15 +6907,17 @@ def build_docx_bytes(data):
     style.paragraph_format.line_spacing = 1.0
 
     # === FLEXIBLE TOP SPACER — add/remove lines as needed for stationery ===
-    # Each line uses font size 10 (blank paragraph).
-    for _ in range(3):
+    # Each line uses font size 11 (blank paragraph). Reduced from 3 → 2
+    # so the patient demographic table moves up two lines, leaving 2 blank
+    # font-11 lines at the top that remain available for future use.
+    for _ in range(2):
         _p = doc.add_paragraph()
         _p.paragraph_format.space_after = Pt(0)
         _p.paragraph_format.space_before = Pt(0)
         _p.paragraph_format.line_spacing = 1.0
         _run = _p.add_run("")
         _run.font.name = FONT_BODY
-        _run.font.size = Pt(10)
+        _run.font.size = Pt(FONT_SIZE_BODY)   # 11pt
     # === END SPACER ===
 
     table = doc.add_table(rows=2, cols=2)
