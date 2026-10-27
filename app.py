@@ -39,7 +39,9 @@ from docx.oxml import OxmlElement
 
 DB_PATH = os.path.join(os.path.expanduser("~"), "RadiologyReports", "reports.db")
 
-PAGE_TOP_MARGIN = 4.0
+PAGE_TOP_MARGIN = 3.2   # reduced by ~0.8cm so the demographics box
+                        # sits two lines higher while still keeping
+                        # 2 blank 11pt lines above it.
 PAGE_BOTTOM_MARGIN = 3.5
 PAGE_LEFT_MARGIN = 2.0
 PAGE_RIGHT_MARGIN = 2.0
