@@ -5817,8 +5817,8 @@ def generate_impression(d, sex, age):
                       else "MILDLY RAISED")
         _gb_wall_mm = _gb.get("wall_mm", "")
 
-        _eff_txt = _ac_eff_clause(_eff)
-        _ff_txt = _ac_ff_clause(_ff)
+        _eff_txt = _eff_impression_phrase(_eff) or ""   # e.g. "MILD RIGHT PLEURAL EFFUSION"
+        _ff_txt = _ff_impression_phrase(_ff) or ""      # e.g. "MILD ASCITES"
 
         _tail = (" - ACALCULUS CHOLECYSTITIS(?ACUTE HEPATITIS). "
                  "Adv- Viral Markers, Lab & Clinical Correlation.")
