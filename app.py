@@ -5860,7 +5860,7 @@ def generate_impression(d, sex, age):
     # Chronic Liver Disease / Portal HTN template — impression.
     # Forces the core CLD line to fire as long as the template is active,
     # while still allowing specific edits (like removing ascites) to update.
-    if d.get("cld_template"):
+    if d.get("cld_template") or ss("cld_template", False):
         _liver = d["liver"]
         _spleen = d["spleen"]
         _ff = d["free_fluid"]
@@ -10599,10 +10599,11 @@ _tpl_advice = st.session_state.get("_template_advice", "")
 if _tpl_advice:
     data["impression_advice"] = _tpl_advice
 
-# Acalculus cholecystitis template flag
+# Template flags
 if ss("ac_hepatitis_template", False):
     data["ac_hepatitis_template"] = True
-
+if ss("cld_template", False):
+    data["cld_template"] = True
 # Top-Row Toggles Group (UI-G)
 data["tg_cect_abd"] = bool(ss("tg_cect_abd", False))
 data["tg_cect_option"] = ss("tg_cect_option", "if_clinically_warranted")
