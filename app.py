@@ -91,7 +91,7 @@ TEMPLATES = {
         "gb_wall_mm": "6.5",
         "cbd_status": "normal",
         "cbd_calc": False,
-        "sp_size_num": 135,      # Mild splenomegaly (>120)
+        "spleen_size_num": 135,  # Mild splenomegaly (>120)
         "sp_portal_mm": "14",    # Dilated portal vein (>=14)
         "sp_focal": "none",
         "kd_r_status": "normal",
@@ -5858,8 +5858,8 @@ def generate_impression(d, sex, age):
         lines.append(_ub_neg_txt)
 
     # Chronic Liver Disease / Portal HTN template — impression.
-    # Acts as a complete override if any CLD features are present, to
-    # prevent duplicate generic bullets from the liver/spleen modules.
+    # Forces the core CLD line to fire as long as the template is active,
+    # while still allowing specific edits (like removing ascites) to update.
     if d.get("cld_template"):
         _liver = d["liver"]
         _spleen = d["spleen"]
@@ -5868,12 +5868,15 @@ def generate_impression(d, sex, age):
         _is_cld = (_liver.get("outline") == "crenated"
                    or _liver.get("echotexture") == "coarse")
 
+        # Safely fallback to CLD defaults if template hasn't populated the data
         _ascites_txt = _ff_impression_phrase(_ff) or ""
 
         _spleen_desc = _spleen.get("size_descriptor", "normal")
         _spleno_txt = ""
         if _spleen_desc in SPLEEN_IMPRESSION_LABELS:
             _spleno_txt = SPLEEN_IMPRESSION_LABELS[_spleen_desc]
+        elif _is_cld:
+            _spleno_txt = "MILD SPLENOMEGALY"  # Fallback if size not entered yet
 
         _pv_mm = _spleen.get("portal_vein_mm", "")
         _pv_class = classify_portal_vein(_pv_mm) if _pv_mm else "unknown"
@@ -5882,8 +5885,10 @@ def generate_impression(d, sex, age):
             _pv_txt = "PROMINENT PORTAL VEIN"
         elif _pv_class == "dilated":
             _pv_txt = "DILATED PORTAL VEIN"
+        elif _is_cld:
+            _pv_txt = "DILATED PORTAL VEIN" # Fallback if size not entered yet
 
-        _has_phtn = _pv_class in ("prominent", "dilated")
+        _has_phtn = _pv_class in ("prominent", "dilated") or _is_cld
 
         _fragments = []
         if _is_cld:
@@ -5911,7 +5916,6 @@ def generate_impression(d, sex, age):
 
         _advice = (d.get("impression_advice")
                    or "Adv- LFT, PT/INR & Clinical Correlation.")
-                   
         if _line:
             _line = _line.rstrip(".") + ". " + _advice
             return [_q(_line), IMPRESSION_REST_UNREMARKABLE]
