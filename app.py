@@ -7520,6 +7520,8 @@ with col_find:
                         st.session_state[_k] = _v
                         st.session_state[f"_mirror_{_k}"] = _v
                 st.session_state["_template_advice"] = _tpl_advice
+                # Force the editable impression box to refresh its contents
+                st.session_state["_force_imp_bump"] = True
                 st.toast(f"Template '{selected_template}' applied successfully!")
                 st.rerun()
             else:
@@ -10781,8 +10783,11 @@ with col_prev:
         and _user_text != st.session_state["_imp_widget_current"]
     )
 
-    if (new_auto_hash != st.session_state["_imp_auto_hash"]
-            and not _user_has_edited):
+    _force_bump = st.session_state.pop("_force_imp_bump", False)
+
+    if ((new_auto_hash != st.session_state["_imp_auto_hash"]
+            and not _user_has_edited)
+            or _force_bump):
         st.session_state["_imp_ver"] += 1
         st.session_state["_imp_auto_hash"] = new_auto_hash
         st.session_state["_imp_widget_current"] = auto_imp_str
