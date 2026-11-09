@@ -91,8 +91,8 @@ TEMPLATES = {
         "gb_wall_mm": "6.5",
         "cbd_status": "normal",
         "cbd_calc": False,
-        "sp_size_num": 0,
-        "sp_portal_mm": "",
+        "sp_size_num": 135,      # Mild splenomegaly (>120)
+        "sp_portal_mm": "14",    # Dilated portal vein (>=14)
         "sp_focal": "none",
         "kd_r_status": "normal",
         "kd_l_status": "normal",
@@ -5858,9 +5858,8 @@ def generate_impression(d, sex, age):
         lines.append(_ub_neg_txt)
 
     # Chronic Liver Disease / Portal HTN template — impression.
-    # Template wording preserved; each clause re-resolved from live
-    # findings. Missing clauses are silently dropped so the user sees only
-    # what's actually there.
+    # Acts as a complete override if any CLD features are present, to
+    # prevent duplicate generic bullets from the liver/spleen modules.
     if d.get("cld_template"):
         _liver = d["liver"]
         _spleen = d["spleen"]
@@ -5912,10 +5911,10 @@ def generate_impression(d, sex, age):
 
         _advice = (d.get("impression_advice")
                    or "Adv- LFT, PT/INR & Clinical Correlation.")
+                   
         if _line:
             _line = _line.rstrip(".") + ". " + _advice
-            lines = [_line, IMPRESSION_REST_UNREMARKABLE]
-            return [_q(l) for l in lines]
+            return [_q(_line), IMPRESSION_REST_UNREMARKABLE]
         # If nothing qualifies, fall through to normal generation.
 
     p = d["pancreas"]
