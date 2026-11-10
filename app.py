@@ -1,11 +1,10 @@
 """
 Radiology Report Generator — USG Whole Abdomen
-v3.3.6-stable (Final Build)
+v3.4.0 — e-FAST release
 
-Complete release: CLD, SAIO, Acalculus Cholecystitis, Reactive Mesenteric
-Lymphadenitis templates; grouped Additional Findings; reworked Appendix;
-Peri-Pancreatic/Peri-Portal nodes; structured Bowel Wall Thickening;
-Uterus auto-append; Hindi app title.
+Adds e-FAST (Extended Focused Assessment with Sonography for Trauma) module:
+blue clinical table under the title, five-window per-window findings,
+positive/negative impression bullet, and negative-trauma template.
 """
 
 import io
@@ -39,9 +38,7 @@ from docx.oxml import OxmlElement
 
 DB_PATH = os.path.join(os.path.expanduser("~"), "RadiologyReports", "reports.db")
 
-PAGE_TOP_MARGIN = 3.2   # reduced by ~0.8cm so the demographics box
-                        # sits two lines higher while still keeping
-                        # 2 blank 11pt lines above it.
+PAGE_TOP_MARGIN = 3.2
 PAGE_BOTTOM_MARGIN = 3.0
 PAGE_LEFT_MARGIN = 2.0
 PAGE_RIGHT_MARGIN = 2.0
@@ -91,8 +88,8 @@ TEMPLATES = {
         "gb_wall_mm": "6.5",
         "cbd_status": "normal",
         "cbd_calc": False,
-        "spleen_size_num": 135,  # Mild splenomegaly (>120)
-        "sp_portal_mm": "14",    # Dilated portal vein (>=14)
+        "spleen_size_num": 135,
+        "sp_portal_mm": "14",
         "sp_focal": "none",
         "kd_r_status": "normal",
         "kd_l_status": "normal",
@@ -132,6 +129,13 @@ TEMPLATES = {
         "ff_kind": "ascites",
         "ff_grade": "mild",
         "ac_hepatitis_template": True,
+    },
+    "e-FAST (Trauma - Negative)": {
+        "efast_performed": True,
+        "efast_ruq": False,
+        "efast_luq": False,
+        "efast_pelvis": False,
+        "efast_peri": False,
     },
 }
 
@@ -515,7 +519,6 @@ CBD_DILATED_MM = 6.0
 
 
 def calculus_size_qualifier(size_mm):
-    """Return 'tiny' (≤3mm), 'small' (3.1–4mm), 'large' (>10mm), or ''."""
     v = _parse_mm_value(size_mm)
     if v is None:
         return ""
@@ -526,7 +529,7 @@ def calculus_size_qualifier(size_mm):
     if v > CALCULUS_LARGE_MIN_MM:
         return "large"
     return ""
-    
+
 
 ECHO_GRADE_WORD = {
     "mildly_raised": "mildly raised",
@@ -620,7 +623,6 @@ FIBROID_TYPE_OPTIONS = [
 
 
 def _fibroid_location_body(location, laterality=""):
-    """Body phrase fragment for a fibroid lesion location."""
     if location == "lateral":
         side = laterality or "right"
         return f"the {side} lateral wall of uterine myometrium"
@@ -628,7 +630,6 @@ def _fibroid_location_body(location, laterality=""):
 
 
 def _fibroid_location_impression(location, laterality=""):
-    """Uppercase impression phrase fragment for a fibroid lesion location."""
     if location == "lateral":
         side = laterality or "right"
         return f"THE {side.upper()} LATERAL WALL"
@@ -885,6 +886,21 @@ BW_ADVICE_TAIL = {
 
 
 # ============================================================
+# e-FAST CONSTANTS
+# ============================================================
+
+# Fixed blue theme — exact hex from OB COLOR_THEMES[1]:
+# ("Blue", "BBDEFB", "E3F2FD", "D0E7FA"). e-FAST uses only row1/row2.
+EFAST_ROW1_FILL = "E3F2FD"
+EFAST_ROW2_FILL = "D0E7FA"
+
+
+def _efast_row_fill(idx):
+    """Alternating row shading that matches the OB Blue theme exactly."""
+    return EFAST_ROW1_FILL if idx % 2 == 1 else EFAST_ROW2_FILL
+
+
+# ============================================================
 # DATABASE
 # ============================================================
 
@@ -930,8 +946,7 @@ def save_report(data):
                _now_ist().isoformat(), json.dumps(data)))
     conn.commit()
     conn.close()
-
-
+    
 # ============================================================
 # DATA MODEL
 # ============================================================
@@ -1080,7 +1095,8 @@ def _new_pleural_effusion():
 
 
 def _new_free_fluid():
-    return {"kind": "none", "grade": "mild", "append_no_effusion": False}
+    return {"kind": "none", "grade": "mild", "append_no_effusion": False,
+            "internal_echoes": False}
 
 
 def _new_appendix():
@@ -1100,6 +1116,16 @@ def _new_inguinal():
         "content": "omentum",      # omentum / bowel / omentum_bowel
         "reducibility": "reducible",  # reducible / irreducible
         "no_strangulation": True,
+    }
+
+
+def _new_efast():
+    return {
+        "performed": False,
+        "ruq_positive": False,
+        "luq_positive": False,
+        "pelvis_positive": False,
+        "pericardial_effusion": False,
     }
 
 
@@ -1188,6 +1214,7 @@ def new_report(sex="F"):
             "size": "",
         },
         "inguinal": _new_inguinal(),
+        "efast": _new_efast(),
         "additional_body_findings": "",
         "impression": {"lines": []},
     }
@@ -5165,6 +5192,12 @@ def fluid_mln_sentence(data):
                     or saio.get("saio_ff", "none") != "none")
     saio_line = saio_sentence(saio) if _saio_active else None
 
+    # e-FAST (Q8a + Q8b): when e-FAST is on, suppress this fluid paragraph
+    # — the e-FAST table already carries the per-window findings and the
+    # e-FAST impression bullet already fires on any effusion.
+    if data.get("efast", {}).get("performed", False):
+        return []
+
     if not eff_present and not ff_present and not mln_present and not saio_line:
         if pancreas_acute:
             return []
@@ -5223,6 +5256,243 @@ def fluid_mln_sentence(data):
             out.append(seg(mln_segs[0][0], True))
 
     return out
+
+# ============================================================
+# e-FAST BODY / TABLE / IMPRESSION
+# ============================================================
+
+def efast_body_rows(d, free_fluid=None, pleural_effusion=None):
+    """Return 5 (label, finding_text) tuples for the e-FAST table, or
+    None when e-FAST is off. Grade is read from the shared free_fluid."""
+    if not d.get("performed"):
+        return None
+    ff = free_fluid or {}
+    eff = pleural_effusion or {}
+
+    grade_val = ff.get("grade", "mild")
+    grade_word = FF_GRADE_BODY.get(grade_val, "mild")
+    ie = bool(ff.get("internal_echoes", False))
+    ie_txt = " (with internal echoes)" if ie else ""
+
+    def abdo_txt(positive):
+        return (f"{grade_word} free fluid{ie_txt} seen."
+                if positive else "no free fluid.")
+
+    ruq_txt = abdo_txt(d.get("ruq_positive", False))
+    luq_txt = abdo_txt(d.get("luq_positive", False))
+    pel_txt = abdo_txt(d.get("pelvis_positive", False))
+
+    peri_txt = ("pericardial effusion seen."
+                if d.get("pericardial_effusion", False)
+                else "no pericardial effusion.")
+
+    eff_pos = eff.get("status", "none") != "none"
+    if eff_pos:
+        eff_word = _eff_impression_phrase(eff)
+        thorax_txt = eff_word.lower().capitalize() + " seen."
+    else:
+        thorax_txt = "No pleural effusion."
+
+    return [
+        ("RIGHT UPPER QUADRANT (MORISON'S POUCH)", ruq_txt),
+        ("LEFT UPPER QUADRANT (SPLENORENAL RECESS)", luq_txt),
+        ("PELVIS (POUCH OF DOUGLAS / RETROVESICAL)", pel_txt),
+        ("SUBXIPHOID (PERICARDIUM)", peri_txt),
+        ("RIGHT & LEFT THORAX", thorax_txt),
+    ]
+
+
+def efast_preview_lines(data):
+    """Plain-text rows for the dark preview box (Q10a)."""
+    rows = efast_body_rows(
+        data.get("efast", {}),
+        data.get("free_fluid", {}),
+        data.get("pleural_effusion", {}),
+    )
+    if not rows:
+        return []
+    out = ["e-FAST (Extended Focused Assessment with Sonography for Trauma):"]
+    for label, text in rows:
+        out.append(f"  {label} — {text}")
+    return out
+
+
+def efast_table_docx(doc, data):
+    """Render the blue e-FAST table into the DOCX, just under the title.
+    Returns True if written."""
+    rows = efast_body_rows(
+        data.get("efast", {}),
+        data.get("free_fluid", {}),
+        data.get("pleural_effusion", {}),
+    )
+    if not rows:
+        return False
+
+    head = doc.add_paragraph()
+    head.paragraph_format.space_after = Pt(0)
+    head.paragraph_format.space_before = Pt(0)
+    head.paragraph_format.line_spacing = 1.0
+    _add_run(head, "e-FAST (Extended Focused Assessment with Sonography "
+                   "for Trauma):",
+             bold=True, underline=True, size=FONT_SIZE_BODY, color=TITLE_COLOR)
+
+    tbl = doc.add_table(rows=len(rows), cols=2)
+    _set_table_borders(tbl)
+    col_w = [Cm(7.5), Cm(9.5)]
+    for ri, (label, text) in enumerate(rows):
+        row_fill = _efast_row_fill(ri + 1)
+        c0 = tbl.cell(ri, 0)
+        c1 = tbl.cell(ri, 1)
+        c0.width = col_w[0]
+        c1.width = col_w[1]
+        for c in (c0, c1):
+            tcPr = c._tc.get_or_add_tcPr()
+            shd = OxmlElement("w:shd")
+            shd.set(qn("w:val"), "clear")
+            shd.set(qn("w:color"), "auto")
+            shd.set(qn("w:fill"), row_fill)
+            tcPr.append(shd)
+        p0 = c0.paragraphs[0]
+        p0.paragraph_format.space_after = Pt(0)
+        p0.paragraph_format.space_before = Pt(0)
+        _add_run(p0, label, bold=True, size=FONT_SIZE_BODY - 1)
+        p1 = c1.paragraphs[0]
+        p1.paragraph_format.space_after = Pt(0)
+        p1.paragraph_format.space_before = Pt(0)
+        _add_run(p1, text, size=FONT_SIZE_BODY - 1)
+    return True
+
+
+def _efast_impression_line(d, free_fluid, pleural_effusion):
+    """Build the single e-FAST impression bullet (upper-case)."""
+    ruq = bool(d.get("ruq_positive", False))
+    luq = bool(d.get("luq_positive", False))
+    pel = bool(d.get("pelvis_positive", False))
+    peri = bool(d.get("pericardial_effusion", False))
+    eff = pleural_effusion or {}
+    ff = free_fluid or {}
+    eff_pos = eff.get("status", "none") != "none"
+    ff_kind_pos = ff.get("kind", "none") != "none"
+    any_abdo = ruq or luq or pel
+
+    # ---- Negative case ----
+    if (not ruq and not luq and not pel and not peri
+            and not eff_pos and not ff_kind_pos):
+        return ("NEGATIVE e-FAST: NO FREE FLUID IN MORISON'S POUCH, "
+                "SPLENORENAL RECESS OR PELVIC DEPENDENT RECESSES. NO "
+                "PERICARDIAL OR PLEURAL EFFUSION SEEN. NO SOLID VISCERAL "
+                "ORGAN INJURY APPRECIATED.")
+
+    # ---- Positive case ----
+    head_bits = []
+    if eff_pos:
+        head_bits.append(_eff_impression_phrase(eff))
+    if peri:
+        head_bits.append("PERICARDIAL EFFUSION")
+
+    grade_val = ff.get("grade", "mild")
+    grade_up = FF_GRADE_UP.get(grade_val, "MILD")
+    ie = bool(ff.get("internal_echoes", False))
+    ie_txt = " (WITH INTERNAL ECHOES)" if ie else ""
+
+    if ruq and luq and pel:
+        # All three ticked → collapse (Q2 — fixed "mild to moderate" wording)
+        fluid_phrase = (f"MILD TO MODERATE FREE FLUID{ie_txt} IN THE "
+                        f"PERITONEAL CAVITY")
+    elif ff_kind_pos and not any_abdo:
+        fluid_phrase = _ff_impression_phrase(ff) or ""
+        if ie and "FREE FLUID" in fluid_phrase:
+            fluid_phrase = fluid_phrase.replace(
+                " FREE FLUID", " FREE FLUID (WITH INTERNAL ECHOES)", 1)
+    else:
+        locs = []
+        if ruq:
+            locs.append("MORISON'S POUCH")
+        if luq:
+            locs.append("SPLENORENAL RECESS")
+        if pel:
+            locs.append("PELVIC DEPENDENT RECESS")
+        if locs:
+            if len(locs) == 1:
+                loc_txt = locs[0]
+            elif len(locs) == 2:
+                loc_txt = f"{locs[0]} & {locs[1]}"
+            else:
+                loc_txt = ", ".join(locs[:-1]) + f" & {locs[-1]}"
+            fluid_phrase = (f"{grade_up} FREE FLUID{ie_txt} IN THE "
+                            f"{loc_txt}")
+        elif ff_kind_pos:
+            fluid_phrase = _ff_impression_phrase(ff) or ""
+            if ie and "FREE FLUID" in fluid_phrase:
+                fluid_phrase = fluid_phrase.replace(
+                    " FREE FLUID", " FREE FLUID (WITH INTERNAL ECHOES)", 1)
+        else:
+            fluid_phrase = ""
+
+    if head_bits and fluid_phrase:
+        head = " WITH ".join(head_bits) + " & " + fluid_phrase
+    elif head_bits:
+        head = " & ".join(head_bits)
+    else:
+        head = fluid_phrase
+
+    head = head.strip().rstrip(".")
+    return (f"POSITIVE e-FAST: {head}. HOWEVER NO SOLID VISCERAL ORGAN "
+            f"INJURY APPRECIATED.")
+
+
+def _has_any_other_finding(d, sex, age):
+    """Quick check: does anything besides e-FAST warrant an impression
+    bullet? Used to decide whether the e-FAST line stands alone."""
+    if d["liver"]["size_descriptor"] != "normal" or d["liver"]["focal_lesion"] != "none":
+        return True
+    if d["liver"].get("echotexture", "normal") != "normal":
+        return True
+    gb = d["gall_bladder"]
+    if gb.get("calculi") == "present" or gb.get("wall_thickened") \
+            or gb.get("pericholecystic_fluid") \
+            or gb.get("sludge", "none") != "none" \
+            or gb.get("sludge_ball") or gb.get("comet_tail") \
+            or gb.get("wes_sign"):
+        return True
+    if d["cbd"].get("status") in ("proximal", "dilated") or d["cbd"].get("calculi"):
+        return True
+    if d["spleen"]["size_descriptor"] != "normal" or d["spleen"]["focal_lesion"] != "none":
+        return True
+    if d["pancreas"].get("status", "normal") != "normal":
+        return True
+    for sk in ("right", "left"):
+        kside = d["kidneys"][sk]
+        if kside.get("calculi") \
+                or kside.get("ureter_calculus", {}).get("count") != "none" \
+                or kside.get("hydronephrosis", "none") != "none" \
+                or kside.get("cyst_type", "none") != "none":
+            return True
+    if d["kidneys"].get("cortical_echogenicity", "normal") != "normal":
+        return True
+    if d["uterus"].get("status") not in ("not_visualized", "operated"):
+        if d["uterus"].get("fibroid") or d["uterus"].get("adenomyosis") \
+                or d["uterus"].get("adenomyomas") or d["uterus"].get("rpoc") \
+                or d["uterus"].get("gravid") or d["uterus"].get("low_lying"):
+            return True
+    if d["prostate"].get("size_cc") or d["prostate"].get("median_lobe") \
+            or d["prostate"].get("cyst"):
+        return True
+    if d.get("bowel_wall", {}).get("present"):
+        return True
+    if d.get("ppln", {}).get("present"):
+        return True
+    if d.get("appendix", {}).get("status") == "assessed":
+        return True
+    if d.get("lipoma", {}).get("present"):
+        return True
+    if d.get("aash", {}).get("present"):
+        return True
+    if d.get("inguinal", {}).get("present"):
+        return True
+    if d.get("urinary_bladder", {}).get("wall_thickening"):
+        return True
+    return False
 
 # ============================================================
 # IMPRESSION HELPERS
@@ -5796,10 +6066,24 @@ def _is_hepatomegaly_only_bullet(line):
 
 
 def generate_impression(d, sex, age):
-    # (Template impression override early-return removed — impressions are
-    # always regenerated from current findings so that manual edits after
-    # applying a template are reflected. Template-specific phrasings are
-    # re-implemented below, clause by clause, off live data.)
+    # ── e-FAST early handling ──
+    # Q9: e-FAST bullet is the first finding, but other findings continue
+    # in subsequent bullets. If e-FAST is the ONLY thing set, return it
+    # alone (no REST_UNREMARKABLE trailer).
+    _efast_on = bool(d.get("efast", {}).get("performed", False))
+    _efast_bullet = None
+    if _efast_on:
+        _efast_bullet = _efast_impression_line(
+            d["efast"], d.get("free_fluid", {}),
+            d.get("pleural_effusion", {}))
+        _eff_any = d.get("pleural_effusion", {}).get("status", "none") != "none"
+        _ff_any = d.get("free_fluid", {}).get("kind", "none") != "none"
+        _mln_any = d.get("mln", {}).get("branch", "none") != "none"
+        _saio_any = (d.get("saio", {}).get("distension_type", "none") != "none"
+                     or d.get("saio", {}).get("saio_ff", "none") != "none")
+        if not (_eff_any or _ff_any or _mln_any or _saio_any):
+            if not _has_any_other_finding(d, sex, age):
+                return [_q(_efast_bullet)]
 
     # Acalculus cholecystitis / ?acute hepatitis template — impression.
     # Template wording is preserved; every factual clause is re-resolved
@@ -6745,6 +7029,9 @@ def generate_impression(d, sex, age):
             lines.append("NO FREE FLUID, LYMPHADENOPATHY, OBVIOUS BOWEL WALL THICKENING OR ANY SIGN OF INFLAMMATION SEEN AT THE TIME OF SCAN.")
 
     lines.append(IMPRESSION_REST_UNREMARKABLE)
+    # Q9: prepend the e-FAST bullet as the first finding.
+    if _efast_on and _efast_bullet:
+        lines.insert(0, _efast_bullet)
     return [_q(l) for l in lines]
 
 
@@ -7038,6 +7325,10 @@ def build_docx_bytes(data):
                  size=FONT_SIZE_BODY)
 
     _add_full_line(doc)
+
+    # ── e-FAST blue table, immediately below the title, above LIVER ──
+    if efast_table_docx(doc, data):
+        _add_full_line(doc)
 
     sex, age = p["sex"], p["age"]
     age_years = parse_age(age)
@@ -9429,6 +9720,13 @@ with col_find:
                     wget("ff_grade", "mild")
 
                 if _ffk != "none":
+                    st.checkbox(
+                        "Free fluid with internal echoes",
+                        key="ff_internal_echoes",
+                        value=bool(_seed("ff_internal_echoes", False)))
+                    wget("ff_internal_echoes", False)
+
+                if _ffk != "none":
                     _eff_status_now = ss("pe_status", "none")
                     if _eff_status_now == "none":
                         st.checkbox(
@@ -9943,6 +10241,44 @@ with col_find:
                                     value=bool(_seed("ppln_lost_hila",
                                                      False)))
                     wget("ppln_lost_hila", False)
+
+    # ------- e-FAST -------
+    efast_open = organ_button("EFAST", "e-FAST (FAST Exam)")
+    if efast_open:
+        with st.container(border=True):
+            st.checkbox(
+                "Perform e-FAST (Extended Focused Assessment with "
+                "Sonography for Trauma)",
+                key="efast_performed",
+                value=bool(_seed("efast_performed", False)))
+            wget("efast_performed", False)
+            if ss("efast_performed", False):
+                st.caption(
+                    "Tick each window where free fluid is seen. The grade "
+                    "and internal-echoes flag come from the "
+                    "**Additional Findings → Free Fluid** panel.")
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.checkbox("Right Upper Quadrant (Morison's pouch)",
+                                key="efast_ruq",
+                                value=bool(_seed("efast_ruq", False)))
+                    wget("efast_ruq", False)
+                    st.checkbox("Left Upper Quadrant (Splenorenal recess)",
+                                key="efast_luq",
+                                value=bool(_seed("efast_luq", False)))
+                    wget("efast_luq", False)
+                    st.checkbox("Pelvis (Pouch of Douglas / Retrovesical)",
+                                key="efast_pelvis",
+                                value=bool(_seed("efast_pelvis", False)))
+                    wget("efast_pelvis", False)
+                with c2:
+                    st.checkbox("Pericardium (pericardial effusion)",
+                                key="efast_peri",
+                                value=bool(_seed("efast_peri", False)))
+                    wget("efast_peri", False)
+                st.caption(
+                    "Pleural effusion is read from the "
+                    "**Additional Findings → Pleural Effusion** panel.")
 
     # ============================================================
     # TOP-ROW TOGGLES GROUP (UI-G)
@@ -10559,6 +10895,7 @@ data["free_fluid"] = {
     "kind": ss("ff_kind", "none"),
     "grade": ss("ff_grade", "mild"),
     "append_no_effusion": bool(ss("ff_append_no_effusion", False)),
+    "internal_echoes": bool(ss("ff_internal_echoes", False)),
 }
 
 data["appendix"] = {
@@ -10604,6 +10941,15 @@ if ss("ac_hepatitis_template", False):
     data["ac_hepatitis_template"] = True
 if ss("cld_template", False):
     data["cld_template"] = True
+
+# e-FAST assembly
+data["efast"] = {
+    "performed": bool(ss("efast_performed", False)),
+    "ruq_positive": bool(ss("efast_ruq", False)),
+    "luq_positive": bool(ss("efast_luq", False)),
+    "pelvis_positive": bool(ss("efast_pelvis", False)),
+    "pericardial_effusion": bool(ss("efast_peri", False)),
+}
 # Top-Row Toggles Group (UI-G)
 data["tg_cect_abd"] = bool(ss("tg_cect_abd", False))
 data["tg_cect_option"] = ss("tg_cect_option", "if_clinically_warranted")
@@ -10664,6 +11010,12 @@ def render_preview_findings(data):
     _sub_key_prev = saio.get("subheading", "none")
     if _sub_key_prev in _subhead_map_prev:
         out.append(_subhead_map_prev[_sub_key_prev])
+        out.append("")
+
+    # e-FAST preview rows (Q10a — plain text, matches DOCX row order)
+    _efast_prev = efast_preview_lines(data)
+    if _efast_prev:
+        out.extend(_efast_prev)
         out.append("")
 
     secs = [
