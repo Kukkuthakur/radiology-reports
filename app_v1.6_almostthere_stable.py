@@ -78,6 +78,7 @@ IMPRESSION_REST_UNREMARKABLE = "REST OF THE ABDOMEN SCAN IS UNREMARKABLE."
 
 TEMPLATES = {
     "Chronic Liver Disease / Portal HTN": {
+        "cld_template": True,
         "liver_size_num": 0,
         "liver_outline": "crenated",
         "liver_echo": "coarse",
@@ -90,8 +91,8 @@ TEMPLATES = {
         "gb_wall_mm": "6.5",
         "cbd_status": "normal",
         "cbd_calc": False,
-        "sp_size_num": 0,
-        "sp_portal_mm": "",
+        "spleen_size_num": 135,  # Mild splenomegaly (>120)
+        "sp_portal_mm": "14",    # Dilated portal vein (>=14)
         "sp_focal": "none",
         "kd_r_status": "normal",
         "kd_l_status": "normal",
@@ -99,10 +100,6 @@ TEMPLATES = {
         "ff_kind": "ascites",
         "ff_grade": "moderate",
         "bw_wall_thick": False,
-        "impression_override": (
-            "CHRONIC LIVER DISEASE WITH MODERATE ASCITES, MILD SPLENOMEGALY "
-            "AND DILATED PORTAL VEIN SUGGESTING PORTAL HYPERTENSION."
-        ),
         "impression_advice": "Adv- LFT, PT/INR & Clinical Correlation."
     },
     "Subacute Intestinal Obstruction": {
@@ -129,16 +126,13 @@ TEMPLATES = {
         "gb_sludge": "none",
         "cbd_status": "normal",
         "cbd_calc": False,
-        "pr_cc": "45",
-        "pr_median_lobe": True,
-        "pr_median_lobe_size": "17",
         "pe_status": "present",
         "pe_laterality": "right",
         "pe_grade_right": "mild",
         "ff_kind": "ascites",
         "ff_grade": "mild",
         "ac_hepatitis_template": True,
-    },   
+    },
 }
 
 
@@ -1965,8 +1959,12 @@ def _renal_calculi_body(k, side_low):
         joined = f"{parts[0]} & {parts[1]}"
     else:
         joined = ", ".join(parts[:-1]) + " & " + parts[-1]
-    out.append(seg(f"{lead} seen in the {side_phrase}, largest of these "
-                   f"measuring {joined}", True))
+    # n == 2 → both sizes are explicitly shown, so "largest of these"
+    # would be wrong. n > 2 → "largest of these measuring" is correct
+    # because only the union of group-maxima is displayed.
+    _size_tail = "measuring" if n == 2 else "largest of these measuring"
+    out.append(seg(f"{lead} seen in the {side_phrase}, {_size_tail} "
+                   f"{joined}", True))
     out.append(seg(".", True))
     return out
 
@@ -5798,47 +5796,52 @@ def _is_hepatomegaly_only_bullet(line):
 
 
 def generate_impression(d, sex, age):
-    # Template impression override
-    if d.get("impression_override"):
-        _line = d["impression_override"]
-        if d.get("impression_advice"):
-            _line = _line.rstrip(".") + ". " + d["impression_advice"]
-        lines = [_line]
-        lines.append(IMPRESSION_REST_UNREMARKABLE)
-        return [_q(l) for l in lines]
+    # (Template impression override early-return removed — impressions are
+    # always regenerated from current findings so that manual edits after
+    # applying a template are reflected. Template-specific phrasings are
+    # re-implemented below, clause by clause, off live data.)
 
-    # Acalculus cholecystitis dynamic impression
+    # Acalculus cholecystitis / ?acute hepatitis template — impression.
+    # Template wording is preserved; every factual clause is re-resolved
+    # from current findings. Missing findings are silently omitted — no
+    # "HOWEVER NO …" tails — so changing ascites mild→moderate, effusion
+    # right→bilateral, or unticking either one, only rewrites that clause.
     if d.get("ac_hepatitis_template"):
-        gb = d["gall_bladder"]
-        liver = d["liver"]
-        eff = d["pleural_effusion"]
-        ff = d["free_fluid"]
-        echo_word = "RAISED" if liver.get("echotexture") == "raised" else "MILDLY RAISED"
-        gb_wall_mm = gb.get("wall_mm", "")
-        eff_present = eff.get("status", "none") != "none"
-        ff_present = ff.get("kind", "none") != "none"
-        eff_txt = "MILD RIGHT PLEURAL EFFUSION"
-        ff_txt = "MILD ASCITES"
-        tail = (" - ACALCULUS CHOLECYSTITIS(?ACUTE HEPATITIS). "
-                "Adv- Viral Markers, Lab & Clinical Correlation.")
-        gb_phrase = (f"THICKENED & EDEMATOUS GB WALL UPTO {gb_wall_mm}MM"
-                     f"(ONION PEEL APPEARANCE)")
-        echo_phrase = f"{echo_word} HEPATIC ECHOTEXTURE"
-        if eff_present and ff_present:
-            primary = (f"{eff_txt} & {ff_txt} WITH {echo_phrase} AND {gb_phrase}")
-        elif eff_present and not ff_present:
-            primary = (f"{eff_txt} WITH {echo_phrase} AND {gb_phrase}, HOWEVER "
-                       f"NO ASCITES APPRECIATED AT THE TIME OF SCAN")
-        elif ff_present and not eff_present:
-            primary = (f"{ff_txt} WITH {echo_phrase} AND {gb_phrase}, HOWEVER "
-                       f"NO PLEURAL EFFUSION APPRECIATED AT THE TIME OF SCAN")
-        else:
-            primary = (f"{echo_phrase} AND {gb_phrase}, HOWEVER NO PLEURAL "
-                       f"EFFUSION OR ASCITES APPRECIATED AT THE TIME OF SCAN")
-        lines = [primary + tail]
-        lines.append(IMPRESSION_REST_UNREMARKABLE)
-        return [_q(l) for l in lines]
+        _gb = d["gall_bladder"]
+        _liver = d["liver"]
+        _eff = d["pleural_effusion"]
+        _ff = d["free_fluid"]
 
+        _echo_word = ("RAISED"
+                      if _liver.get("echotexture") == "raised"
+                      else "MILDLY RAISED")
+        _gb_wall_mm = _gb.get("wall_mm", "")
+
+        _eff_txt = _eff_impression_phrase(_eff) or ""   # e.g. "MILD RIGHT PLEURAL EFFUSION"
+        _ff_txt = _ff_impression_phrase(_ff) or ""      # e.g. "MILD ASCITES"
+
+        _tail = (" - ACALCULUS CHOLECYSTITIS(?ACUTE HEPATITIS). "
+                 "Adv- Viral Markers, Lab & Clinical Correlation.")
+        _gb_phrase = (f"THICKENED & EDEMATOUS GB WALL UPTO {_gb_wall_mm}MM"
+                      f"(ONION PEEL APPEARANCE)")
+        _echo_phrase = f"{_echo_word} HEPATIC ECHOTEXTURE"
+
+        if _eff_txt and _ff_txt:
+            _fluid_clause = f"{_eff_txt} & {_ff_txt}"
+        elif _eff_txt:
+            _fluid_clause = _eff_txt
+        elif _ff_txt:
+            _fluid_clause = _ff_txt
+        else:
+            _fluid_clause = ""
+
+        if _fluid_clause:
+            _primary = f"{_fluid_clause} WITH {_echo_phrase} AND {_gb_phrase}"
+        else:
+            _primary = f"{_echo_phrase} AND {_gb_phrase}"
+
+        lines = [_primary + _tail, IMPRESSION_REST_UNREMARKABLE]
+        return [_q(l) for l in lines]
     lines = []
     age_years = parse_age(age)
     is_pediatric = age_years is not None and age_years < 18
@@ -5853,6 +5856,70 @@ def generate_impression(d, sex, age):
             _ub_neg_txt += (" Adv- RGU/MCU Correlation to rule out "
                             "urethral etiology.")
         lines.append(_ub_neg_txt)
+
+    # Chronic Liver Disease / Portal HTN template — impression.
+    # Forces the core CLD line to fire as long as the template is active,
+    # while still allowing specific edits (like removing ascites) to update.
+    if d.get("cld_template") or ss("cld_template", False):
+        _liver = d["liver"]
+        _spleen = d["spleen"]
+        _ff = d["free_fluid"]
+
+        _is_cld = (_liver.get("outline") == "crenated"
+                   or _liver.get("echotexture") == "coarse")
+
+        # Safely fallback to CLD defaults if template hasn't populated the data
+        _ascites_txt = _ff_impression_phrase(_ff) or ""
+
+        _spleen_desc = _spleen.get("size_descriptor", "normal")
+        _spleno_txt = ""
+        if _spleen_desc in SPLEEN_IMPRESSION_LABELS:
+            _spleno_txt = SPLEEN_IMPRESSION_LABELS[_spleen_desc]
+        elif _is_cld:
+            _spleno_txt = "MILD SPLENOMEGALY"  # Fallback if size not entered yet
+
+        _pv_mm = _spleen.get("portal_vein_mm", "")
+        _pv_class = classify_portal_vein(_pv_mm) if _pv_mm else "unknown"
+        _pv_txt = ""
+        if _pv_class == "prominent":
+            _pv_txt = "PROMINENT PORTAL VEIN"
+        elif _pv_class == "dilated":
+            _pv_txt = "DILATED PORTAL VEIN"
+        elif _is_cld:
+            _pv_txt = "DILATED PORTAL VEIN" # Fallback if size not entered yet
+
+        _has_phtn = _pv_class in ("prominent", "dilated") or _is_cld
+
+        _fragments = []
+        if _is_cld:
+            _fragments.append("CHRONIC LIVER DISEASE")
+        if _ascites_txt:
+            _fragments.append(_ascites_txt)
+        if _spleno_txt:
+            _fragments.append(_spleno_txt)
+        if _pv_txt:
+            _fragments.append(_pv_txt)
+
+        if len(_fragments) == 1:
+            _line = _fragments[0]
+        elif len(_fragments) == 2:
+            _line = f"{_fragments[0]} WITH {_fragments[1]}"
+        elif len(_fragments) > 2:
+            _line = (f"{_fragments[0]} WITH "
+                     + ", ".join(_fragments[1:-1])
+                     + f" AND {_fragments[-1]}")
+        else:
+            _line = ""
+
+        if _line and _has_phtn:
+            _line += " SUGGESTING PORTAL HYPERTENSION"
+
+        _advice = (d.get("impression_advice")
+                   or "Adv- LFT, PT/INR & Clinical Correlation.")
+        if _line:
+            _line = _line.rstrip(".") + ". " + _advice
+            return [_q(_line), IMPRESSION_REST_UNREMARKABLE]
+        # If nothing qualifies, fall through to normal generation.
 
     p = d["pancreas"]
     p_status = p.get("status", "normal")
@@ -7452,19 +7519,16 @@ with col_find:
                 for _k, _v in _tpl_data.items():
                     if _k == "impression_advice":
                         _tpl_advice = _v
-                    elif _k == "impression_override":
-                        st.session_state["_template_impression_override"] = _v
-                        st.session_state["_mirror__template_impression_override"] = _v
                     else:
                         st.session_state[_k] = _v
                         st.session_state[f"_mirror_{_k}"] = _v
                 st.session_state["_template_advice"] = _tpl_advice
+                # Force the editable impression box to refresh its contents
+                st.session_state["_force_imp_bump"] = True
                 st.toast(f"Template '{selected_template}' applied successfully!")
                 st.rerun()
             else:
                 st.session_state["_template_advice"] = ""
-                st.session_state["_template_impression_override"] = ""
-                st.session_state["_mirror__template_impression_override"] = ""
                 st.warning("Please select a valid template.")
 
     # ------- LIVER -------
@@ -10530,17 +10594,16 @@ data["inguinal"] = {
     "no_strangulation": bool(ss("ing_no_strangulation", True)),
 }
 
-# Template impression override injection
-_tpl_override = st.session_state.get("_template_impression_override", "")
+# Template impression advice injection
 _tpl_advice = st.session_state.get("_template_advice", "")
-if _tpl_override:
-    data["impression_override"] = _tpl_override
+if _tpl_advice:
     data["impression_advice"] = _tpl_advice
 
-# Acalculus cholecystitis template flag
+# Template flags
 if ss("ac_hepatitis_template", False):
     data["ac_hepatitis_template"] = True
-
+if ss("cld_template", False):
+    data["cld_template"] = True
 # Top-Row Toggles Group (UI-G)
 data["tg_cect_abd"] = bool(ss("tg_cect_abd", False))
 data["tg_cect_option"] = ss("tg_cect_option", "if_clinically_warranted")
@@ -10724,8 +10787,11 @@ with col_prev:
         and _user_text != st.session_state["_imp_widget_current"]
     )
 
-    if (new_auto_hash != st.session_state["_imp_auto_hash"]
-            and not _user_has_edited):
+    _force_bump = st.session_state.pop("_force_imp_bump", False)
+
+    if ((new_auto_hash != st.session_state["_imp_auto_hash"]
+            and not _user_has_edited)
+            or _force_bump):
         st.session_state["_imp_ver"] += 1
         st.session_state["_imp_auto_hash"] = new_auto_hash
         st.session_state["_imp_widget_current"] = auto_imp_str
