@@ -10288,7 +10288,7 @@ with col_find:
                                 key="efast_pelvis",
                                 value=bool(_seed("efast_pelvis", False)))
                     wget("efast_pelvis", False)
-                                with c2:
+        with c2:
                     st.checkbox("Pericardium (pericardial effusion)",
                                 key="efast_peri",
                                 value=bool(_seed("efast_peri", False)))
