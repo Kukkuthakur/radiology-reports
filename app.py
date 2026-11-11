@@ -10275,7 +10275,7 @@ with col_find:
                     "and internal-echoes flag come from the "
                     "**Additional Findings → Free Fluid** panel.")
                 c1, c2 = st.columns(2)
-        with c1:
+                with c1:
                     st.checkbox("Right Upper Quadrant (Morison's pouch)",
                                 key="efast_ruq",
                                 value=bool(_seed("efast_ruq", False)))
