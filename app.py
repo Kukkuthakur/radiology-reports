@@ -10288,7 +10288,7 @@ with col_find:
                                 key="efast_pelvis",
                                 value=bool(_seed("efast_pelvis", False)))
                     wget("efast_pelvis", False)
-        with c2:
+                with c2:
                     st.checkbox("Pericardium (pericardial effusion)",
                                 key="efast_peri",
                                 value=bool(_seed("efast_peri", False)))
@@ -10303,7 +10303,8 @@ with col_find:
                     "**Additional Findings → Pleural Effusion** panel. "
                     "Internal-echoes is shared with the Additional "
                     "Findings → Free Fluid panel — ticking either updates "
-                    "both.")
+                    "both."
+                )
 
     # ============================================================
     # TOP-ROW TOGGLES GROUP (UI-G)
