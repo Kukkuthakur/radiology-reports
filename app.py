@@ -10275,7 +10275,7 @@ with col_find:
                     "and internal-echoes flag come from the "
                     "**Additional Findings → Free Fluid** panel.")
                 c1, c2 = st.columns(2)
-                with c1:
+        with c1:
                     st.checkbox("Right Upper Quadrant (Morison's pouch)",
                                 key="efast_ruq",
                                 value=bool(_seed("efast_ruq", False)))
@@ -10288,14 +10288,22 @@ with col_find:
                                 key="efast_pelvis",
                                 value=bool(_seed("efast_pelvis", False)))
                     wget("efast_pelvis", False)
-                with c2:
+                                with c2:
                     st.checkbox("Pericardium (pericardial effusion)",
                                 key="efast_peri",
                                 value=bool(_seed("efast_peri", False)))
                     wget("efast_peri", False)
+                    st.checkbox(
+                        "Free fluid with internal echoes",
+                        key="ff_internal_echoes",
+                        value=bool(_seed("ff_internal_echoes", False)))
+                    wget("ff_internal_echoes", False)
                 st.caption(
                     "Pleural effusion is read from the "
-                    "**Additional Findings → Pleural Effusion** panel.")
+                    "**Additional Findings → Pleural Effusion** panel. "
+                    "Internal-echoes is shared with the Additional "
+                    "Findings → Free Fluid panel — ticking either updates "
+                    "both.")
 
     # ============================================================
     # TOP-ROW TOGGLES GROUP (UI-G)
