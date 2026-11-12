@@ -1458,7 +1458,10 @@ def gall_bladder_sentence(d):
             else:
                 s += [seg(" "), seg(f"{word} {size_cat} calculi seen in the GB lumen, "
                                      f"largest of these measuring {size}mm.", True)]
-    else:
+    elif not d.get("soft_calc_present", False):
+        # Suppress the negative line when a sludge ball / soft calculus is
+        # already being reported — avoids "No obvious gall stones seen"
+        # directly followed by "A sludge ball/soft calculus(...)".
         s.append(seg(" No obvious gall stones seen."))
 
     sludge = d.get("sludge", "none")
