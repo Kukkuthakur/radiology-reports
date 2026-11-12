@@ -5364,7 +5364,19 @@ def efast_table_docx(doc, data):
 
 
 def _efast_impression_line(d, free_fluid, pleural_effusion):
-    """Build the single e-FAST impression bullet (upper-case)."""
+    """Build the single e-FAST impression bullet (upper-case).
+
+    Internal-echoes rules (e-FAST only):
+      • `WITH INTERNAL ECHOES` is inline (no parentheses).
+      • `(?HEMOPERITONEUM)` is appended after the location phrase,
+        with no space before the opening bracket.
+      • Under e-FAST, `peritoneal` and `ascites` kinds both normalize
+        to "…FREE FLUID [WITH INTERNAL ECHOES] IN THE PERITONEAL
+        CAVITY(?HEMOPERITONEUM)" when internal echoes are present.
+      • When internal echoes are absent, wording is unchanged (ascites
+        stays "MILD ASCITES", peritoneal stays "MILD FREE FLUID …").
+      • `(?HEMOPERITONEUM)` never fires outside this function.
+    """
     ruq = bool(d.get("ruq_positive", False))
     luq = bool(d.get("luq_positive", False))
     pel = bool(d.get("pelvis_positive", False))
@@ -5393,17 +5405,21 @@ def _efast_impression_line(d, free_fluid, pleural_effusion):
     grade_val = ff.get("grade", "mild")
     grade_up = FF_GRADE_UP.get(grade_val, "MILD")
     ie = bool(ff.get("internal_echoes", False))
-    ie_txt = " (WITH INTERNAL ECHOES)" if ie else ""
+    ie_txt = " WITH INTERNAL ECHOES" if ie else ""
+    hemo_suffix = "(?HEMOPERITONEUM)" if ie else ""
 
     if ruq and luq and pel:
         # All three ticked → collapse (Q2 — fixed "mild to moderate" wording)
         fluid_phrase = (f"MILD TO MODERATE FREE FLUID{ie_txt} IN THE "
-                        f"PERITONEAL CAVITY")
+                        f"PERITONEAL CAVITY{hemo_suffix}")
     elif ff_kind_pos and not any_abdo:
-        fluid_phrase = _ff_impression_phrase(ff) or ""
-        if ie and "FREE FLUID" in fluid_phrase:
-            fluid_phrase = fluid_phrase.replace(
-                " FREE FLUID", " FREE FLUID (WITH INTERNAL ECHOES)", 1)
+        if ie:
+            # C-choice: under e-FAST, normalize both peritoneal and
+            # ascites to the same internal-echoes peritoneal wording.
+            fluid_phrase = (f"{grade_up} FREE FLUID{ie_txt} IN THE "
+                            f"PERITONEAL CAVITY{hemo_suffix}")
+        else:
+            fluid_phrase = _ff_impression_phrase(ff) or ""
     else:
         locs = []
         if ruq:
@@ -5420,12 +5436,13 @@ def _efast_impression_line(d, free_fluid, pleural_effusion):
             else:
                 loc_txt = ", ".join(locs[:-1]) + f" & {locs[-1]}"
             fluid_phrase = (f"{grade_up} FREE FLUID{ie_txt} IN THE "
-                            f"{loc_txt}")
+                            f"{loc_txt}{hemo_suffix}")
         elif ff_kind_pos:
-            fluid_phrase = _ff_impression_phrase(ff) or ""
-            if ie and "FREE FLUID" in fluid_phrase:
-                fluid_phrase = fluid_phrase.replace(
-                    " FREE FLUID", " FREE FLUID (WITH INTERNAL ECHOES)", 1)
+            if ie:
+                fluid_phrase = (f"{grade_up} FREE FLUID{ie_txt} IN THE "
+                                f"PERITONEAL CAVITY{hemo_suffix}")
+            else:
+                fluid_phrase = _ff_impression_phrase(ff) or ""
         else:
             fluid_phrase = ""
 
@@ -10276,9 +10293,18 @@ with col_find:
                                 key="efast_peri",
                                 value=bool(_seed("efast_peri", False)))
                     wget("efast_peri", False)
+                    st.checkbox(
+                        "Free fluid with internal echoes",
+                        key="ff_internal_echoes",
+                        value=bool(_seed("ff_internal_echoes", False)))
+                    wget("ff_internal_echoes", False)
                 st.caption(
                     "Pleural effusion is read from the "
-                    "**Additional Findings → Pleural Effusion** panel.")
+                    "**Additional Findings → Pleural Effusion** panel. "
+                    "Internal-echoes is shared with the Additional "
+                    "Findings → Free Fluid panel — ticking either updates "
+                    "both."
+                )
 
     # ============================================================
     # TOP-ROW TOGGLES GROUP (UI-G)
