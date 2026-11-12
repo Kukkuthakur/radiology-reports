@@ -1155,6 +1155,8 @@ def new_report(sex="F"):
             "calculi_neck": False, "calculi_neck_size_mm": "",
             "sludge": "none", "sludge_ball": False, "sludge_ball_count": "single",
             "sludge_ball_size_mm": "", "sludge_ball_wall": "anterior",
+            "soft_calc_present": False, "soft_calc_count": "single",
+            "soft_calc_size_mm": "",
             "comet_tail": False, "comet_tail_count": "single",
             "comet_tail_wall": "anterior", "pericholecystic_fluid": False,
         },
@@ -1474,6 +1476,22 @@ def gall_bladder_sentence(d):
             word = "Few" if count == "few" else "Multiple"
             s += [seg(" "), seg(f"{word} sludge balls/polyps seen impacted at the "
                                  f"{wall} GB wall, largest of these measuring {size}mm.", True)]
+
+    # Soft calculus / sludge ball — no distal acoustic shadow.
+    # Parenthetical is bold-italic mixed case; remainder is bold mixed case.
+    if d.get("soft_calc_present"):
+        _sc_count = d.get("soft_calc_count", "single")
+        _sc_size = d.get("soft_calc_size_mm", "")
+        s.append(seg(" "))
+        if _sc_count == "single":
+            s.append(seg(f"A sludge ball/soft calculus({_sc_size}mm; ", True))
+            s.append(seg("Not casting any distal acoustic shadow", True, False, True))
+            s.append(seg(") seen in the GB lumen.", True))
+        else:
+            _sc_word = "Few" if _sc_count == "few" else "Multiple"
+            s.append(seg(f"{_sc_word} sludge balls/soft calculi(", True))
+            s.append(seg("Not casting any distal acoustic shadow", True, False, True))
+            s.append(seg(") seen in the GB lumen.", True))
 
     if d.get("comet_tail"):
         count = d.get("comet_tail_count", "single")
@@ -6526,7 +6544,28 @@ def generate_impression(d, sex, age):
                     word = "FEW" if count == "few" else "MULTIPLE"
                     lines.append(f"{word} SLUDGE BALLS/POLYPS SEEN IMPACTED AT THE "
                                  f"{wall} GB WALL. Adv- Review scan after a month.")
-    
+
+        # Soft calculus / sludge ball — independent of the hard-calculi branch.
+        # The parenthetical is wrapped in \x01…\x02 sentinels so the impression
+        # renderer prints it as mixed-case bold-italic instead of upper-casing
+        # it (see _add_impression_line_runs in the DOCX section).
+        if gb.get("soft_calc_present", False):
+            _sc_count = gb.get("soft_calc_count", "single")
+            _sc_size = gb.get("soft_calc_size_mm", "")
+            if _sc_count == "single":
+                lines.append(
+                    f"A SLUDGE BALL/SOFT CALCULUS(\x01{_sc_size}mm; Not casting "
+                    f"any distal acoustic shadow\x02) IN THE GALL BLADDER LUMEN. "
+                    f"Adv- Review scan after a month."
+                )
+            else:
+                _sc_word = "FEW" if _sc_count == "few" else "MULTIPLE"
+                lines.append(
+                    f"{_sc_word} SLUDGE BALLS/SOFT CALCULI(\x01Not casting any "
+                    f"distal acoustic shadow\x02) IN THE GALL BLADDER LUMEN. "
+                    f"Adv- Review scan after a month."
+                )
+
         if gb_comet_tail:
             if gb_has_calculi:
                 lines.append("CHOLELITHIASIS WITH GALL BLADDER "
@@ -7198,12 +7237,32 @@ def _split_bosniak(text):
     return parts
 
 
+# Sentinels used inside impression strings to force verbatim (mixed-case)
+# rendering inside a parenthetical. The renderer strips them.
+_VERBATIM_OPEN = "\x01"
+_VERBATIM_CLOSE = "\x02"
+
+
 def _add_impression_line_runs(para, line, size=FONT_SIZE_BODY):
     main, adv = _split_adv(line)
     for chunk, in_parens in _tokenize_parentheticals(main):
         if in_parens:
-            for sub, _is_b in _split_bosniak(chunk):
-                _add_run(para, sub, bold=True, italic=True, size=size)
+            if _VERBATIM_OPEN in chunk and _VERBATIM_CLOSE in chunk:
+                # ( \x01 mixed-case text \x02 ) — render verbatim, bold-italic
+                _open_idx = chunk.find(_VERBATIM_OPEN)
+                _close_idx = chunk.find(_VERBATIM_CLOSE)
+                _left = chunk[:_open_idx]
+                _inner = chunk[_open_idx + 1:_close_idx]
+                _right = chunk[_close_idx + 1:]
+                if _left:
+                    _add_run(para, _left, bold=True, italic=True, size=size)
+                if _inner:
+                    _add_run(para, _inner, bold=True, italic=True, size=size)
+                if _right:
+                    _add_run(para, _right, bold=True, italic=True, size=size)
+            else:
+                for sub, _is_b in _split_bosniak(chunk):
+                    _add_run(para, sub, bold=True, italic=True, size=size)
         else:
             for sub, is_vs in _split_vs(chunk):
                 if is_vs:
@@ -8164,6 +8223,26 @@ with col_find:
                 st.text_input("Size (mm)", key="gb_sb_size",
                               value=_seed("gb_sb_size", ""))
                 wget("gb_sb_size", "")
+            st.checkbox(
+                "Sludge ball / soft calculus (no distal acoustic shadow)",
+                key="gb_soft_calc_present",
+                value=bool(_seed("gb_soft_calc_present", False)))
+            wget("gb_soft_calc_present", False)
+            if ss("gb_soft_calc_present", False):
+                _gsc_cnt_opts = ["single", "few", "multiple"]
+                st.radio(
+                    "Count", _gsc_cnt_opts,
+                    index=_idx("gb_soft_calc_count", _gsc_cnt_opts, "single"),
+                    horizontal=True,
+                    format_func=lambda x: x.title(),
+                    key="gb_soft_calc_count")
+                wget("gb_soft_calc_count", "single")
+                if ss("gb_soft_calc_count", "single") == "single":
+                    st.text_input(
+                        "Soft calculus size (mm)",
+                        key="gb_soft_calc_size",
+                        value=_seed("gb_soft_calc_size", ""))
+                    wget("gb_soft_calc_size", "")
             st.checkbox(
                 "Comet tail artifacts (adenomyomatosis / cholesterolosis)",
                 key="gb_comet_tail",
@@ -10429,6 +10508,9 @@ data["gall_bladder"].update({
     "sludge_ball_count": ss("gb_sb_count", "single"),
     "sludge_ball_size_mm": ss("gb_sb_size", ""),
     "sludge_ball_wall": ss("gb_sb_wall", "anterior"),
+    "soft_calc_present": bool(ss("gb_soft_calc_present", False)),
+    "soft_calc_count": ss("gb_soft_calc_count", "single"),
+    "soft_calc_size_mm": ss("gb_soft_calc_size", ""),
     "comet_tail": bool(ss("gb_comet_tail", False)),
     "comet_tail_count": ss("gb_ct_count", "single"),
     "comet_tail_wall": ss("gb_ct_wall", "anterior"),
@@ -11118,7 +11200,8 @@ def render_preview_findings(data):
         out.append("")
     out.append("IMPRESSION:")
     for line in data["impression"]["lines"]:
-        out.append(f"  - {line}")
+        _clean = line.replace(_VERBATIM_OPEN, "").replace(_VERBATIM_CLOSE, "")
+        out.append(f"  - {_clean}")
     return "\n".join(out)
 
 
