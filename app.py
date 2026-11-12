@@ -7428,10 +7428,12 @@ def build_docx_bytes(data):
                  size=FONT_SIZE_BODY)
 
     _add_full_line(doc)
+
     # ── e-FAST blue table, immediately below the title, above LIVER ──
     if efast_table_docx(doc, data):
         _add_full_line(doc)
 
+    p = data["patient"]
     sex, age = p["sex"], p["age"]
     age_years = parse_age(age)
     is_ped = age_years is not None and age_years < 18
