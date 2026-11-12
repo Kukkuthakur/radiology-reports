@@ -5359,7 +5359,24 @@ def efast_table_docx(doc, data):
 
     tbl = doc.add_table(rows=len(rows), cols=2)
     _set_table_borders(tbl)
+    # Full text width (17 cm): 7.5 cm label column + 9.5 cm finding column.
+    # Explicit tblW + tblInd=0 so the right border lands on the same
+    # vertical line as the demographics box and the LIVER text.
     col_w = [Cm(7.5), Cm(9.5)]
+    _tblPr = tbl._tbl.tblPr
+    _total_dxa = int(round((7.5 + 9.5) * 567))
+    _tblW = _tblPr.find(qn("w:tblW"))
+    if _tblW is None:
+        _tblW = OxmlElement("w:tblW")
+        _tblPr.append(_tblW)
+    _tblW.set(qn("w:w"), str(_total_dxa))
+    _tblW.set(qn("w:type"), "dxa")
+    _tblInd = _tblPr.find(qn("w:tblInd"))
+    if _tblInd is None:
+        _tblInd = OxmlElement("w:tblInd")
+        _tblPr.append(_tblInd)
+    _tblInd.set(qn("w:w"), "0")
+    _tblInd.set(qn("w:type"), "dxa")
     for ri, (label, text) in enumerate(rows):
         row_fill = _efast_row_fill(ri + 1)
         c0 = tbl.cell(ri, 0)
@@ -7187,10 +7204,29 @@ def add_whole_abdomen_title_box(doc, data):
     _CENTER = WD_ALIGN_PARAGRAPH.CENTER
     t = doc.add_table(rows=3, cols=2)
     _set_table_borders(t)
-    # 17 cm total width, split 8.5 / 8.5 like the OB box
+    # Full text width (17 cm) split 8.5 / 8.5. Explicit tblInd=0 and a
+    # fixed tblW so the right border lands exactly where a LIVER line
+    # ends, with no Word-added 0.19 cm default indent.
+    _w_cm = 8.5
     for row in t.rows:
-        row.cells[0].width = Cm(8.5)
-        row.cells[1].width = Cm(8.5)
+        row.cells[0].width = Cm(_w_cm)
+        row.cells[1].width = Cm(_w_cm)
+    _tblPr = t._tbl.tblPr
+    # tblW = sum of column widths in dxa (1 cm = 567 dxa)
+    _total_dxa = int(round(_w_cm * 2 * 567))
+    _tblW = _tblPr.find(qn("w:tblW"))
+    if _tblW is None:
+        _tblW = OxmlElement("w:tblW")
+        _tblPr.append(_tblW)
+    _tblW.set(qn("w:w"), str(_total_dxa))
+    _tblW.set(qn("w:type"), "dxa")
+    # Force indent 0 so the box sits flush with the left margin
+    _tblInd = _tblPr.find(qn("w:tblInd"))
+    if _tblInd is None:
+        _tblInd = OxmlElement("w:tblInd")
+        _tblPr.append(_tblInd)
+    _tblInd.set(qn("w:w"), "0")
+    _tblInd.set(qn("w:type"), "dxa")
     # Row 0: merged navy title bar
     bar = t.cell(0, 0).merge(t.cell(0, 1))
     tcPr = bar._tc.get_or_add_tcPr()
