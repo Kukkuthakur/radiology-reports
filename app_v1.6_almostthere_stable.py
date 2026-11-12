@@ -7179,6 +7179,49 @@ def _add_trailing_stub(doc):
     run.font.size = Pt(1)
     return p
 
+
+def add_whole_abdomen_title_box(doc, data):
+    """Navy title bar + patient details below, styled like the OB report's
+    add_title_demo_box. Fixed BLUE theme — does not follow the rotating palette."""
+    _BLUE_TITLE_FILL = "BBDEFB"       # matches OB COLOR_THEMES[1][1] (Blue theme header)
+    _CENTER = WD_ALIGN_PARAGRAPH.CENTER
+    t = doc.add_table(rows=3, cols=2)
+    _set_table_borders(t)
+    # 17 cm total width, split 8.5 / 8.5 like the OB box
+    for row in t.rows:
+        row.cells[0].width = Cm(8.5)
+        row.cells[1].width = Cm(8.5)
+    # Row 0: merged navy title bar
+    bar = t.cell(0, 0).merge(t.cell(0, 1))
+    tcPr = bar._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), _BLUE_TITLE_FILL)
+    tcPr.append(shd)
+    bp = bar.paragraphs[0]
+    bp.alignment = _CENTER
+    bp.paragraph_format.space_before = Pt(2)
+    bp.paragraph_format.space_after = Pt(2)
+    _add_run(bp, "ULTRASOUND WHOLE ABDOMEN",
+             bold=True, size=FONT_SIZE_TITLE, color=TITLE_COLOR)
+    # Row 1 + 2: patient details
+    p = data["patient"]
+    cells = {
+        (1, 0): f"NAME :-  {p['name']}",
+        (1, 1): f"DATE :-  {p['date']}",
+        (2, 0): f"AGE/SEX :-  {p['age']}Y/{p['sex']}",
+        (2, 1): f"REF. BY :-  {p['referred_by']}",
+    }
+    for (r, c), text in cells.items():
+        cell = t.cell(r, c)
+        cp = cell.paragraphs[0]
+        cp.paragraph_format.line_spacing = 1.0
+        cp.paragraph_format.space_after = Pt(0)
+        cp.paragraph_format.space_before = Pt(0)
+        _add_run(cp, text, bold=True)
+    return t
+
 _BOSNIAK_RE = re.compile(r"BOSNIAK\s+CAT-[IVX]+", re.IGNORECASE)
 _NASH_RE = re.compile(r"\(NASH\)", re.IGNORECASE)
 _VS_RE = re.compile(r"\bvs\b", re.IGNORECASE)
@@ -7355,34 +7398,15 @@ def build_docx_bytes(data):
         _run.font.size = Pt(FONT_SIZE_BODY)   # 11pt
     # === END SPACER ===
 
-    table = doc.add_table(rows=2, cols=2)
-    table.autofit = True
-    _set_table_borders(table)
-    p = data["patient"]
-    cells = [
-        (0, 0, f"NAME :- {p['name']}"),
-        (0, 1, f"DATE :- {p['date']}"),
-        (1, 0, f"AGE/SEX :- {p['age']}Y/{p['sex']}"),
-        (1, 1, f"REF. BY: {p['referred_by']}"),
-    ]
-    for r, c, text in cells:
-        cell = table.cell(r, c)
-        cell.text = ""
-        cp = cell.paragraphs[0]
-        cp.paragraph_format.line_spacing = 1.0
-        cp.paragraph_format.space_after = Pt(0)
-        cp.paragraph_format.space_before = Pt(0)
-        _add_run(cp, text, bold=True)
+    # Combined title bar + patient details box (same layout as the OB
+    # add_title_demo_box; fixed BLUE theme so it does not follow the
+    # rotating palette and stays visually distinct from organ tables).
+    add_whole_abdomen_title_box(doc, data)
 
-    _add_half_line(doc)
-
-    title_para = doc.add_paragraph()
-    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_para.paragraph_format.space_after = Pt(0)
-    title_para.paragraph_format.space_before = Pt(0)
-    title_para.paragraph_format.line_spacing = 1.0
-    _add_run(title_para, "ULTRASOUND WHOLE ABDOMEN", bold=True, underline=True,
-             size=FONT_SIZE_TITLE, color=TITLE_COLOR)
+    # 8pt gap below the box (matches the OB report's spacing)
+    p_gap1 = doc.add_paragraph()
+    p_gap1.paragraph_format.space_after = Pt(0)
+    p_gap1.paragraph_format.line_spacing = Pt(8)
 
     # Scan quality / limitation subheading
     _subhead_map = {
@@ -7409,6 +7433,7 @@ def build_docx_bytes(data):
     if efast_table_docx(doc, data):
         _add_full_line(doc)
 
+    p = data["patient"]
     sex, age = p["sex"], p["age"]
     age_years = parse_age(age)
     is_ped = age_years is not None and age_years < 18
