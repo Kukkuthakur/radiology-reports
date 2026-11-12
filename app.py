@@ -5377,6 +5377,18 @@ def efast_table_docx(doc, data):
         _tblPr.append(_tblInd)
     _tblInd.set(qn("w:w"), "0")
     _tblInd.set(qn("w:type"), "dxa")
+    # Zero right-cell margin: same reason as the demographics box, so the
+    # right border lands on the same vertical line as the LIVER text.
+    _cellMar = _tblPr.find(qn("w:tblCellMar"))
+    if _cellMar is None:
+        _cellMar = OxmlElement("w:tblCellMar")
+        _tblPr.append(_cellMar)
+    _right = _cellMar.find(qn("w:right"))
+    if _right is None:
+        _right = OxmlElement("w:right")
+        _cellMar.append(_right)
+    _right.set(qn("w:w"), "0")
+    _right.set(qn("w:type"), "dxa")
     for ri, (label, text) in enumerate(rows):
         row_fill = _efast_row_fill(ri + 1)
         c0 = tbl.cell(ri, 0)
@@ -7227,6 +7239,19 @@ def add_whole_abdomen_title_box(doc, data):
         _tblPr.append(_tblInd)
     _tblInd.set(qn("w:w"), "0")
     _tblInd.set(qn("w:type"), "dxa")
+    # Zero right-cell margin so the visible right border sits flush with
+    # the end of a full-width paragraph (Word/LibreOffice otherwise keep
+    # ~108 dxa of interior padding, i.e. the ~1 mm gap).
+    _cellMar = _tblPr.find(qn("w:tblCellMar"))
+    if _cellMar is None:
+        _cellMar = OxmlElement("w:tblCellMar")
+        _tblPr.append(_cellMar)
+    _right = _cellMar.find(qn("w:right"))
+    if _right is None:
+        _right = OxmlElement("w:right")
+        _cellMar.append(_right)
+    _right.set(qn("w:w"), "0")
+    _right.set(qn("w:type"), "dxa")
     # Row 0: merged navy title bar
     bar = t.cell(0, 0).merge(t.cell(0, 1))
     tcPr = bar._tc.get_or_add_tcPr()
