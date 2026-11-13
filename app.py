@@ -4381,8 +4381,8 @@ def bowel_sentence(d, sex, pancreas_status="normal", mln_present=False):
         else:
             s.append(seg("No obvious bowel wall thickening or lymphadenitis "
                          "appreciated.", True))
-    else:
-        s.append(seg("Bowel wall thickening seen.", True))
+    # When the structured Bowel Wall module owns the finding, it is the
+    # authoritative source — emit nothing here to avoid a duplicate stub.
     if acute:
         s.append(seg(" Mild ascites is seen.", True))
     return s
@@ -6171,17 +6171,22 @@ def fluid_mln_impression_lines(data):
             lines.append(line)
 
     # Bowel-wall merge — splice into the fluid bullet (index 0) using " WITH ".
-    # The merged bullet is diagnosis-bearing, so any existing advice tail on
-    # the fluid bullet is replaced by the bowel-wall advice below.
+    # The merged bullet is diagnosis-bearing, so:
+    #   * strip any bare-fluid "?ETIOLOGY" tail the FF bullet might carry,
+    #   * append the bowel-wall module's own advice tail (so the advice
+    #     stays attached to the merged bullet, not a phantom fallback).
     if bw_merge and lines:
         base = lines[0].rstrip(".")
-        # Drop any trailing advice on the fluid bullet before merging.
         _adv_idx = base.find(" Adv-")
         if _adv_idx == -1:
             _adv_idx = base.find(" - ?ETIOLOGY")
         if _adv_idx != -1:
             base = base[:_adv_idx].rstrip(" .")
-        lines[0] = f"{base} WITH {bw_phrase}."
+        _bw_advice = BW_ADVICE_TAIL.get(
+            data.get("bowel_wall", {}).get("advice", "none"), "")
+        if not _bw_advice:
+            _bw_advice = ". Adv - Lab & Clinical Correlation."
+        lines[0] = f"{base} WITH {bw_phrase}{_bw_advice}"
 
     return lines
 
@@ -7023,10 +7028,15 @@ def generate_impression(d, sex, age):
             lines.append(cl)
 
     b = d["bowel"]
-    bw_line = _bowel_wall_impression_line(d.get("bowel_wall", {}))
+    _bw_data = d.get("bowel_wall", {})
+    bw_line = _bowel_wall_impression_line(_bw_data)
     
-    # Only add the generic line if the structured line is NOT present
-    if b.get("wall_thickening") and not bw_line:
+    # The structured Bowel Wall module is the authoritative source — the
+    # legacy fallback must only fire when the structured module is absent.
+    # (bw_line may be None because it merged into the free-fluid bullet;
+    # that is still a legitimate "structured module owns this" state.)
+    _bw_structured_present = bool(_bw_data.get("present", False))
+    if b.get("wall_thickening") and not _bw_structured_present:
         lines.append("BOWEL WALL THICKENING SEEN - ?SIGNIFICANCE. "
                      "Adv- Clinical Correlation.")
 
