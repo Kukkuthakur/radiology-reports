@@ -1083,6 +1083,7 @@ def _new_saio():
         "saio_ff": "none",
         "terminal_ileum": "", "ascending_colon": "",
         "transverse_colon": "", "descending_colon": "",
+        "peristalsis": "none",   # none / halted / accelerated
     }
 
 
@@ -5049,6 +5050,7 @@ def saio_sentence(d):
     trans = d.get("transverse_colon", "")
     desc = d.get("descending_colon", "")
     saio_ff = d.get("saio_ff", "none")
+    peristalsis = d.get("peristalsis", "none")
 
     sizes = []
     if term:
@@ -5066,6 +5068,18 @@ def saio_sentence(d):
         dist_line = f"liquid filled distension of bowel loops{sizes_str}"
     elif dist == "gaseous":
         dist_line = f"gaseous distension of bowel loops{sizes_str}"
+
+    # Peristalsis clause — appended to the distension phrase when set.
+    peri_clause = None
+    if peristalsis == "halted":
+        peri_clause = "halted peristalsis"
+    elif peristalsis == "accelerated":
+        peri_clause = "accelerated peristalsis"
+
+    if peri_clause and dist_line:
+        dist_line = f"{dist_line} & {peri_clause}"
+    elif peri_clause and not dist_line:
+        dist_line = peri_clause
 
     # Item #17: SAIO FF override prepends a fluid lead-in.
     ff_lead = None
@@ -5094,6 +5108,7 @@ def _saio_impression_line(d):
     trans = d.get("transverse_colon", "")
     desc = d.get("descending_colon", "")
     saio_ff = d.get("saio_ff", "none")
+    peristalsis = d.get("peristalsis", "none")
 
     sizes = []
     if term:
@@ -5111,6 +5126,18 @@ def _saio_impression_line(d):
         dist_line = f"LIQUID FILLED DISTENSION OF BOWEL LOOPS{sizes_str}"
     elif dist == "gaseous":
         dist_line = f"GASEOUS DISTENSION OF BOWEL LOOPS{sizes_str}"
+
+    # Impression joins with "WITH" (body uses "&") per spec.
+    peri_up = None
+    if peristalsis == "halted":
+        peri_up = "HALTED PERISTALSIS"
+    elif peristalsis == "accelerated":
+        peri_up = "ACCELERATED PERISTALSIS"
+
+    if peri_up and dist_line:
+        dist_line = f"{dist_line} WITH {peri_up}"
+    elif peri_up and not dist_line:
+        dist_line = peri_up
 
     ff_lead_up = None
     if saio_ff == "mild_inter_bowel":
@@ -5210,7 +5237,8 @@ def fluid_mln_sentence(data):
     ff_present = (ff.get("kind", "none") != "none") and not pancreas_acute
     mln_present = mln.get("branch", "none") != "none"
     _saio_active = (saio.get("distension_type", "none") != "none"
-                    or saio.get("saio_ff", "none") != "none")
+                    or saio.get("saio_ff", "none") != "none"
+                    or saio.get("peristalsis", "none") != "none")
     saio_line = saio_sentence(saio) if _saio_active else None
 
     # e-FAST (Q8a + Q8b): when e-FAST is on, suppress this fluid paragraph
@@ -10215,6 +10243,21 @@ with col_find:
                                   value=_seed("saio_descending_colon", ""))
                     wget("saio_descending_colon", "")
 
+                st.markdown("**Peristalsis**")
+                _peri_opts = ["none", "halted", "accelerated"]
+                st.radio(
+                    "Peristalsis (mutually exclusive)",
+                    _peri_opts,
+                    index=_idx("saio_peristalsis", _peri_opts, "none"),
+                    horizontal=True,
+                    format_func=lambda x: {
+                        "none": "None",
+                        "halted": "Halted peristalsis",
+                        "accelerated": "Accelerated peristalsis",
+                    }[x],
+                    key="saio_peristalsis")
+                wget("saio_peristalsis", "none")
+
             # --- LIPOMA ---
             with st.expander("Lipoma", expanded=False):
                 st.checkbox("Lipoma present", key="lipoma_present",
@@ -11077,6 +11120,7 @@ data["saio"] = {
     "ascending_colon": ss("saio_ascending_colon", ""),
     "transverse_colon": ss("saio_transverse_colon", ""),
     "descending_colon": ss("saio_descending_colon", ""),
+    "peristalsis": ss("saio_peristalsis", "none"),
 }
 
 data["pleural_effusion"] = {
