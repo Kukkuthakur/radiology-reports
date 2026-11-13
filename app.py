@@ -5127,7 +5127,7 @@ def _saio_impression_line(d):
     elif dist == "gaseous":
         dist_line = f"GASEOUS DISTENSION OF BOWEL LOOPS{sizes_str}"
 
-    # Impression joins with "WITH" (body uses "&") per spec.
+    # Peristalsis clause — joined with " & " (matches body line).
     peri_up = None
     if peristalsis == "halted":
         peri_up = "HALTED PERISTALSIS"
@@ -5135,7 +5135,7 @@ def _saio_impression_line(d):
         peri_up = "ACCELERATED PERISTALSIS"
 
     if peri_up and dist_line:
-        dist_line = f"{dist_line} WITH {peri_up}"
+        dist_line = f"{dist_line} & {peri_up}"
     elif peri_up and not dist_line:
         dist_line = peri_up
 
