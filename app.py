@@ -4388,7 +4388,11 @@ def bowel_sentence(d, sex, pancreas_status="normal", mln_present=False):
     return s
 
 
-def bowel_wall_sentence(d):
+def _bowel_wall_phrase(d):
+    """Return the plain-text bowel-wall clause (no trailing period),
+    e.g. 'Short segment (5mm) concentric terminal ilium wall thickening
+    (upto 6.5mm) noted'. Used both standalone and as a merge fragment
+    into the free-fluid sentence."""
     if not d.get("present"):
         return None
     segment_type = d.get("segment_type", "short")
@@ -4445,11 +4449,26 @@ def bowel_wall_sentence(d):
     text = f"{seg_word} {loc_str} noted"
     if extras:
         text += " with " + " and ".join(extras)
-    text += "."
-    return [seg(text, True)]
+    return text
 
 
-def _bowel_wall_impression_line(d):
+def bowel_wall_sentence(d):
+    """Standalone body sentence. Returns None when the free-fluid line is
+    present — fluid_mln_sentence will merge the bowel-wall clause in."""
+    if not d.get("present"):
+        return None
+    if d.get("_merge_into_fluid"):
+        return None
+    txt = _bowel_wall_phrase(d)
+    if not txt:
+        return None
+    return [seg(txt + ".", True)]
+
+
+def _bowel_wall_impression_phrase(d):
+    """Uppercase bowel-wall fragment without any advice tail. Used both
+    standalone (with advice appended by the caller) and as the merge
+    fragment inside the free-fluid impression bullet."""
     if not d.get("present"):
         return None
     segment_type = d.get("segment_type", "short")
@@ -4459,7 +4478,6 @@ def _bowel_wall_impression_line(d):
     perifocal_ff = bool(d.get("perifocal_free_fluid"))
     emb_nodes = bool(d.get("embedded_nodes"))
     emb_nodes_size = d.get("embedded_nodes_size", "")
-    advice = d.get("advice", "none")
 
     seg_word = "LONG SEGMENT" if segment_type == "long" else "SHORT SEGMENT"
     if seg_len:
@@ -4508,7 +4526,18 @@ def _bowel_wall_impression_line(d):
     text = f"{seg_word} {loc_str}"
     if extras:
         text += " WITH " + " AND ".join(extras)
+    return text
 
+
+def _bowel_wall_impression_line(d):
+    if not d.get("present"):
+        return None
+    if d.get("_merge_into_fluid"):
+        return None
+    text = _bowel_wall_impression_phrase(d)
+    if not text:
+        return None
+    advice = d.get("advice", "none")
     tail = BW_ADVICE_TAIL.get(advice, "")
     if not tail:
         tail = ". Adv - Lab & Clinical Correlation."
@@ -5232,13 +5261,13 @@ def fluid_mln_sentence(data):
     saio = data.get("saio", {})
     pancreas = data.get("pancreas", {})
     pancreas_acute = pancreas.get("status") == "acute"
+    bw_phrase = _bowel_wall_phrase(data.get("bowel_wall", {}))
 
     eff_present = eff.get("status", "none") != "none"
     ff_present = (ff.get("kind", "none") != "none") and not pancreas_acute
     mln_present = mln.get("branch", "none") != "none"
     _saio_active = (saio.get("distension_type", "none") != "none"
-                    or saio.get("saio_ff", "none") != "none"
-                    or saio.get("peristalsis", "none") != "none")
+                    or saio.get("saio_ff", "none") != "none")
     saio_line = saio_sentence(saio) if _saio_active else None
 
     # e-FAST (Q8a + Q8b): when e-FAST is on, suppress this fluid paragraph
@@ -5285,17 +5314,12 @@ def fluid_mln_sentence(data):
     if mln_segs:
         # Merge fluid + MLN into one sentence when fluid is present (with-join).
         if fluid_sentence and not saio_line:
-            # Strip the trailing period from the fluid sentence, lowercase
-            # the leading letter of the MLN sentence, and join with " with ".
             merged_fluid = fluid_sentence.rstrip(".")
             mln_body = mln_segs[0][0].strip()
-            # lowercase first letter of MLN body
             if mln_body and mln_body[0].isupper():
                 mln_body = mln_body[0].lower() + mln_body[1:]
-            # Drop the leading "Also " pattern if present (not expected here)
             if mln_body.startswith("also "):
                 mln_body = mln_body[5:]
-            # Remove the existing "out" fluid segment, replace with merged.
             out.clear()
             out.append(seg(f"{merged_fluid} with {mln_body}", True))
         elif fluid_sentence or saio_line:
@@ -5304,8 +5328,24 @@ def fluid_mln_sentence(data):
         else:
             out.append(seg(mln_segs[0][0], True))
 
-    return out
+    # Bowel-wall clause — merge into the fluid lead-in when fluid is
+    # present and no SAIO line has taken over the paragraph. SAIO owns
+    # the whole sentence when active, so bowel-wall stays separate there.
+    if bw_phrase and not saio_line:
+        if out:
+            first = out[0]
+            base = first[0].rstrip(".")
+            if base:
+                base = base[0].upper() + base[1:]
+            bw_body = bw_phrase.strip()
+            if bw_body and bw_body[0].isupper():
+                bw_body = bw_body[0].lower() + bw_body[1:]
+            out[0] = seg(f"{base} with {bw_body}.", first[1], first[2],
+                         first[3] if len(first) > 3 else None)
+        else:
+            out.append(seg(bw_phrase + ".", True))
 
+    return out
 # ============================================================
 # e-FAST BODY / TABLE / IMPRESSION
 # ============================================================
@@ -6065,11 +6105,10 @@ def fluid_mln_impression_lines(data):
     saio = data.get("saio", {})
     pancreas = data.get("pancreas", {})
     pancreas_acute = pancreas.get("status") == "acute"
+    bw_phrase = _bowel_wall_impression_phrase(data.get("bowel_wall", {}))
 
     eff_present = eff.get("status", "none") != "none"
     ff_present = (ff.get("kind", "none") != "none") and not pancreas_acute
-    if saio.get("saio_ff", "none") != "none":
-        ff_present = False
     if saio.get("saio_ff", "none") != "none":
         ff_present = False
     mln_present = mln.get("branch", "none") != "none"
@@ -6077,7 +6116,13 @@ def fluid_mln_impression_lines(data):
                     or saio.get("saio_ff", "none") != "none")
     saio_line = _saio_impression_line(saio) if _saio_active else None
 
-    present_count = sum([eff_present, ff_present, mln_present]) + (1 if saio_line else 0)
+    # Bowel-wall participates only when there's fluid to merge into
+    # (and SAIO isn't owning the paragraph).
+    bw_merge = bool(bw_phrase) and not saio_line and (ff_present or eff_present)
+
+    present_count = (sum([eff_present, ff_present, mln_present])
+                     + (1 if saio_line else 0)
+                     + (1 if bw_merge else 0))
     if present_count == 0:
         return []
 
@@ -6092,7 +6137,6 @@ def fluid_mln_impression_lines(data):
         _full = mln_impression_line(mln)
         if not _full:
             return mln_head or ""
-        # Strip the leading head we already know (avoid duplication)
         if mln_head and _full.startswith(mln_head):
             _tail = _full[len(mln_head):]
             return f"{mln_head}{_tail}"
@@ -6111,13 +6155,9 @@ def fluid_mln_impression_lines(data):
     elif ff_present and saio_line:
         lines.append(f"{ff_phrase}. {saio_line.rstrip('.')}.")
     elif eff_present and mln_present:
-        # Merge effusion + MLN.
         lines.append(f"{eff_phrase} WITH {_mln_fragment()}")
     elif ff_present and mln_present:
-        # Merge fluid + MLN (fluid as primary, MLN joined by " WITH ").
         _mln_frag = _mln_fragment()
-        # Drop the leading period from fluid phrase, uppercase the first
-        # char of the MLN fragment so it reads naturally after "WITH".
         lines.append(f"{ff_phrase} WITH {_mln_frag}")
     elif eff_present:
         lines.append(f"{eff_phrase}.")
@@ -6130,8 +6170,20 @@ def fluid_mln_impression_lines(data):
         if line:
             lines.append(line)
 
-    return lines
+    # Bowel-wall merge — splice into the fluid bullet (index 0) using " WITH ".
+    # The merged bullet is diagnosis-bearing, so any existing advice tail on
+    # the fluid bullet is replaced by the bowel-wall advice below.
+    if bw_merge and lines:
+        base = lines[0].rstrip(".")
+        # Drop any trailing advice on the fluid bullet before merging.
+        _adv_idx = base.find(" Adv-")
+        if _adv_idx == -1:
+            _adv_idx = base.find(" - ?ETIOLOGY")
+        if _adv_idx != -1:
+            base = base[:_adv_idx].rstrip(" .")
+        lines[0] = f"{base} WITH {bw_phrase}."
 
+    return lines
 
 # ============================================================
 # IMPRESSION GENERATOR
@@ -7029,9 +7081,13 @@ def generate_impression(d, sex, age):
                             and (_ppln_d.get("necrotic", False)
                                  or _ppln_d.get("lost_hila", False)))
         _has_addendum = bool((d.get("additional_body_findings") or "").strip())
+        # Bowel-wall merge makes the fluid bullet diagnosis-bearing, so the
+        # bare-fluid "?ETIOLOGY" tail must not fire.
+        _bw_merged = bool(d.get("bowel_wall", {}).get("present", False))
 
         _suppress_tail = (_cld_like or _mln_suspicious
-                          or _ppln_suspicious or _has_addendum)
+                          or _ppln_suspicious or _has_addendum
+                          or _bw_merged)
 
         if not _suppress_tail:
             if d.get("tg_s_amylase"):
@@ -11069,6 +11125,15 @@ data["bowel_wall"] = {
     "embedded_nodes": bool(ss("bw_embedded_nodes", False)),
     "embedded_nodes_size": ss("bw_embedded_nodes_size", ""),
     "advice": ss("bw_advice", "none"),
+    # When free fluid is present, fluid_mln_sentence merges the bowel-wall
+    # clause into the fluid lead-in — the standalone bowel-wall section
+    # must stand down to avoid duplication.
+    "_merge_into_fluid": (
+        bool(ss("bw_wall_present", False))
+        and ss("ff_kind", "none") != "none"
+        and ss("saio_distension_type", "none") == "none"
+        and ss("saio_ff", "none") == "none"
+    ),
 }
 if ss("bw_term_ileum_check", False):
     data["bowel_wall"]["locations"].append("terminal_ileum")
