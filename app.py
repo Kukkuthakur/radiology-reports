@@ -5866,7 +5866,8 @@ def _liver_impression_line(liver):
         else:
             lobe = liver.get("hemangioma_few_lobe", "right").upper()
             lf.append(f"FEW HEPATIC HEMANGIOMAS IN {lobe} LOBE")
-    elif fl == "abscess":
+    _is_abscess = (fl == "abscess")
+    if fl == "abscess":
         count = liver.get("abscess_count", "single")
         lesions = liver.get("abscess_lesions", [])
         if lesions:
@@ -5879,7 +5880,7 @@ def _liver_impression_line(liver):
                     f"AN IRREGULAR MARGINATED ILL-DEFINED AVASCULAR {dens} "
                     f"SOL IN THE LIVER(Vol= {l0['vol']} cc) "
                     f"{_absc_seg_phrase_imp_single(segs)} - "
-                    f"LIKELY A LIVER ABSCESS.")
+                    f"LIKELY A LIVER ABSCESS")
             else:
                 grp_dens = _absc_density_phrase(
                     liver.get("abscess_density_group", "solid"), up=True)
@@ -5893,7 +5894,7 @@ def _liver_impression_line(liver):
                 lf.append(
                     f"{keyword} IRREGULAR MARGINATED ILL-DEFINED AVASCULAR "
                     f"{grp_dens} SOLs IN THE LIVER(Largest of these measuring "
-                    f"{' and '.join(parts)}) - LIKELY LIVER ABSCESSES.")
+                    f"{' and '.join(parts)}) - LIKELY LIVER ABSCESSES")
 
     out = []
     if hepatomegaly and echo_descriptor and not lf:
@@ -5910,13 +5911,15 @@ def _liver_impression_line(liver):
         out.append(f"{echo_descriptor} & " + " AND ".join(lf)
                    + ". Adv- LFT Correlation.")
         return out
+    _liver_advice = ("Adv - Lab & Clinical Correlation."
+                     if _is_abscess else "Adv- LFT Correlation.")
     if hepatomegaly and lf:
         out.append(hepatomegaly + " WITH " + " AND ".join(lf)
-                   + ". Adv- LFT Correlation.")
+                   + ". " + _liver_advice)
     elif hepatomegaly:
         out.append(hepatomegaly + ". Adv- LFT Correlation.")
     elif lf:
-        out.append(" AND ".join(lf) + ". Adv- LFT Correlation.")
+        out.append(" AND ".join(lf) + ". " + _liver_advice)
     return out
 
 
