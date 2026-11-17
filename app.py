@@ -4464,13 +4464,16 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False,
 # BOWEL WALL & BOWEL
 # ============================================================
 
-def bowel_sentence(d, sex, pancreas_status="normal", mln_present=False):
+def bowel_sentence(d, sex, pancreas_status="normal", mln_present=False,
+                   appendix_dilated=False):
     acute = (pancreas_status == "acute")
     s = []
     wall = bool(d.get("wall_thickening"))
     if not wall:
         if mln_present:
             s.append(seg("No obvious bowel wall thickening appreciated.", True))
+        elif appendix_dilated:
+            s.append(seg("No obvious lymphadenitis appreciated.", True))
         else:
             s.append(seg("No obvious bowel wall thickening or lymphadenitis "
                          "appreciated.", True))
@@ -5369,7 +5372,10 @@ def fluid_mln_sentence(data):
     if data.get("efast", {}).get("performed", False):
         return []
 
-    if not eff_present and not ff_present and not mln_present and not saio_line:
+    _app_peri_fluid = bool(
+        data.get("appendix", {}).get("periappendiceal_fluid", False))
+    if (not eff_present and not ff_present and not mln_present
+            and not saio_line and not _app_peri_fluid):
         if pancreas_acute:
             return []
         return [seg("No free fluid seen in the peritoneal cavity.")]
@@ -7756,10 +7762,13 @@ def build_docx_bytes(data):
 
     # Only render the generic bowel sentence if the structured module is off
     if not bw_segs:
+        _app_dilated = (
+            classify_appendix(
+                data.get("appendix", {}).get("diameter_mm", "")) == "dilated")
         sections.append(bowel_sentence(data["bowel"], sex,
                                         pancreas_status=p_status,
-                                        mln_present=_mln_present))
-    if bw_segs:
+                                        mln_present=_mln_present,
+                                        appendix_dilated=_app_dilated))
         sections.append(bw_segs)
     if data["appendix"].get("status") not in ("not_assessed",):
         app_segs = appendix_sentence(data["appendix"])
@@ -11514,9 +11523,13 @@ def render_preview_findings(data):
     
     # Only render the generic bowel sentence if the structured module is off
     if not bw_segs:
+        _app_dilated = (
+            classify_appendix(
+                data.get("appendix", {}).get("diameter_mm", "")) == "dilated")
         secs.append(bowel_sentence(data["bowel"], sex,
                                     pancreas_status=p_status,
-                                    mln_present=_mln_present))
+                                    mln_present=_mln_present,
+                                    appendix_dilated=_app_dilated))
     if bw_segs:
         secs.append(bw_segs)
     if data["appendix"].get("status") not in ("not_assessed",):
