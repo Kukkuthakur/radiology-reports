@@ -1145,6 +1145,7 @@ def new_report(sex="F"):
                   "hemangioma_single_size_mm": "", "hemangioma_few_largest_mm": "",
                   "hemangioma_few_lobe": "right",
                   "abscess_count": "single", "abscess_lesions": [],
+                  "abscess_density_group": "solid",
                   "ihbr": "normal", "portal_vein": "normal", "portal_vein_mm": ""},
         "gall_bladder": {
             "status": "adequately_distended",
@@ -1247,6 +1248,88 @@ def seg(text, bold=False, underline=False, italic=None):
 # LIVER
 # ============================================================
 
+_ABSCESS_DENSITY_PHRASE = {
+    "solid":  "predominantly solid density",
+    "liquid": "predominantly liquid density",
+    "mixed":  "predominantly mixed density",
+}
+
+
+def _absc_density_phrase(density, up=False):
+    key = density if density in _ABSCESS_DENSITY_PHRASE else "solid"
+    phrase = _ABSCESS_DENSITY_PHRASE[key]
+    return phrase.upper() if up else phrase
+
+
+def _absc_segments(lesion):
+    """Return a list of segment labels, tolerant of the old single-string
+    'segment' shape used by saved reports before multi-segment support."""
+    segs = lesion.get("segments")
+    if isinstance(segs, list) and segs:
+        return [s for s in segs if s]
+    old = lesion.get("segment")
+    if isinstance(old, str) and old:
+        return [old]
+    return []
+
+
+def _absc_seg_join_body(segs):
+    if not segs:
+        return ""
+    if len(segs) == 1:
+        return segs[0]
+    if len(segs) == 2:
+        return f"{segs[0]} and {segs[1]}"
+    return f"{segs[0]}, {segs[1]}, and {segs[2]}"
+
+
+def _absc_seg_phrase_body(segs):
+    """'in the segment II' / 'involving the segments II and III' /
+    'involving the segments II, III, and IV'."""
+    if not segs:
+        return ""
+    if len(segs) == 1:
+        return f"in the segment {segs[0]}"
+    return f"involving the segments {_absc_seg_join_body(segs)}"
+
+
+def _absc_seg_join_imp(segs):
+    if not segs:
+        return ""
+    if len(segs) == 1:
+        return segs[0]
+    if len(segs) == 2:
+        return f"{segs[0]} & {segs[1]}"
+    return f"{segs[0]}, {segs[1]}, and {segs[2]}"
+
+
+def _absc_seg_phrase_imp_single(segs):
+    """Single-lesion impression: all-caps keyword + uppercase labels."""
+    if not segs:
+        return ""
+    up = [s.upper() for s in segs]
+    joined = _absc_seg_join_imp(up)
+    if len(up) == 1:
+        return f"IN SEGMENT {joined}"
+    return f"INVOLVING SEGMENTS {joined}"
+
+
+def _absc_seg_phrase_imp_multi(segs):
+    """Multi-lesion impression parenthetical: Title-case keyword,
+    Title-case Segment/Segments, uppercase labels. Wrapped in verbatim
+    sentinels so the renderer preserves mixed case inside the otherwise-
+    uppercase impression bullet."""
+    if not segs:
+        return ""
+    up = [s.upper() for s in segs]
+    joined = _absc_seg_join_imp(up)
+    if len(up) == 1:
+        inner = f"in Segment {joined}"
+    else:
+        inner = f"involving Segments {joined}"
+    return f"{_VERBATIM_OPEN}{inner}{_VERBATIM_CLOSE}"
+
+
 def liver_focal_sentence(d):
     fl = d["focal_lesion"]
     if fl == "none":
@@ -1289,16 +1372,26 @@ def liver_focal_sentence(d):
             return []
         if count == "single" and len(lesions) >= 1:
             l = lesions[0]
-            text = (f"An irregular marginated ill-defined avascular SOL({l['dim']}; "
-                    f"Vol= {l['vol']}cc) seen in the segment {l['segment']}.")
+            segs = _absc_segments(l)
+            dens = _absc_density_phrase(l.get("density", "solid"))
+            text = (f"An irregular marginated ill-defined avascular {dens} SOL"
+                    f"({l['dim']}; Vol= {l['vol']}cc) seen "
+                    f"{_absc_seg_phrase_body(segs)}.")
             return [seg(" "), seg(text, True)]
         else:
-            parts = [f"{l['dim']}; Vol= {l['vol']}cc in segment {l['segment']}"
-                     for l in lesions]
-            joined = " & ".join(parts)
+            grp_dens = _absc_density_phrase(
+                d.get("abscess_density_group", "solid"))
+            parts = []
+            for l in lesions:
+                segs = _absc_segments(l)
+                parts.append(
+                    f"{l['dim']}; Vol= {l['vol']}cc "
+                    f"{_absc_seg_phrase_body(segs)}")
+            joined = " and ".join(parts)
             keyword = "Few" if count == "few" else "Multiple"
-            text = (f"{keyword} irregular marginated ill-defined avascular SOLs seen "
-                    f"in the liver, largest of these measuring {joined}.")
+            text = (f"{keyword} irregular marginated ill-defined avascular "
+                    f"{grp_dens} SOLs seen in the liver, largest of these "
+                    f"measuring {joined}.")
             return [seg(" "), seg(text, True)]
     return []
 
@@ -5779,16 +5872,28 @@ def _liver_impression_line(liver):
         if lesions:
             if count == "single":
                 l0 = lesions[0]
-                lf.append(f"AN IRREGULAR MARGINATED ILL-DEFINED AVASCULAR SOL IN "
-                          f"THE LIVER MEASURING VOL= {l0['vol']}CC IN SEGMENT "
-                          f"{l0['segment']} - LIKELY LIVER ABSCESS")
+                segs = _absc_segments(l0)
+                dens = _absc_density_phrase(
+                    l0.get("density", "solid"), up=True)
+                lf.append(
+                    f"AN IRREGULAR MARGINATED ILL-DEFINED AVASCULAR {dens} "
+                    f"SOL IN THE LIVER(Vol= {l0['vol']} cc) "
+                    f"{_absc_seg_phrase_imp_single(segs)} - "
+                    f"LIKELY A LIVER ABSCESS.")
             else:
-                parts = [f"VOL= {l['vol']}CC IN SEGMENT {l['segment']}"
-                         for l in lesions]
+                grp_dens = _absc_density_phrase(
+                    liver.get("abscess_density_group", "solid"), up=True)
+                parts = []
+                for l in lesions:
+                    segs = _absc_segments(l)
+                    parts.append(
+                        f"Vol= {l['vol']} cc "
+                        f"{_absc_seg_phrase_imp_multi(segs)}")
                 keyword = "FEW" if count == "few" else "MULTIPLE"
-                lf.append(f"{keyword} IRREGULAR MARGINATED ILL-DEFINED AVASCULAR "
-                          f"SOLS IN THE LIVER, LARGEST OF THESE MEASURING "
-                          f"{' & '.join(parts)} - LIKELY LIVER ABSCESSES")
+                lf.append(
+                    f"{keyword} IRREGULAR MARGINATED ILL-DEFINED AVASCULAR "
+                    f"{grp_dens} SOLs IN THE LIVER(Largest of these measuring "
+                    f"{' and '.join(parts)}) - LIKELY LIVER ABSCESSES.")
 
     out = []
     if hepatomegaly and echo_descriptor and not lf:
@@ -8231,6 +8336,19 @@ with col_find:
                          horizontal=True, key="abscess_count")
                 wget("abscess_count", "single")
                 _ac = ss("abscess_count", "single")
+
+                if _ac != "single":
+                    _grp_dens_opts = ["solid", "liquid", "mixed"]
+                    st.radio(
+                        "Density (applies to all lesions)",
+                        _grp_dens_opts,
+                        index=_idx("abscess_density_group",
+                                   _grp_dens_opts, "solid"),
+                        horizontal=True,
+                        format_func=lambda x: f"Predominantly {x} density",
+                        key="abscess_density_group")
+                    wget("abscess_density_group", "solid")
+
                 _n_default = _seed("abscess_n", 2)
                 try:
                     _n_default = int(_n_default)
@@ -8240,22 +8358,41 @@ with col_find:
                     "How many lesions?", min_value=1, max_value=5,
                     value=_n_default, key="abscess_n"))
                 wget("abscess_n", 2)
+
+                _seg_opts = ["I", "II", "III", "IV",
+                             "V", "VI", "VII", "VIII"]
+
                 for i in range(n_abs):
                     st.markdown(f"*Lesion {i+1}*")
-                    c_a, c_b, c_c = st.columns([1, 2, 1])
+                    c_a, c_b, c_c, c_d = st.columns([2, 2, 1, 1])
                     with c_a:
-                        _seg_opts = ["I", "II", "III", "IV",
-                                     "V", "VI", "VII", "VIII"]
-                        st.selectbox("Segment", _seg_opts,
-                                     index=_idx(f"abs_seg_{i}", _seg_opts, "I"),
-                                     key=f"abs_seg_{i}")
-                        wget(f"abs_seg_{i}", "I")
+                        _seg_default = _seed(f"abs_seg_{i}", ["I"])
+                        if isinstance(_seg_default, str):
+                            _seg_default = [_seg_default] if _seg_default else ["I"]
+                        if not _seg_default:
+                            _seg_default = ["I"]
+                        st.multiselect(
+                            "Segment(s)", _seg_opts,
+                            default=_seg_default,
+                            max_selections=3,
+                            key=f"abs_seg_{i}")
+                        wget(f"abs_seg_{i}", ["I"])
                     with c_b:
+                        _dens_opts = ["solid", "liquid", "mixed"]
+                        st.radio(
+                            "Density", _dens_opts,
+                            index=_idx(f"abs_density_{i}",
+                                       _dens_opts, "solid"),
+                            horizontal=True,
+                            format_func=lambda x: f"Predominantly {x} density",
+                            key=f"abs_density_{i}")
+                        wget(f"abs_density_{i}", "solid")
+                    with c_c:
                         st.text_input("Dimensions (XxYxZ mm)",
                                       key=f"abs_dim_{i}",
                                       value=_seed(f"abs_dim_{i}", ""))
                         wget(f"abs_dim_{i}", "")
-                    with c_c:
+                    with c_d:
                         st.text_input("Volume (cc)", key=f"abs_vol_{i}",
                                       value=_seed(f"abs_vol_{i}", ""))
                         wget(f"abs_vol_{i}", "")
@@ -10655,10 +10792,16 @@ if _lf == "abscess":
     _ac = ss("abscess_count", "single")
     n_abs = 1 if _ac == "single" else int(ss("abscess_n", 2) or 2)
     for i in range(n_abs):
+        _segs_val = ss(f"abs_seg_{i}", ["I"])
+        if isinstance(_segs_val, str):
+            _segs_val = [_segs_val] if _segs_val else ["I"]
+        if not _segs_val:
+            _segs_val = ["I"]
         _abscess_lesions.append({
-            "segment": ss(f"abs_seg_{i}", "I"),
+            "segments": list(_segs_val),
             "dim": ss(f"abs_dim_{i}", ""),
             "vol": ss(f"abs_vol_{i}", ""),
+            "density": ss(f"abs_density_{i}", "solid"),
         })
 
 data["liver"].update({
@@ -10682,6 +10825,7 @@ data["liver"].update({
     "hemangioma_few_lobe": ss("hemangioma_few_lobe", "right"),
     "abscess_count": ss("abscess_count", "single"),
     "abscess_lesions": _abscess_lesions,
+    "abscess_density_group": ss("abscess_density_group", "solid"),
     "ihbr": ss("liver_ihbr", "normal"),
     "portal_vein": ss("liver_portal", "normal"),
     "portal_vein_mm": ss("liver_portal_mm", "")
