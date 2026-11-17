@@ -4464,13 +4464,16 @@ def ovaries_sentence(d, age_years=None, uterus_operated=False,
 # BOWEL WALL & BOWEL
 # ============================================================
 
-def bowel_sentence(d, sex, pancreas_status="normal", mln_present=False):
+def bowel_sentence(d, sex, pancreas_status="normal", mln_present=False,
+                   appendix_dilated=False):
     acute = (pancreas_status == "acute")
     s = []
     wall = bool(d.get("wall_thickening"))
     if not wall:
         if mln_present:
             s.append(seg("No obvious bowel wall thickening appreciated.", True))
+        elif appendix_dilated:
+            s.append(seg("No obvious lymphadenitis appreciated.", True))
         else:
             s.append(seg("No obvious bowel wall thickening or lymphadenitis "
                          "appreciated.", True))
@@ -5369,7 +5372,10 @@ def fluid_mln_sentence(data):
     if data.get("efast", {}).get("performed", False):
         return []
 
-    if not eff_present and not ff_present and not mln_present and not saio_line:
+    _app_peri_fluid = bool(
+        data.get("appendix", {}).get("periappendiceal_fluid", False))
+    if (not eff_present and not ff_present and not mln_present
+            and not saio_line and not _app_peri_fluid):
         if pancreas_acute:
             return []
         return [seg("No free fluid seen in the peritoneal cavity.")]
@@ -5866,7 +5872,8 @@ def _liver_impression_line(liver):
         else:
             lobe = liver.get("hemangioma_few_lobe", "right").upper()
             lf.append(f"FEW HEPATIC HEMANGIOMAS IN {lobe} LOBE")
-    elif fl == "abscess":
+    _is_abscess = (fl == "abscess")
+    if fl == "abscess":
         count = liver.get("abscess_count", "single")
         lesions = liver.get("abscess_lesions", [])
         if lesions:
@@ -5879,7 +5886,7 @@ def _liver_impression_line(liver):
                     f"AN IRREGULAR MARGINATED ILL-DEFINED AVASCULAR {dens} "
                     f"SOL IN THE LIVER(Vol= {l0['vol']} cc) "
                     f"{_absc_seg_phrase_imp_single(segs)} - "
-                    f"LIKELY A LIVER ABSCESS.")
+                    f"LIKELY A LIVER ABSCESS")
             else:
                 grp_dens = _absc_density_phrase(
                     liver.get("abscess_density_group", "solid"), up=True)
@@ -5893,7 +5900,7 @@ def _liver_impression_line(liver):
                 lf.append(
                     f"{keyword} IRREGULAR MARGINATED ILL-DEFINED AVASCULAR "
                     f"{grp_dens} SOLs IN THE LIVER(Largest of these measuring "
-                    f"{' and '.join(parts)}) - LIKELY LIVER ABSCESSES.")
+                    f"{' and '.join(parts)}) - LIKELY LIVER ABSCESSES")
 
     out = []
     if hepatomegaly and echo_descriptor and not lf:
@@ -5910,13 +5917,15 @@ def _liver_impression_line(liver):
         out.append(f"{echo_descriptor} & " + " AND ".join(lf)
                    + ". Adv- LFT Correlation.")
         return out
+    _liver_advice = ("Adv - Lab & Clinical Correlation."
+                     if _is_abscess else "Adv- LFT Correlation.")
     if hepatomegaly and lf:
         out.append(hepatomegaly + " WITH " + " AND ".join(lf)
-                   + ". Adv- LFT Correlation.")
+                   + ". " + _liver_advice)
     elif hepatomegaly:
         out.append(hepatomegaly + ". Adv- LFT Correlation.")
     elif lf:
-        out.append(" AND ".join(lf) + ". Adv- LFT Correlation.")
+        out.append(" AND ".join(lf) + ". " + _liver_advice)
     return out
 
 
@@ -7753,10 +7762,13 @@ def build_docx_bytes(data):
 
     # Only render the generic bowel sentence if the structured module is off
     if not bw_segs:
+        _app_dilated = (
+            classify_appendix(
+                data.get("appendix", {}).get("diameter_mm", "")) == "dilated")
         sections.append(bowel_sentence(data["bowel"], sex,
                                         pancreas_status=p_status,
-                                        mln_present=_mln_present))
-    if bw_segs:
+                                        mln_present=_mln_present,
+                                        appendix_dilated=_app_dilated))
         sections.append(bw_segs)
     if data["appendix"].get("status") not in ("not_assessed",):
         app_segs = appendix_sentence(data["appendix"])
@@ -11511,9 +11523,13 @@ def render_preview_findings(data):
     
     # Only render the generic bowel sentence if the structured module is off
     if not bw_segs:
+        _app_dilated = (
+            classify_appendix(
+                data.get("appendix", {}).get("diameter_mm", "")) == "dilated")
         secs.append(bowel_sentence(data["bowel"], sex,
                                     pancreas_status=p_status,
-                                    mln_present=_mln_present))
+                                    mln_present=_mln_present,
+                                    appendix_dilated=_app_dilated))
     if bw_segs:
         secs.append(bw_segs)
     if data["appendix"].get("status") not in ("not_assessed",):
