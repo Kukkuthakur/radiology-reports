@@ -10,6 +10,8 @@ positive/negative impression bullet, and negative-trauma template.
 import io
 import os
 import re
+import json
+import time
 import html
 import hashlib
 import sqlite3
@@ -6331,6 +6333,33 @@ def _is_hepatomegaly_only_bullet(line):
     return True
 
 
+# Hepatomegaly / steatosis are the least significant findings: they go AFTER the major ones.
+#   major = cholelithiasis, choledocholithiasis, pancreatitis, splenomegaly (when not merged with hepatomegaly),
+#           renal / ureteric / bladder calculi, prostatomegaly, ovarian pathology, uterine pathology.
+# With one major finding the liver bullet is 2nd; with two or more it moves further down, behind all of them.
+_HEP_BULLET_TOKENS = ("HEPATOMEGALY", "HEPATOSPLENOMEGALY", "STEATOSIS", "FATTY INFILTRATION")
+_HOWEVER_NO_CLAUSE = re.compile(r"HOWEVER NO [^.]*")
+_CALCULI_TOKENS = ("CALCUL", "NEPHROLITH", "UROLITH", "STONE")
+
+def _is_hep_bullet(text):
+    up = str(text).upper()
+    return any(tok in up for tok in _HEP_BULLET_TOKENS)
+
+def _is_calculi_finding(text):
+    """A positive calculus finding (the 'HOWEVER NO CALCULUS' tail of another finding does not count)."""
+    up = _HOWEVER_NO_CLAUSE.sub("", str(text).upper()).strip()
+    if up.startswith("NO "):
+        return False
+    return any(tok in up for tok in _CALCULI_TOKENS)
+
+def _last_match_end(lines, start, pred):
+    """Index just after the last bullet at/after `start` for which pred(text) is true (None if none)."""
+    end = None
+    for i in range(start, len(lines)):
+        if pred(lines[i]):
+            end = i + 1
+    return end
+
 def generate_impression(d, sex, age):
     # ── e-FAST early handling ──
     # Q9: e-FAST bullet is the first finding, but other findings continue
@@ -6393,6 +6422,9 @@ def generate_impression(d, sex, age):
         lines = [_primary + _tail, IMPRESSION_REST_UNREMARKABLE]
         return [_q(l) for l in lines]
     lines = []
+    _prio_end = 0              # index just after the last "major" finding bullet
+    _hep_lines = []            # hepatomegaly / steatosis bullets, put back after the major findings
+    _hep_pos = 0               # where those bullets used to go
     age_years = parse_age(age)
     is_pediatric = age_years is not None and age_years < 18
     small_rule_active = age_years is not None and age_years > SMALL_KIDNEY_MIN_AGE
@@ -6471,6 +6503,7 @@ def generate_impression(d, sex, age):
             return [_q(_line), IMPRESSION_REST_UNREMARKABLE]
         # If nothing qualifies, fall through to normal generation.
 
+    _pstart = len(lines)
     p = d["pancreas"]
     p_status = p.get("status", "normal")
     if p_status == "early_evolving":
@@ -6593,6 +6626,9 @@ def generate_impression(d, sex, age):
             lines.append("FEATURES SUGGESTIVE OF CHRONIC PANCREATITIS. "
                          "Adv- S.Amylase/Lipase Correlation.")
 
+    if len(lines) > _pstart:                    # pancreatitis bullets
+        _prio_end = len(lines)
+    _gstart = len(lines)
     cbd = d["cbd"]
     cbd_status = cbd.get("status", "normal")
     cbd_size = cbd.get("size_mm", "")
@@ -6807,14 +6843,26 @@ def generate_impression(d, sex, age):
             else:
                 lines.append("GALL BLADDER ADENOMYOMATOSIS/CHOLESTEROLOSIS.")
 
+    _gb_end = _last_match_end(lines, _gstart, lambda t: any(
+        tok in str(t).upper() for tok in ("CHOLELITHIASIS", "CHOLEDOCHOLITHIASIS")) and not str(t).upper().startswith("NO "))
+    if _gb_end:
+        _prio_end = max(_prio_end, _gb_end)
     liver = d["liver"]
     spleen = d["spleen"]
     combined = _try_hepatosplenomegaly(liver, spleen)
     if combined:
-        lines.append(combined)
+        _hep_lines.append(combined)             # hepatosplenomegaly: counted as a hepatomegaly bullet
     else:
-        lines.extend(_spleen_impression_line(spleen))
-        lines.extend(_liver_impression_line(liver))
+        _sp_lines = _spleen_impression_line(spleen)
+        lines.extend(_sp_lines)
+        if any("SPLENOMEGALY" in str(x).upper() and "HEPATO" not in str(x).upper() for x in _sp_lines):
+            _prio_end = len(lines)              # splenomegaly on its own is a major finding
+        for _ln in _liver_impression_line(liver):
+            if _is_hep_bullet(_ln):
+                _hep_lines.append(_ln)
+            else:
+                lines.append(_ln)               # cyst / hemangioma / abscess / coarse echotexture stay where they were
+    _hep_pos = len(lines)
 
     k = d["kidneys"]
     r = k["right"]
@@ -7100,6 +7148,8 @@ def generate_impression(d, sex, age):
         if k.get("cortical_echogenicity", "normal") != "normal":
             _kidney_bullet += " Adv- KFT Correlation."
         lines.append(_kidney_bullet)
+        if _is_calculi_finding(_kidney_bullet):  # renal / ureteric calculi
+            _prio_end = len(lines)
 
     ub = d["urinary_bladder"]
     pr = d["prostate"]
@@ -7113,11 +7163,16 @@ def generate_impression(d, sex, age):
             if _prostate_wo_dot in _ln:
                 _prostate_consumed = True
                 break
+    _ubstart = len(lines)
     for ln in ub_lines:
         lines.append(ln)
     if prostate_line and not _prostate_consumed:
         lines.append(prostate_line)
+    _ub_end = _last_match_end(lines, _ubstart, lambda t: _is_calculi_finding(t) or "PROSTATOMEGALY" in str(t).upper())
+    if _ub_end:                                  # bladder calculus / prostatomegaly
+        _prio_end = max(_prio_end, _ub_end)
 
+    _fstart = len(lines)
     if sex == "F":
         uterus_lines = _uterus_impression_lines(d["uterus"], age_years,
                                                  ovaries=d["ovaries"])
@@ -7140,6 +7195,15 @@ def generate_impression(d, sex, age):
         cyst_lines = _ovary_grouped_impression_lines(o)
         for cl in cyst_lines:
             lines.append(cl)
+        # uterine / ovarian pathology (the "no evidence of ..." lines are not findings)
+        _f_end = _last_match_end(lines, _fstart, lambda t: not str(t).upper().startswith("NO "))
+        if _f_end:
+            _prio_end = max(_prio_end, _f_end)
+
+    if _hep_lines:
+        # after the last major finding; if there is none (or it came before the liver) the bullet stays where it always was
+        _at = max(_hep_pos, _prio_end)
+        lines[_at:_at] = _hep_lines
 
     b = d["bowel"]
     _bw_data = d.get("bowel_wall", {})
@@ -8110,6 +8174,270 @@ def _on_name_commit():
         st.session_state["_ts_for_name"] = cur
 
 
+
+# ============================================================
+# OCR FROM THE DICOM LISTENER
+# The listener reads the text on each ultrasound image (liver, CBD, spleen, kidneys, uterus, ovaries, prostate) and writes it
+# to latest_sr.json as ocr_abd_*. Here those readings are put into the form boxes.
+#
+# WHICH TAB GETS A PATIENT (no tick-box any more)
+#  - every tab starts "waiting". When the scanner starts sending a NEW patient, that patient goes to ONE tab:
+#      1. a tab whose Name box matches the patient's name (type the name first and it always lands in the right tab), else
+#      2. the newest tab whose Name box is still empty. A tab with ANOTHER patient's name typed in is never given the patient.
+#  - a patient that was already in latest_sr.json before this tab was opened (or that another tab already has) is never taken
+#    by a new tab - this is what used to make a fresh tab lock on to the previous scan
+#  - a tab stays with its patient; images of any other patient are ignored by it, silently
+#  - the box "Scan-image link of this tab" can unlink a tab, or make it take the patient being scanned now
+#
+# HAND-TYPED VALUES ALWAYS WIN
+#  - a box is filled only if it is EMPTY or still holds what the OCR itself wrote: anything typed / corrected by hand stays
+#  - a reading is written once; if you clear the box afterwards it is not written back until the OCR reads a different value
+# ============================================================
+ABD_OCR_JSON = os.environ.get("LATEST_SR_JSON") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "latest_sr.json")
+ABD_OCR_FRESH_MIN = 10           # a new patient is only handed to a tab if the scanner sent something in the last N minutes
+
+# listener field -> (form widget key, kind)
+ABD_OCR_FIELDS = {
+    "abd_liver":     ("liver_size_num", "int"),      # mm
+    "abd_cbd":       ("cbd_mm_num", "float"),        # mm
+    "abd_spleen":    ("spleen_size_num", "int"),     # mm
+    "abd_kid_r":     ("kd_r_size_text", "text"),     # e.g. 98x41
+    "abd_kid_l":     ("kd_l_size_text", "text"),
+    "abd_uterus":    ("ut_size", "text"),            # longitudinal x transverse (mm)
+    "abd_endo":      ("ut_endo_mm", "text"),
+    "abd_ov_r_size": ("ov_r_size", "text"),          # 34x22 or 45x34x22
+    "abd_ov_l_size": ("ov_l_size", "text"),
+    "abd_ov_r_vol":  ("ov_r_vol", "text"),           # cc
+    "abd_ov_l_vol":  ("ov_l_vol", "text"),
+    "abd_prostate":  ("pr_cc", "text"),              # cc
+}
+ABD_OCR_LABELS = {"liver_size_num": "liver", "cbd_mm_num": "CBD", "spleen_size_num": "spleen", "kd_r_size_text": "Rt kidney",
+                  "kd_l_size_text": "Lt kidney", "ut_size": "uterus", "ut_endo_mm": "endometrium", "ov_r_size": "Rt ovary",
+                  "ov_l_size": "Lt ovary", "ov_r_vol": "Rt ovary vol", "ov_l_vol": "Lt ovary vol", "pr_cc": "prostate vol"}
+
+def _abd_current(wkey):
+    S = st.session_state
+    return S[wkey] if wkey in S else S.get(f"_mirror_{wkey}")          # the widget's own value first (the mirror can lag a run)
+
+def _abd_set(wkey, val):
+    st.session_state[wkey] = val
+    st.session_state[f"_mirror_{wkey}"] = val
+
+@st.cache_resource
+def _abd_registry():
+    """Shared by every browser tab of this program: which tabs exist and which patient each one has."""
+    import threading
+    reg = {"lock": threading.Lock(), "tabs": {}, "claims": {}}
+    try:                                         # the patient already in latest_sr.json when the program starts is an earlier scan
+        with open(ABD_OCR_JSON, "r", encoding="utf-8") as fh:
+            _d0 = json.load(fh)
+        if _d0.get("_study"):
+            reg["claims"][str(_d0["_study"])] = ("__earlier__", time.time())
+    except Exception:
+        pass
+    return reg
+
+def _abd_sid():
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        _c = get_script_run_ctx()
+        return _c.session_id if _c else "?"
+    except Exception:
+        return "?"
+
+def _abd_alive(sid, t):
+    try:
+        from streamlit.runtime import Runtime
+        return bool(Runtime.instance().is_active_session(sid))
+    except Exception:
+        return (time.time() - t.get("seen", 0)) < 600
+
+def _abd_norm_name(x):
+    return [w for w in re.sub(r"[^a-z0-9 ]", " ", str(x or "").lower()).split() if w]
+
+def _abd_name_match(typed, scanner):
+    a, b = _abd_norm_name(typed), _abd_norm_name(scanner)
+    if not a or not b:
+        return False
+    return a[0] == b[0] or (len(a[0]) >= 3 and (b[0].startswith(a[0]) or a[0].startswith(b[0])))
+
+def _abd_choose_tab(reg, study, scanner_name):
+    """The ONE tab that gets a new patient (called with the lock held)."""
+    live = [(sid, t) for sid, t in reg["tabs"].items() if _abd_alive(sid, t) and study not in t.get("skip", set())]
+    named = [(sid, t) for sid, t in live if t.get("name") and _abd_name_match(t["name"], scanner_name)]
+    if named:
+        return max(named, key=lambda x: x[1]["opened"])[0]
+    free = [(sid, t) for sid, t in live if not t.get("patient") and not t.get("name")]
+    if free:
+        return max(free, key=lambda x: x[1]["opened"])[0]
+    return None
+
+def _abd_register():
+    S = st.session_state
+    S.setdefault("abd_opened", time.time())
+    sid, reg = _abd_sid(), _abd_registry()
+    with reg["lock"]:
+        t = reg["tabs"].setdefault(sid, {"opened": S["abd_opened"], "skip": set()})
+        t["seen"] = time.time()
+        t["name"] = str(S.get("p_name_input") or "").strip()
+        t["patient"] = S.get("abd_study")
+        for _s in [k for k, v in reg["tabs"].items() if not _abd_alive(k, v)]:      # forget closed tabs
+            reg["tabs"].pop(_s, None)
+    return sid, reg
+
+def _abd_read_json():
+    """Read latest_sr.json into this tab's session when it has changed."""
+    S = st.session_state
+    m = None
+    try:
+        if not os.path.exists(ABD_OCR_JSON):
+            return
+        m = os.path.getmtime(ABD_OCR_JSON)
+        if m == S.get("abd_json_mtime") or m == S.get("abd_json_bad"):
+            return
+        with open(ABD_OCR_JSON, "r", encoding="utf-8") as fh:
+            S["abd_json"] = json.load(fh)
+        S["abd_json_mtime"] = m
+    except Exception:
+        if m is not None:
+            S["abd_json_bad"] = m                                      # unreadable right now (being written): retry when it changes
+
+def _abd_forget_old_patient():
+    """A tab that moves to another patient: take back the boxes the OCR filled for the old one (hand-typed values stay)."""
+    S = st.session_state
+    for wkey, val in list(S.get("abd_applied", {}).items()):
+        if _abd_current(wkey) == val:
+            _abd_set(wkey, "" if isinstance(val, str) else 0)
+    S["abd_applied"] = {}
+    S.pop("abd_ocr", None)
+
+def _abd_evaluate(commit):
+    """Does the patient in latest_sr.json belong to this tab? Returns True when it does (and, if commit, links the tab)."""
+    S = st.session_state
+    d = S.get("abd_json")
+    if not d:
+        return False
+    new = {k[4:]: v for k, v in d.items() if k.startswith("ocr_abd_") and isinstance(v, str)}
+    study = str(d.get("_study", "") or "")
+    if not new or not study:
+        return False                                                   # nothing for the abdomen (e.g. an OB patient)
+    sid, reg = _abd_register()
+    scanner_name = str(d.get("patient_name", "") or "")
+    bound = S.get("abd_study")
+    with reg["lock"]:
+        owner = reg["claims"].get(study)
+        if bound == study:
+            if owner and owner[0] not in (sid, "__free__"):            # another tab took this patient over
+                if commit:
+                    S.pop("abd_study", None); S.pop("abd_name", None)
+                return False
+            if commit:
+                reg["claims"][study] = (sid, time.time())
+            return True
+        # not this tab's patient yet: only a NEW patient nobody has, seen recently, can be handed over
+        if owner and owner[0] != "__free__":
+            return False
+        updated = float(d.get("_updated") or S.get("abd_json_mtime") or 0)
+        if time.time() - updated > ABD_OCR_FRESH_MIN * 60:
+            return False
+        if _abd_choose_tab(reg, study, scanner_name) != sid:           # another tab is the one that gets this patient
+            return False
+        if bound:                                                      # a tab already holding another patient: only by name
+            _tn = reg["tabs"][sid].get("name")
+            if not _abd_name_match(_tn, scanner_name) or _abd_name_match(_tn, S.get("abd_name", "")):
+                return False
+        if commit:
+            reg["claims"][study] = (sid, time.time())
+            reg["tabs"][sid]["patient"] = study
+    if commit:
+        if bound and bound != study:
+            _abd_forget_old_patient()
+        S["abd_study"], S["abd_name"] = study, scanner_name or study
+    return True
+
+def _abd_poll():
+    S = st.session_state
+    _abd_register()
+    _abd_read_json()
+    if _abd_evaluate(commit=True):
+        d = S.get("abd_json") or {}
+        new = {k[4:]: v for k, v in d.items() if k.startswith("ocr_abd_") and isinstance(v, str)}
+        if new != S.get("abd_ocr"):
+            S["abd_ocr"] = new
+            S["abd_ocr_toast"] = True
+
+def _abd_apply():
+    S = st.session_state
+    applied = S.setdefault("abd_applied", {})
+    for fkey, (wkey, kind) in ABD_OCR_FIELDS.items():
+        raw = (S.get("abd_ocr") or {}).get(fkey)
+        if not raw:
+            continue
+        try:
+            val = int(round(float(raw))) if kind == "int" else float(raw) if kind == "float" else str(raw)
+        except ValueError:
+            continue
+        if applied.get(wkey) == val:
+            continue                                                   # this reading was already written once
+        cur = _abd_current(wkey)
+        if cur in (None, "", 0) or (wkey in applied and cur == applied[wkey]):
+            _abd_set(wkey, val)                                        # empty, or still the OCR's own earlier value
+            applied[wkey] = val
+        # otherwise the box holds something typed by hand: it is left alone
+
+def _abd_take_now():
+    """Button: this tab takes the patient the scanner is sending now (even from a tab that holds it)."""
+    S = st.session_state
+    d = S.get("abd_json") or {}
+    study = str(d.get("_study", "") or "")
+    if not study:
+        S["abd_msg"] = "Nothing from the scanner yet."
+        return
+    sid, reg = _abd_register()
+    with reg["lock"]:
+        reg["claims"][study] = (sid, time.time())
+        reg["tabs"][sid]["patient"] = study
+        reg["tabs"][sid]["skip"].discard(study)
+    if S.get("abd_study") and S["abd_study"] != study:
+        _abd_forget_old_patient()
+    S["abd_study"], S["abd_name"] = study, str(d.get("patient_name", "") or study)
+    S["abd_ocr"] = {k[4:]: v for k, v in d.items() if k.startswith("ocr_abd_") and isinstance(v, str)}
+    S["abd_ocr_toast"] = True
+    S.pop("abd_msg", None)
+
+def _abd_unlink():
+    """Button: this tab lets go of its patient; another tab (never this one again for the same patient) can take it."""
+    S = st.session_state
+    study = S.pop("abd_study", None)
+    S.pop("abd_name", None)
+    if study:
+        sid, reg = _abd_register()
+        with reg["lock"]:
+            reg["claims"][study] = ("__free__", time.time())
+            reg["tabs"][sid]["patient"] = None
+            reg["tabs"][sid].setdefault("skip", set()).add(study)
+
+_abd_poll()
+_abd_apply()
+if st.session_state.pop("abd_ocr_toast", False) and st.session_state.get("abd_applied"):
+    st.toast("🔍 Measurements read from the scan images (OCR)")
+
+def _abd_watch():
+    """Every 2 s: keep this tab registered, and reload when latest_sr.json changed or a patient has just become this tab's."""
+    S = st.session_state
+    try:
+        _abd_register()
+        if os.path.exists(ABD_OCR_JSON):
+            _m = os.path.getmtime(ABD_OCR_JSON)
+            if _m != S.get("abd_json_mtime") and _m != S.get("abd_json_bad"):
+                st.rerun(scope="app")
+        if not S.get("abd_study") and _abd_evaluate(commit=False):
+            st.rerun(scope="app")
+    except OSError:
+        pass
+if hasattr(st, "fragment"):
+    st.fragment(run_every=2)(_abd_watch)()
+
 with st.container():
     c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 2, 3],
                                      vertical_alignment="bottom")
@@ -8127,6 +8455,23 @@ with st.container():
                                 key="p_date_input")
     with c5:
         p_ref = st.text_input("Referred by", key="p_ref_input")
+
+with st.expander("🔍 Scan-image link of this tab", expanded=False):
+    if st.session_state.get("abd_study"):
+        st.caption(f"Linked to **{st.session_state.get('abd_name', '')}**: that patient's scan images fill this tab. "
+                   "Anything you type or change in a box stays as you typed it.")
+    else:
+        st.caption("Waiting for the next new patient's scan images. They go to the tab whose Name box matches the patient, "
+                   "or else to the newest tab with an empty Name box.")
+    _bc1, _bc2 = st.columns(2)
+    _bc1.button("Take the patient being scanned now", key="abd_take_btn", on_click=_abd_take_now)
+    _bc2.button("Unlink this tab", key="abd_unlink_btn", on_click=_abd_unlink, disabled=not st.session_state.get("abd_study"))
+    if st.session_state.get("abd_msg"):
+        st.caption(st.session_state["abd_msg"])
+_abd_done = [ABD_OCR_LABELS[w] for w in st.session_state.get("abd_applied", {}) if w in ABD_OCR_LABELS]
+if _abd_done:
+    st.caption(f"🔍 Read from the scan images of **{st.session_state.get('abd_name', '')}** (check the name!): "
+               + ", ".join(dict.fromkeys(_abd_done)))
 
 st.markdown("**Scan Quality / Limitation**")
 _subhead_opts = ["none", "gaseous", "difficult_habitus", "high_bmi"]
