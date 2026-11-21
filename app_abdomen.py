@@ -186,6 +186,36 @@ def _q(text):
 # HELPERS
 # ============================================================
 
+_ADDENDUM_ACRONYMS = ("CBD", "GB", "UB", "PCOS", "IVC", "MPD", "CHD", "RT", "LT", "USG", "KUB", "LFT", "KFT", "IUCD", "LSCS",
+                      "BPH", "GIT", "RIF", "LIF", "UTI", "PUJ", "VUJ", "CT", "MRI", "SOL", "FNAC", "MLN", "AAA", "RPOC", "ADPKD",
+                      "DJ", "CBD", "NAD", "OB", "FHR", "CRL", "LMP", "EDD", "MCA", "USS", "PV", "SMV", "SMA", "CCA", "ICA")
+
+def format_addendum(text):
+    """Additional Body Findings -> proper English: one sentence group per line, single spaces, a space after punctuation,
+    a capital letter at the start of every sentence, a closing full stop. A line typed in CAPITALS becomes mixed case
+    (known abbreviations such as CBD / GB / UB stay capital)."""
+    if not text:
+        return ""
+    out = []
+    for raw in str(text).replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        ln = re.sub(r"\s+", " ", raw).strip()
+        if not ln:
+            continue
+        letters = [c for c in ln if c.isalpha()]
+        if len(letters) >= 6 and sum(c.isupper() for c in letters) / len(letters) > 0.85:
+            ln = ln.lower()
+            for ab in _ADDENDUM_ACRONYMS:
+                ln = re.sub(rf"\b{ab.lower()}\b", ab, ln)
+        ln = re.sub(r"\s+([.,;:!?])", r"\1", ln)                  # no space before punctuation
+        ln = re.sub(r"(?<=[a-z0-9\)])([.!?])(?=[A-Za-z])", r"\1 ", ln)  # 'wall.no' -> 'wall. no' (decimals like 3.5 are safe)
+        ln = re.sub(r"([,;:])(?=[A-Za-z])", r"\1 ", ln)           # 'fat,no' -> 'fat, no'
+        ln = re.sub(r"\.{2,}", ".", ln)
+        ln = capitalize_sentences(ln)
+        if ln[-1] not in ".!?":
+            ln += "."
+        out.append(ln)
+    return "\n".join(out)
+
 def capitalize_sentences(text):
     if not text:
         return text
@@ -6320,6 +6350,93 @@ _HEPATOMEGALY_ONLY_TOKENS = (
 )
 
 
+# ---- Ascites / pleural effusion join the findings they accompany (one bullet) -------------------------------------
+# e.g. "MILD RIGHT PLEURAL EFFUSION WITH MILD ASCITES & RAISED BILATERAL RENAL CORTICAL ECHOGENICITY. Adv- KFT Correlation."
+#      "MILD ASCITES WITH RAISED HEPATIC ECHOTEXTURE. Adv- LFT Correlation."
+# Partners: raised / coarse / altered hepatic echotexture, GB wall thickening (without stones), pancreatitis,
+# raised renal cortical echogenicity.  (Mesenteric nodes, bowel-wall thickening and intestinal obstruction are merged into the
+# fluid bullet by fluid_mln_impression_lines().)
+_FL_SIMPLE_ADV = re.compile(r"^Adv\s*-\s*([A-Za-z./]+(?:\s*&\s*[A-Za-z./]+)*)\s+Correlation\.?$")
+
+def _fl_split_adv(text):
+    """(text without its advice, advice text)."""
+    m = re.search(r"\s+Adv\s*-", str(text))
+    if not m:
+        return str(text).strip().rstrip(" ."), ""
+    return str(text)[:m.start()].strip().rstrip(" ."), str(text)[m.start():].strip()
+
+def _fl_merge_advices(advs):
+    """'Adv- LFT Correlation.' + 'Adv- KFT Correlation.' -> 'Adv- LFT & KFT Correlation.';
+    'Adv- LFT Correlation.' + 'Adv- Lab & Clinical Correlation.' -> 'Adv- LFT, Lab & Clinical Correlation.'; other advice is kept."""
+    seen = []
+    for a in advs:
+        a = str(a or "").strip()
+        if a and a.rstrip(" .") + "." not in seen:
+            seen.append(a.rstrip(" .") + ".")
+    labels, others, lab_clin = [], [], False
+    for a in seen:
+        m = re.match(r"^Adv\s*-\s*(.*?)\s*Correlation\.$", a)
+        if not m or not m.group(1):
+            others.append(a)
+            continue
+        for part in re.split(r",\s*|\s*&\s*|\s+and\s+", m.group(1)):
+            part = part.strip()
+            if part.lower() in ("lab", "clinical"):
+                lab_clin = True
+            elif part and part not in labels:
+                labels.append(part)
+    out = []
+    if lab_clin:
+        out.append("Adv- " + ", ".join(labels + ["Lab & Clinical"]) + " Correlation.")
+    elif labels:
+        out.append("Adv- " + " & ".join(labels) + " Correlation.")
+    return " ".join(out + others)
+
+def _merge_fluid_partners(lines, n_fluid, echo_lines):
+    """Fold the partner findings into the first fluid bullet. Returns (lines, merged?)."""
+    if not lines or n_fluid < 1:
+        return lines, False
+    rest = lines[n_fluid:]
+    liver_p, gb_p, panc_p, kept = [], [], [], []
+    for ln in rest:
+        up = str(ln).upper()
+        if up.startswith("NO "):
+            kept.append(ln)
+        elif "HEPATIC ECHOTEXTURE" in up:
+            liver_p.append(ln)
+        elif "GB WALL THICKENING" in up and "CHOLELITHIASIS" not in up:
+            gb_p.append(ln)
+        elif "PANCREATITIS" in up and (up.startswith("FEATURES SUGGESTIVE OF") or up.startswith("MILD ASCITES WITH ")):
+            panc_p.append(ln)
+        else:
+            kept.append(ln)
+    renal_p = [(e, "Adv- KFT Correlation.") for e in echo_lines]
+    partners = []
+    advs = []
+    first_body, first_adv = _fl_split_adv(lines[0])
+    advs.append(first_adv)
+    for grp in (liver_p, gb_p, panc_p):
+        for ln in grp:
+            body, adv = _fl_split_adv(ln)
+            if body.upper().startswith("MILD ASCITES WITH "):          # acute pancreatitis bullet that already carries the ascites
+                body = "MILD ASCITES & " + body[len("MILD ASCITES WITH "):]
+            elif grp is liver_p and "HEPATOMEGALY WITH " in body.upper():   # "...HEPATOMEGALY WITH RAISED ECHOTEXTURE" inside our own WITH-chain
+                body = re.sub(r"(?i)(HEPATOMEGALY) WITH ", r"\1 & ", body, count=1)
+            partners.append(body)
+            advs.append(adv)
+    for e, a in renal_p:
+        body, adv = _fl_split_adv(e)
+        partners.append(body)
+        advs.append(adv or a)
+    if not partners:
+        return lines, False
+    text = first_body + (" & " if " WITH " in first_body.upper() else " WITH ") + " & ".join(partners) + "."
+    adv_txt = _fl_merge_advices(advs)
+    if adv_txt:
+        text += " " + adv_txt
+    return [text] + list(lines[1:n_fluid]) + kept, True
+
+
 def _is_hepatomegaly_only_bullet(line):
     """True only for a standalone hepatomegaly bullet with no other liver
     finding merged into it."""
@@ -6422,6 +6539,13 @@ def generate_impression(d, sex, age):
         lines = [_primary + _tail, IMPRESSION_REST_UNREMARKABLE]
         return [_q(l) for l in lines]
     lines = []
+    _eff_on = d.get("pleural_effusion", {}).get("status", "none") != "none"
+    _asc_on = (d.get("free_fluid", {}).get("kind", "none") == "ascites"
+               and d.get("pancreas", {}).get("status") != "acute")
+    _saio_on = (d.get("saio", {}).get("distension_type", "none") != "none"
+                or d.get("saio", {}).get("saio_ff", "none") != "none")
+    _fluid_merge = (_eff_on or _asc_on) and not _saio_on     # ascites / effusion will take its partner findings
+    _echo_merge_lines = []     # renal echogenicity lines taken out of the kidney bullet for the fluid bullet
     _prio_end = 0              # index just after the last "major" finding bullet
     _hep_lines = []            # hepatomegaly / steatosis bullets, put back after the major findings
     _hep_pos = 0               # where those bullets used to go
@@ -7062,7 +7186,7 @@ def generate_impression(d, sex, age):
                 ln = "RELATIVELY SMALL RIGHT KIDNEY WITH " + ln
             elif lat == "left" and l_small:
                 ln = "RELATIVELY SMALL LEFT KIDNEY WITH " + ln
-        renal_lines.append(ln)
+        (_echo_merge_lines if _fluid_merge else renal_lines).append(ln)
 
     for side_key, side in (("right", r), ("left", l)):
         if not _kidney_side_is_present(side):
@@ -7145,7 +7269,7 @@ def generate_impression(d, sex, age):
             _kidney_bullet += "."
         # Append KFT advice only if the echogenicity finding is present,
         # since that's the only kidney finding that mandates KFT correlation.
-        if k.get("cortical_echogenicity", "normal") != "normal":
+        if k.get("cortical_echogenicity", "normal") != "normal" and not _echo_merge_lines:
             _kidney_bullet += " Adv- KFT Correlation."
         lines.append(_kidney_bullet)
         if _is_calculi_finding(_kidney_bullet):  # renal / ureteric calculi
@@ -7245,6 +7369,11 @@ def generate_impression(d, sex, age):
     fluid_lines = fluid_mln_impression_lines(d)
     for ln in reversed(fluid_lines):
         lines.insert(0, ln)
+    _partners_merged = False
+    if _fluid_merge and fluid_lines:
+        lines, _partners_merged = _merge_fluid_partners(lines, len(fluid_lines), _echo_merge_lines)
+    elif _echo_merge_lines:                       # (fluid bullet absent after all) keep the kidney finding
+        lines.append(" ".join(_echo_merge_lines) + " Adv- KFT Correlation.")
 
     # Item #19: Fluid-only impression tail - ?ETIOLOGY
     _saio_owns_fluid = (
@@ -7275,7 +7404,7 @@ def generate_impression(d, sex, age):
 
         _suppress_tail = (_cld_like or _mln_suspicious
                           or _ppln_suspicious or _has_addendum
-                          or _bw_merged)
+                          or _bw_merged or _partners_merged)
 
         if not _suppress_tail:
             if d.get("tg_s_amylase"):
@@ -7297,7 +7426,7 @@ def generate_impression(d, sex, age):
     if _addendum:
         _blocks = [b.strip() for b in _addendum.split("\n\n") if b.strip()]
         for _b in _blocks:
-            lines.append(_b.upper())
+            lines.append(format_addendum(_b).replace("\n", " ").upper())
 
     # Negative impression lines (Item #7)
     if d.get("tg_neg_pancreas"):
@@ -7875,7 +8004,7 @@ def build_docx_bytes(data):
                 _pvr_para.paragraph_format.line_spacing = 1.0
                 _render_segments(_pvr_para, _pvr_segs)
 
-    addendum = (data.get("additional_body_findings") or "").strip()
+    addendum = format_addendum((data.get("additional_body_findings") or "").strip())
     if addendum:
         if rendered_count > 0:
             _add_full_line(doc)
@@ -11907,7 +12036,7 @@ def render_preview_findings(data):
                 out.append("".join(x[0] for x in _pvr_segs))
 
         out.append("")
-    addendum = (data.get("additional_body_findings") or "").strip()
+    addendum = format_addendum((data.get("additional_body_findings") or "").strip())
     if addendum:
         out.append(addendum)
         out.append("")
